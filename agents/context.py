@@ -7,41 +7,45 @@
 # Output: context_result dict written to AgentState
 # ─────────────────────────────────────────────
 
-import json
-import re
+# agents/context.py
+import logging
 from langchain_core.messages import SystemMessage, HumanMessage
 from config import get_llm
 from state import AgentState
+from utils import parse_json_response
 
-SYSTEM_PROMPT = """You are a Context Extractor.
-Your job is to analyze a user's prompt and extract context about the user.
+logger = logging.getLogger(__name__)
 
-Always respond with ONLY this JSON, no extra text:
+SYSTEM_PROMPT = """You are an expert Context Extractor who reads between the lines.
+
+Identify not just what is stated but what the person reveals about themselves through word choice, specificity, and framing.
+
+Always respond with ONLY this JSON:
 {
   "skill_level": "beginner or intermediate or expert",
-  "tone": "casual or formal or technical",
-  "constraints": ["any limitations or requirements mentioned"],
-  "implicit_preferences": ["preferences implied but not stated"]
-}"""
+  "tone": "casual or formal or technical or creative",
+  "constraints": ["real limitations mentioned or strongly implied"],
+  "implicit_preferences": ["what this person clearly values based on how they wrote the prompt"]
+}
 
+Think deeply:
+- Word choice reveals expertise — "thing" vs "module" vs "microservice"
+- Specificity reveals clarity of thinking
+- Length reveals how much they know about what they want
+- "Write a 300-word opening scene with atmosphere and tension" → expert, creative, values craft over speed
+"""
 
 def context_agent(state: AgentState) -> dict:
-    """
-    Extracts user context from the raw prompt.
-    """
-    llm = get_llm()
+    logger.info("[context] extracting user context")
 
+    llm = get_llm()
     messages = [
         SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=f"Extract context from this prompt: {state['raw_prompt']}")
+        HumanMessage(content=f"Extract context from: {state['raw_prompt']}")
     ]
 
     response = llm.invoke(messages)
+    result = parse_json_response(response.content, agent_name="context")
 
-    try:
-        result = json.loads(response.content)
-    except json.JSONDecodeError:
-        match = re.search(r'\{.*\}', response.content, re.DOTALL)
-        result = json.loads(match.group()) if match else {}
-
+    logger.info(f"[context] skill={result.get('skill_level', 'unknown')}")
     return {"context_result": result}

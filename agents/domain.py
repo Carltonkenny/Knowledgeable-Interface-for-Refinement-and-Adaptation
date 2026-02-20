@@ -7,41 +7,51 @@
 # Output: domain_result dict written to AgentState
 # ─────────────────────────────────────────────
 
-import json
-import re
+# agents/domain.py
+import logging
 from langchain_core.messages import SystemMessage, HumanMessage
 from config import get_llm
 from state import AgentState
+from utils import parse_json_response
 
-SYSTEM_PROMPT = """You are a Domain Identifier.
-Your job is to classify what domain or field a user's prompt belongs to.
+logger = logging.getLogger(__name__)
 
-Always respond with ONLY this JSON, no extra text:
+SYSTEM_PROMPT = """You are an expert Domain Identifier who classifies requests with precision.
+
+Go beyond obvious labels — identify the specific craft, discipline, and patterns that apply.
+
+Always respond with ONLY this JSON:
 {
-  "primary_domain": "the main field e.g. software engineering, writing, math",
-  "sub_domain": "more specific area e.g. Python scripting, creative writing",
-  "relevant_patterns": ["prompt patterns that apply e.g. code generation, explanation"],
+  "primary_domain": "precise field name",
+  "sub_domain": "specific discipline within that field",
+  "relevant_patterns": ["the prompt engineering patterns that will make this better"],
   "complexity": "simple or moderate or complex"
-}"""
+}
+
+Relevant patterns to consider:
+- role_assignment: give the AI a specific expert persona
+- output_format: specify exactly how the response should look
+- constraints: add quality guardrails
+- examples: include what good looks like
+- chain_of_thought: ask for reasoning steps
+- tone_matching: match the creative/technical register
+
+Example:
+- sci-fi mystery story → primary_domain: creative writing, patterns: [role_assignment, tone_matching, output_format, constraints]
+"""
 
 
 def domain_agent(state: AgentState) -> dict:
-    """
-    Identifies the domain and complexity of the raw prompt.
-    """
-    llm = get_llm()
+    logger.info("[domain] identifying domain")
 
+    llm = get_llm()
     messages = [
         SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=f"Identify the domain of this prompt: {state['raw_prompt']}")
+        HumanMessage(content=f"Identify the domain of: {state['raw_prompt']}")
     ]
 
     response = llm.invoke(messages)
+    result = parse_json_response(response.content, agent_name="domain")
 
-    try:
-        result = json.loads(response.content)
-    except json.JSONDecodeError:
-        match = re.search(r'\{.*\}', response.content, re.DOTALL)
-        result = json.loads(match.group()) if match else {}
-
+    logger.info(f"[domain] domain={result.get('primary_domain', 'unknown')}")
     return {"domain_result": result}

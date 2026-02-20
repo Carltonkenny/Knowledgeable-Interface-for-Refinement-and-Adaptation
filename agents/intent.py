@@ -1,54 +1,42 @@
 # agents/intent.py
-# ─────────────────────────────────────────────
-# Intent Analyzer Agent
-#
-# Job: Figure out what the user ACTUALLY wants.
-# Input: raw_prompt from AgentState
-# Output: intent_result dict written to AgentState
-#
-# Sends one prompt to Mistral, parses JSON back.
-# ─────────────────────────────────────────────
-
-import json
+import logging
 from langchain_core.messages import SystemMessage, HumanMessage
 from config import get_llm
 from state import AgentState
+from utils import parse_json_response
 
-# What we tell Mistral to be
-SYSTEM_PROMPT = """You are an Intent Analyzer. 
-Your job is to analyze a user's prompt and extract their true intent.
+logger = logging.getLogger(__name__)
 
-Always respond with ONLY this JSON, no extra text:
+SYSTEM_PROMPT = """You are an expert Intent Analyzer specializing in understanding what people truly want to accomplish.
+
+Go beyond the literal words — extract the real goal, emotional intent, and success criteria.
+
+Always respond with ONLY this JSON:
 {
-  "primary_intent": "the main thing they want to accomplish",
-  "secondary_intents": ["other goals detected"],
+  "primary_intent": "the deep actual goal, not just surface request",
+  "secondary_intents": ["supporting goals that matter"],
   "goal_clarity": "low or medium or high",
-  "missing_info": ["what info is missing to fulfill this properly"]
-}"""
+  "missing_info": ["specific missing details that would make this prompt significantly better"]
+}
+
+Think deeply:
+- "write a story" → primary_intent: "create an emotionally engaging narrative that resonates with readers"
+- "fix my code" → primary_intent: "understand why code fails and learn to prevent it"
+- "help me with python" → primary_intent: "build confidence and competence in Python programming"
+"""
 
 
 def intent_agent(state: AgentState) -> dict:
-    """
-    Analyzes the raw prompt and returns intent breakdown.
-    LangGraph calls this function and merges the returned
-    dict into the shared AgentState automatically.
-    """
-    llm = get_llm()
+    logger.info("[intent] analyzing prompt intent")
 
+    llm = get_llm()
     messages = [
         SystemMessage(content=SYSTEM_PROMPT),
         HumanMessage(content=f"Analyze this prompt: {state['raw_prompt']}")
     ]
 
     response = llm.invoke(messages)
+    result = parse_json_response(response.content, agent_name="intent")
 
-    # Parse Mistral's response as JSON
-    try:
-        result = json.loads(response.content)
-    except json.JSONDecodeError:
-        # Fallback if Mistral adds extra text around the JSON
-        import re
-        match = re.search(r'\{.*\}', response.content, re.DOTALL)
-        result = json.loads(match.group()) if match else {}
-
+    logger.info(f"[intent] clarity={result.get('goal_clarity', 'unknown')}")
     return {"intent_result": result}

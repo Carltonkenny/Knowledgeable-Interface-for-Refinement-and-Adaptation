@@ -18,10 +18,11 @@ import operator
 
 
 class AgentState(TypedDict):
-    raw_prompt:      str
-    intent_result:   dict[str, Any]
-    context_result:  dict[str, Any]
-    domain_result:   dict[str, Any]
-    improved_prompt: str
-    final_response:  dict[str, Any]   # ← added
-    messages:        Annotated[list[BaseMessage], operator.add]
+    raw_prompt:           str
+    intent_result:        dict[str, Any]
+    context_result:       dict[str, Any]
+    domain_result:        dict[str, Any]
+    improved_prompt:      str
+    final_response:       dict[str, Any]
+    conversation_history: list         
+    messages:             Annotated[list[BaseMessage], operator.add]
