@@ -1,8 +1,20 @@
 # graph/workflow.py
 # ─────────────────────────────────────────────
-# To switch to parallel in the future:
-# Just change PARALLEL_MODE = False  →  True
-# That's it. Nothing else needs to change.
+# Wires all 6 LangGraph nodes together and compiles the workflow.
+#
+# PARALLEL_MODE flag at top — flip to True when upgrading API key for 3x speedup.
+# Currently sequential (False): intent → context → domain → prompt_engineer
+# Parallel (True): all 3 swarm agents run simultaneously, then prompt_engineer.
+#
+# Node order matters:
+#   1. supervisor_entry   → Initializes state with raw_prompt
+#   2. intent_agent       → Analyzes WHAT user wants (goal_clarity, primary_intent)
+#   3. context_agent      → Analyzes WHO is asking (skill_level, tone, constraints)
+#   4. domain_agent       → Identifies domain + relevant patterns
+#   5. prompt_engineer    → Rewrites prompt using all 3 upstream results
+#   6. supervisor_collect → Packages final_response for api.py
+#
+# Exports: workflow (compiled StateGraph) — imported by api.py _run_swarm() only.
 # ─────────────────────────────────────────────
 
 from langgraph.graph import StateGraph, END

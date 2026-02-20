@@ -1,16 +1,26 @@
 # agents/domain.py
 # ─────────────────────────────────────────────
-# Domain Identifier Agent
+# Third agent in the swarm — classifies WHAT field/domain the prompt belongs to.
+# Identifies the specific craft, discipline, and prompt engineering patterns that apply.
 #
-# Job: Classify what field/domain the prompt belongs to.
-# Input: raw_prompt from AgentState
-# Output: domain_result dict written to AgentState
+# Input:  state['raw_prompt'] (user's original prompt)
+# Output: state['domain_result'] with fields:
+#   - primary_domain    → Precise field name (e.g., "creative writing", "quantitative finance")
+#   - sub_domain        → Specific discipline within that field (e.g., "short fiction")
+#   - relevant_patterns → Prompt engineering patterns to apply:
+#                         role_assignment, output_format, constraints, examples,
+#                         chain_of_thought, tone_matching
+#   - complexity        → "simple" | "moderate" | "complex"
+#
+# Example:
+#   "sci-fi mystery story" → primary_domain: "creative writing"
+#                            patterns: [role_assignment, tone_matching, output_format, constraints]
+#
+# Uses parse_json_response() from utils.py — handles malformed LLM JSON output.
 # ─────────────────────────────────────────────
-
-# agents/domain.py
 import logging
 from langchain_core.messages import SystemMessage, HumanMessage
-from config import get_llm
+from config import get_fast_llm
 from state import AgentState
 from utils import parse_json_response
 
@@ -44,7 +54,7 @@ Example:
 def domain_agent(state: AgentState) -> dict:
     logger.info("[domain] identifying domain")
 
-    llm = get_llm()
+    llm = get_fast_llm()
     messages = [
         SystemMessage(content=SYSTEM_PROMPT),
         HumanMessage(content=f"Identify the domain of: {state['raw_prompt']}")

@@ -1,4 +1,11 @@
 # main.py
+# ─────────────────────────────────────────────
+# Application entry point. Imports app from api.py and starts uvicorn.
+# Reload enabled for development — restarts on any file change.
+# Runs on 0.0.0.0:8000 so it's accessible from other machines.
+# Logging configured at INFO level with timestamps and module names.
+# ─────────────────────────────────────────────
+
 import logging
 from api import app
 

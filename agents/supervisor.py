@@ -1,19 +1,18 @@
 # agents/supervisor.py
 # ─────────────────────────────────────────────
-# Supervisor Agent
+# Orchestrator for the swarm — entry and exit points, no analysis logic.
 #
-# Job: Entry point and exit point of the system.
-#      - Receives raw prompt from the user
-#      - Fans out to swarm agents in parallel
-#      - Collects swarm results
-#      - Passes everything to Prompt Engineer
-#      - Returns final response to user
+# Two functions:
+#   supervisor_entry  → Entry node, passes raw_prompt through so LangGraph has state to write.
+#   supervisor_collect → Exit node, writes improved_prompt to satisfy LangGraph's requirement
+#                        that every node must write to state. api.py reads full state directly.
 #
-# The Supervisor does NOT do any analysis itself.
-# It only orchestrates and packages.
+# The supervisor does NOT do any analysis itself.
+# It only orchestrates the flow and packages the final output for api.py to return.
+#
+# Flow in workflow.py:
+#   supervisor_entry → intent_agent → context_agent → domain_agent → prompt_engineer → supervisor_collect → END
 # ─────────────────────────────────────────────
-
-# agents/supervisor.py
 from state import AgentState
 
 
@@ -27,16 +26,10 @@ def supervisor_entry(state: AgentState) -> dict:
 
 def supervisor_collect(state: AgentState) -> dict:
     """
-    Collection node — packages final response.
+    Collection node — final step before returning to api.py.
+    Writes to improved_prompt to satisfy LangGraph's requirement that every node writes something.
+    api.py reads the full state directly, so no packaging needed here.
     """
-    return {
-        "final_response": {
-            "original_prompt": state["raw_prompt"],
-            "improved_prompt": state.get("improved_prompt", ""),
-            "breakdown": {
-                "intent":  state.get("intent_result", {}),
-                "context": state.get("context_result", {}),
-                "domain":  state.get("domain_result", {}),
-            }
-        }
-    }
+    # LangGraph requires every node to write to at least one state field
+    # improved_prompt already contains the final result from prompt_engineer
+    return {"improved_prompt": state["improved_prompt"]}

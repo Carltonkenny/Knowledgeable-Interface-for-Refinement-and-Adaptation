@@ -1,20 +1,23 @@
 # database.py
 # ─────────────────────────────────────────────
-# All Supabase logic lives here.
-# Agents never import this — only api.py does.
+# All Supabase database operations live here. Agents never import this — only api.py does.
+# Client is cached via lru_cache — single connection, reused across all requests.
 #
-# 3 operations:
-#   1. save_request()   → saves prompt in/out to requests table
-#   2. save_agent_logs()→ saves each agent's output to agent_logs
-#   3. save_history()   → saves to prompt_history for future memory
-# ─────────────────────────────────────────────
-
-# database.py
-# ─────────────────────────────────────────────
-# All Supabase logic lives here.
-# Client is cached — one connection, reused everywhere.
-# All failures are logged, never silent.
-# Agents never import this — only api.py does.
+# Tables used:
+#   requests        → Stores raw_prompt → improved_prompt pairs (for /refine and /chat)
+#   agent_logs      → Stores each swarm agent's output, linked to request_id
+#   prompt_history  → Historical prompts for /history endpoint retrieval
+#   conversations   → Full chat turns with message_type (conversation/new_prompt/followup)
+#
+# Functions:
+#   save_request()           → Insert to requests, returns request_id for agent_logs
+#   save_agent_logs()        → Bulk insert agent outputs (intent, context, domain)
+#   save_history()           → Insert to prompt_history (both /refine and /chat call this)
+#   get_history()            → Retrieve from prompt_history, optional session_id filter
+#   save_conversation()      → Insert single chat turn (user or assistant)
+#   get_conversation_history → Retrieve last N turns, reversed so oldest is first
+#
+# Error handling: All functions log errors and return None/[] — never raise to caller.
 # ─────────────────────────────────────────────
 
 import os

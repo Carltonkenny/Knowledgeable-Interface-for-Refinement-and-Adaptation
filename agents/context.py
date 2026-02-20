@@ -1,16 +1,25 @@
 # agents/context.py
 # ─────────────────────────────────────────────
-# Context Extractor Agent
+# Second agent in the swarm — analyzes WHO is asking and their constraints.
+# Reads between the lines to identify skill level, tone, and implicit preferences.
 #
-# Job: Understand WHO is asking and their constraints.
-# Input: raw_prompt from AgentState
-# Output: context_result dict written to AgentState
+# Input:  state['raw_prompt'] (user's original prompt)
+# Output: state['context_result'] with fields:
+#   - skill_level          → "beginner" | "intermediate" | "expert"
+#   - tone                 → "casual" | "formal" | "technical" | "creative"
+#   - constraints          → Real limitations mentioned or strongly implied
+#   - implicit_preferences → What the person values based on how they wrote the prompt
+#
+# Key insight: Word choice reveals expertise.
+#   - "thing" vs "module" vs "microservice" → signals different skill levels
+#   - Specificity signals clarity of thinking
+#   - "Write a 300-word opening scene with atmosphere" → expert, creative, values craft
+#
+# Uses parse_json_response() from utils.py — handles malformed LLM JSON output.
 # ─────────────────────────────────────────────
-
-# agents/context.py
 import logging
 from langchain_core.messages import SystemMessage, HumanMessage
-from config import get_llm
+from config import get_fast_llm
 from state import AgentState
 from utils import parse_json_response
 
@@ -38,7 +47,7 @@ Think deeply:
 def context_agent(state: AgentState) -> dict:
     logger.info("[context] extracting user context")
 
-    llm = get_llm()
+    llm = get_fast_llm()
     messages = [
         SystemMessage(content=SYSTEM_PROMPT),
         HumanMessage(content=f"Extract context from: {state['raw_prompt']}")

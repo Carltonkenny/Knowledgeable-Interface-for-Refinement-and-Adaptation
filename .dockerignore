@@ -1,0 +1,53 @@
+# ─────────────────────────────────────────────
+# Docker Ignore — excludes files from Docker build
+# ─────────────────────────────────────────────
+
+# Git
+.git
+.gitignore
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environment
+venv/
+ENV/
+env/
+.venv/
+NAZI/
+
+# Environment variables
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentation (optional — reduce image size)
+*.md
+docs/

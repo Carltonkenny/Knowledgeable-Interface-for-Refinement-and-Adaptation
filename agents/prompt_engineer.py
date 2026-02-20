@@ -1,20 +1,31 @@
 # agents/prompt_engineer.py
 # ─────────────────────────────────────────────
-# Prompt Engineer Agent
+# Final agent in the swarm — rewrites the original prompt using all upstream analysis.
+# Reads intent_result, context_result, and domain_result to produce a dramatically better prompt.
 #
-# Job: Takes everything the swarm found out and
-#      rewrites the original prompt into a much
-#      better, clearer, more effective version.
+# Input:  state['raw_prompt'] + state['intent_result'] + state['context_result'] + state['domain_result']
+# Output: state['improved_prompt'] (the rewritten, enhanced prompt)
 #
-# Input:  raw_prompt + intent + context + domain
-# Output: improved_prompt written to AgentState
+# Quality gate: Retries once if output is empty, shorter than input, or identical to input.
+# This catches LLM failures before returning to the user.
+#
+# Design principles:
+#   1. Match domain language (creative writing → creative, technical → precise)
+#   2. Add fitting role (not generic "you are an assistant")
+#   3. Preserve user's voice and intent — don't sanitize
+#   4. Add only constraints that genuinely improve quality
+#   5. Precision over length — never make it longer than needed
+#
+# Uses parse_json_response() from utils.py — handles malformed LLM JSON output.
 # ─────────────────────────────────────────────
-
 import json
-import re
+import logging
 from langchain_core.messages import SystemMessage, HumanMessage
 from config import get_llm
 from state import AgentState
+from utils import parse_json_response
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are a world-class Prompt Engineer. Your rewrites are specific, purposeful, and dramatically better than the original.
 
@@ -30,23 +41,22 @@ Always respond with ONLY this JSON:
   "improved_prompt": "the full rewritten prompt — specific, purposeful, domain-matched",
   "changes_made": ["exactly what you changed and why"],
   "confidence_score": 0.0
-}
-
-The improved_prompt should feel like it was written by someone who deeply understands both the domain AND prompt engineering — not a generic template.
-"""
+}"""
 
 
 def prompt_engineer_agent(state: AgentState) -> dict:
     """
-    Uses swarm analysis to rewrite the original prompt.
-    This is the final agent before the Supervisor returns
-    the result to the user.
+    Rewrites raw prompt using swarm analysis.
+    Quality gate: retries once if output is empty, too short, or identical to input.
     """
+    # Guard — if all swarm agents failed, return clear fallback
+    if not any([state.get('intent_result'), state.get('context_result'), state.get('domain_result')]):
+        logger.warning("[prompt_engineer] all swarm results empty — returning fallback")
+        return {"improved_prompt": f"[Analysis failed] Original: {state['raw_prompt']}"}
+
     llm = get_llm()
 
-    # Package all swarm results for the LLM to use
-    analysis = f"""
-Original prompt: {state['raw_prompt']}
+    analysis = f"""Original prompt: {state['raw_prompt']}
 
 Intent analysis: {json.dumps(state.get('intent_result', {}), indent=2)}
 
@@ -54,8 +64,7 @@ Context analysis: {json.dumps(state.get('context_result', {}), indent=2)}
 
 Domain analysis: {json.dumps(state.get('domain_result', {}), indent=2)}
 
-Now rewrite the prompt based on all this information.
-"""
+Rewrite the prompt based on this analysis."""
 
     messages = [
         SystemMessage(content=SYSTEM_PROMPT),
@@ -63,15 +72,15 @@ Now rewrite the prompt based on all this information.
     ]
 
     response = llm.invoke(messages)
+    result = parse_json_response(response.content, agent_name="prompt_engineer")
+    improved = result.get("improved_prompt", "")
 
-    try:
-        result = json.loads(response.content)
-    except json.JSONDecodeError:
-        match = re.search(r'\{.*\}', response.content, re.DOTALL)
-        result = json.loads(match.group()) if match else {
-            "improved_prompt": response.content,
-            "changes_made": [],
-            "confidence_score": 0.0
-        }
+    # Quality gate — retry once if output is clearly worse than input
+    if not improved.strip() or len(improved) < len(state["raw_prompt"]) or improved.strip() == state["raw_prompt"].strip():
+        logger.warning("[prompt_engineer] quality gate failed — retrying once")
+        response = llm.invoke(messages)
+        result = parse_json_response(response.content, agent_name="prompt_engineer")
+        improved = result.get("improved_prompt", "")
 
-    return {"improved_prompt": result.get("improved_prompt", "")}
+    logger.info(f"[prompt_engineer] output: {len(improved)} chars")
+    return {"improved_prompt": improved}
