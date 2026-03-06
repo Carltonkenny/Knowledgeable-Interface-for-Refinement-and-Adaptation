@@ -122,6 +122,93 @@ def _run_swarm(prompt: str) -> dict:
             raise HTTPException(status_code=504, detail="Request timed out — please retry")
 
 
+def _run_swarm_with_clarification(
+    message: str,
+    clarification_key: Optional[str],
+    user_id: str,
+    session_id: str
+) -> dict:
+    """
+    Run swarm with clarification already provided.
+    Skips orchestrator — fires swarm directly with clarified context.
+    
+    Args:
+        message: User's clarification answer
+        clarification_key: What field was being clarified
+        user_id: From JWT
+        session_id: Conversation session
+        
+    Returns:
+        Final state from swarm
+        
+    Example:
+        state = _run_swarm_with_clarification(
+            message="I want to write about AI ethics",
+            clarification_key="topic_focus",
+            user_id="user-uuid",
+            session_id="session-123"
+        )
+    """
+    from state import PromptForgeState
+    
+    # Check cache first
+    cached = get_cached_result(message)
+    if cached:
+        logger.info(f"[api] cache hit for clarification answer")
+        return cached
+    
+    logger.info(f"[api] running swarm with clarification: key={clarification_key}")
+    
+    # Initialize state with clarification already resolved
+    initial_state = PromptForgeState(
+        message=message,
+        session_id=session_id,
+        user_id=user_id,
+        attachments=[],
+        input_modality="text",
+        conversation_history=[],
+        user_profile={},
+        langmem_context=[],
+        mcp_trust_level=0,
+        orchestrator_decision={
+            "user_facing_message": "Got it — let me work with that.",
+            "proceed_with_swarm": True,
+            "agents_to_run": ["intent", "domain"],  # Skip context (no history yet)
+            "clarification_needed": False,
+            "clarification_question": None,
+            "skip_reasons": {"context": "clarification just resolved"},
+            "tone_used": "direct",
+            "profile_applied": False,
+        },
+        user_facing_message="Got it — let me work with that.",
+        pending_clarification=False,  # Already resolved
+        clarification_key=None,
+        proceed_with_swarm=True,
+        intent_analysis={},
+        context_analysis={},
+        domain_analysis={},
+        agents_skipped=["context"],
+        agent_latencies={},
+        improved_prompt="",
+        original_prompt=message,
+        prompt_diff=[],
+        quality_score={},
+        changes_made=[],
+        breakdown={},
+    )
+    
+    # Run workflow
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(workflow.invoke, initial_state)
+        try:
+            result = future.result(timeout=GRAPH_TIMEOUT)
+            # Store in cache
+            set_cached_result(message, result)
+            return result
+        except TimeoutError:
+            raise HTTPException(status_code=504, detail="Request timed out — please retry")
+
+
 def _sse(event: str, data: dict) -> str:
     """Formats a Server-Sent Event string."""
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
@@ -185,12 +272,51 @@ async def refine(req: RefineRequest, user: User = Depends(get_current_user)):
 async def chat(req: ChatRequest, user: User = Depends(get_current_user)):
     """
     Conversational endpoint with memory.
-    Classifies → routes → saves both turns → returns response.
+    Checks clarification loop FIRST, then classifies → routes → saves both turns.
     Requires JWT authentication.
     """
     logger.info(f"[api] /chat user_id={user.user_id} session={req.session_id} message='{req.message[:60]}'")
 
     try:
+        # ═══ STEP 1: CHECK CLARIFICATION FLAG FIRST ═══
+        from database import get_clarification_flag, save_clarification_flag
+        
+        pending_clarification, clarification_key = get_clarification_flag(
+            session_id=req.session_id,
+            user_id=user.user_id
+        )
+        
+        if pending_clarification:
+            logger.info(f"[api] clarification pending — injecting answer, firing swarm")
+            
+            # User's message IS the clarification answer
+            # Run swarm with clarification (skips orchestrator re-classification)
+            final_state = _run_swarm_with_clarification(
+                message=req.message,
+                clarification_key=clarification_key,
+                user_id=user.user_id,
+                session_id=req.session_id
+            )
+            
+            # Clear the clarification flag
+            save_clarification_flag(
+                session_id=req.session_id,
+                user_id=user.user_id,
+                pending=False,
+                clarification_key=None
+            )
+            
+            # Return result
+            improved = final_state.get("improved_prompt", "")
+            return ChatResponse(
+                type="clarification_resolved",
+                reply="Perfect — here's your engineered prompt.",
+                improved_prompt=improved,
+                breakdown=final_state.get("breakdown"),
+                session_id=req.session_id
+            )
+        
+        # ═══ STEP 2: NORMAL FLOW (no pending clarification) ═══
         history = get_conversation_history(req.session_id, limit=6)
         logger.info(f"[api] loaded {len(history)} history turns")
 
