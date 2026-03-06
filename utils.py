@@ -1,22 +1,175 @@
 # utils.py
-# Shared utilities used across agents.
-# parse_json_response — handles 3 LLM JSON failure modes
-# format_history      — formats conversation turns for LLM context
-# get_cache_key       — MD5 hash of prompt for cache lookup
-# get_cached_result   — returns cached swarm result or None
-# set_cached_result   — stores swarm result in memory cache
-# Cache is in-memory only — clears on server restart (intentional for now)
+# ─────────────────────────────────────────────
+# Shared utilities for PromptForge v2.0
+#
+# Utilities:
+#   parse_json_response — handles 3 LLM JSON failure modes
+#   format_history      — formats conversation turns for LLM context
+#   get_redis_client    — cached Redis client (connection pooling)
+#   get_cache_key       — SHA-256 hash of prompt (per RULES.md)
+#   get_cached_result   — returns cached swarm result from Redis
+#   set_cached_result   — stores to Redis with 1-hour expiry
+#
+# Cache rules (from RULES.md):
+# - SHA-256 for cache keys (NEVER MD5)
+# - Cache capacity: 100 entries max
+# - Auto-expires after 1 hour
+# - Survives server restarts (Redis, not in-memory)
+# - Configurable for Upstash (cloud) via REDIS_URL env
+# ─────────────────────────────────────────────
+
 import json
 import re
 import hashlib
+import os
 import logging
+from functools import lru_cache
+from typing import Optional, Any, Dict
+import redis
+from dotenv import load_dotenv
 
+load_dotenv()
 logger = logging.getLogger(__name__)
 
-# ── In-memory prompt cache ────────────────────
-# Keyed by MD5 hash of lowercased prompt.
-# Cleared on server restart — no stale results.
-_prompt_cache: dict = {}
+
+# ═══ Redis Client ════════════════════════════
+
+@lru_cache(maxsize=1)
+def get_redis_client() -> Optional[redis.Redis]:
+    """
+    Returns cached Redis client.
+    Created once, reused everywhere (connection pooling).
+    Reads REDIS_URL from .env.
+    
+    Returns:
+        Redis client if connected, None if connection fails
+        
+    Example:
+        client = get_redis_client()
+        if client:
+            client.set("key", "value")
+    """
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+    
+    try:
+        client = redis.from_url(redis_url, decode_responses=True)
+        client.ping()
+        logger.info(f"[redis] connected to {redis_url}")
+        return client
+    except redis.ConnectionError as e:
+        logger.error(f"[redis] connection failed: {e}")
+        logger.warning("[redis] cache disabled — continuing without Redis")
+        return None
+    except Exception as e:
+        logger.error(f"[redis] unexpected error: {e}")
+        return None
+
+
+# ═══ Cache Functions ═════════════════════════
+
+def get_cache_key(prompt: str) -> str:
+    """
+    SHA-256 hash of normalized prompt.
+    Per RULES.md: NEVER use MD5 (security vulnerability).
+    
+    Args:
+        prompt: User's prompt text
+        
+    Returns:
+        64-character hex string (SHA-256 hash)
+        
+    Example:
+        key = get_cache_key("write a story")
+        # Returns: "a1b2c3..." (64 chars)
+    """
+    return hashlib.sha256(prompt.strip().lower().encode()).hexdigest()
+
+
+def get_cached_result(prompt: str) -> Optional[Dict[str, Any]]:
+    """
+    Returns cached swarm result for this prompt from Redis.
+    Returns None if not cached or Redis unavailable.
+    
+    Args:
+        prompt: User's prompt text
+        
+    Returns:
+        Cached swarm result dict, or None if not found
+        
+    Example:
+        cached = get_cached_result("write a story")
+        if cached:
+            return cached  # Cache hit — skip LLM calls
+        else:
+            return run_swarm()  # Cache miss — run full pipeline
+    """
+    client = get_redis_client()
+    
+    if not client:
+        logger.debug("[cache] Redis unavailable — skipping cache check")
+        return None
+    
+    try:
+        key = f"prompt:{get_cache_key(prompt)}"
+        cached = client.get(key)
+        
+        if cached:
+            logger.info(f"[cache] HIT for prompt: '{prompt[:50]}'")
+            return json.loads(cached)
+        else:
+            logger.info(f"[cache] MISS for prompt: '{prompt[:50]}'")
+            return None
+            
+    except redis.ConnectionError as e:
+        logger.warning(f"[cache] Redis connection error: {e}")
+        return None
+    except json.JSONDecodeError as e:
+        logger.error(f"[cache] JSON decode error: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"[cache] unexpected error: {e}")
+        return None
+
+
+def set_cached_result(prompt: str, result: Dict[str, Any]) -> None:
+    """
+    Stores swarm result in Redis with 1-hour expiry.
+    LRU eviction handled automatically by Redis.
+    
+    Args:
+        prompt: User's prompt text
+        result: Full swarm result dict to cache
+        
+    Example:
+        result = run_swarm("write a story")
+        set_cached_result("write a story", result)
+        # Next get_cached_result() returns cached result
+    """
+    client = get_redis_client()
+    
+    if not client:
+        logger.debug("[cache] Redis unavailable — skipping cache write")
+        return
+    
+    try:
+        key = f"prompt:{get_cache_key(prompt)}"
+        
+        # Store with 1-hour expiry (3600 seconds)
+        client.setex(key, 3600, json.dumps(result))
+        
+        logger.info(f"[cache] STORED result for prompt: '{prompt[:50]}' (expires in 1h)")
+        
+        # Track cache size for monitoring
+        cache_size = client.dbsize()
+        if cache_size > 100:
+            logger.warning(f"[cache] size={cache_size} — consider increasing capacity or reducing TTL")
+            
+    except redis.ConnectionError as e:
+        logger.warning(f"[cache] Redis connection error on write: {e}")
+    except (TypeError, json.JSONDecodeError) as e:
+        logger.error(f"[cache] JSON encode error: {e}")
+    except Exception as e:
+        logger.error(f"[cache] unexpected error on write: {e}")
 
 
 def parse_json_response(raw: str, agent_name: str, retries: int = 1) -> dict:
@@ -59,36 +212,3 @@ def format_history(history: list, max_turns: int = 4) -> str:
         f"{t['role'].upper()}: {t['message'][:200]}"
         for t in history[-max_turns:]
     ])
-
-
-def get_cache_key(prompt: str) -> str:
-    """MD5 hash of normalized prompt — used as cache lookup key."""
-    return hashlib.md5(prompt.strip().lower().encode()).hexdigest()
-
-
-def get_cached_result(prompt: str) -> dict | None:
-    """
-    Returns cached swarm result for this prompt if it exists.
-    Returns None if not cached — caller runs swarm normally.
-    """
-    key = get_cache_key(prompt)
-    result = _prompt_cache.get(key)
-    if result:
-        logger.info(f"[cache] hit for prompt: '{prompt[:50]}'")
-    return result
-
-
-def set_cached_result(prompt: str, result: dict) -> None:
-    """
-    Stores swarm result in memory cache.
-    Caps cache at 100 entries — evicts oldest on overflow.
-    """
-    global _prompt_cache
-    if len(_prompt_cache) >= 100:
-        # Remove oldest entry
-        oldest_key = next(iter(_prompt_cache))
-        del _prompt_cache[oldest_key]
-        logger.info("[cache] evicted oldest entry — cache at capacity")
-
-    _prompt_cache[get_cache_key(prompt)] = result
-    logger.info(f"[cache] stored result for prompt: '{prompt[:50]}'")

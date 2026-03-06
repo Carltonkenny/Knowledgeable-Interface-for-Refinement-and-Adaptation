@@ -19,7 +19,8 @@
 import json
 import asyncio
 import logging
-from fastapi import FastAPI, HTTPException, Query
+import os
+from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -34,6 +35,7 @@ from database import (
 )
 from agents.autonomous import classify_message, handle_conversation, handle_followup
 from utils import get_cached_result, set_cached_result
+from auth import User, get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -75,9 +77,14 @@ app = FastAPI(
     version="2.0.0"
 )
 
+# CORS locked to frontend domain (per RULES.md - no wildcard!)
+frontend_url = os.getenv("FRONTEND_URL", "http://localhost:9000")
+logger.info(f"[api] CORS allowed for: {frontend_url}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[frontend_url],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -124,20 +131,25 @@ def _sse(event: str, data: dict) -> str:
 
 @app.get("/health")
 def health():
+    """Liveness check — no auth required."""
     return {"status": "ok", "version": "2.0.0"}
 
 
 @app.post("/refine", response_model=RefineResponse)
-def refine(req: RefineRequest):
-    """Single-shot prompt improvement. No memory."""
-    logger.info(f"[api] /refine session={req.session_id} prompt='{req.prompt[:60]}'")
+async def refine(req: RefineRequest, user: User = Depends(get_current_user)):
+    """
+    Single-shot prompt improvement. No memory.
+    Requires JWT authentication.
+    """
+    logger.info(f"[api] /refine user_id={user.user_id} session={req.session_id} prompt='{req.prompt[:60]}'")
     try:
         final_state = _run_swarm(req.prompt)
 
         request_id = save_request(
             raw_prompt=final_state["raw_prompt"],
             improved_prompt=final_state.get("improved_prompt", ""),
-            session_id=req.session_id
+            session_id=req.session_id,
+            user_id=user.user_id  # Add user_id for RLS
         )
         if request_id:
             save_agent_logs(request_id, {
@@ -148,7 +160,8 @@ def refine(req: RefineRequest):
         save_history(
             raw_prompt=final_state["raw_prompt"],
             improved_prompt=final_state.get("improved_prompt", ""),
-            session_id=req.session_id
+            session_id=req.session_id,
+            user_id=user.user_id  # Add user_id for RLS
         )
 
         return RefineResponse(
@@ -169,12 +182,13 @@ def refine(req: RefineRequest):
 
 
 @app.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest):
+async def chat(req: ChatRequest, user: User = Depends(get_current_user)):
     """
     Conversational endpoint with memory.
     Classifies → routes → saves both turns → returns response.
+    Requires JWT authentication.
     """
-    logger.info(f"[api] /chat session={req.session_id} message='{req.message[:60]}'")
+    logger.info(f"[api] /chat user_id={user.user_id} session={req.session_id} message='{req.message[:60]}'")
 
     try:
         history = get_conversation_history(req.session_id, limit=6)
@@ -184,8 +198,8 @@ def chat(req: ChatRequest):
 
         if classification == "CONVERSATION":
             reply = handle_conversation(req.message, history)
-            save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="conversation")
-            save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="conversation")
+            save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="conversation", user_id=user.user_id)
+            save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="conversation", user_id=user.user_id)
             return ChatResponse(type="conversation", reply=reply, improved_prompt=None, breakdown=None, session_id=req.session_id)
 
         elif classification == "FOLLOWUP":
@@ -193,8 +207,8 @@ def chat(req: ChatRequest):
             if result:
                 improved = result.get("improved_prompt", "")
                 reply = "Updated! Here's your refined prompt ✨\n\nWant any more tweaks?"
-                save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="followup")
-                save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="followup_refined", improved_prompt=improved)
+                save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="followup", user_id=user.user_id)
+                save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="followup_refined", improved_prompt=improved, user_id=user.user_id)
                 return ChatResponse(type="followup_refined", reply=reply, improved_prompt=improved, breakdown=None, session_id=req.session_id)
             else:
                 logger.info("[api] followup fell back to NEW_PROMPT")
@@ -209,10 +223,10 @@ def chat(req: ChatRequest):
                 "domain":  final_state.get("domain_result", {}),
             }
             reply = "Here's your supercharged prompt 🚀\n\nWant me to refine it further, make it more specific, or try a different angle?"
-            save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="new_prompt")
-            save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="prompt_improved", improved_prompt=improved)
-            save_history(raw_prompt=req.message, improved_prompt=improved, session_id=req.session_id)
-            save_request(raw_prompt=req.message, improved_prompt=improved, session_id=req.session_id)
+            save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="new_prompt", user_id=user.user_id)
+            save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="prompt_improved", improved_prompt=improved, user_id=user.user_id)
+            save_history(raw_prompt=req.message, improved_prompt=improved, session_id=req.session_id, user_id=user.user_id)
+            save_request(raw_prompt=req.message, improved_prompt=improved, session_id=req.session_id, user_id=user.user_id)
             return ChatResponse(type="prompt_improved", reply=reply, improved_prompt=improved, breakdown=breakdown, session_id=req.session_id)
 
     except HTTPException:
@@ -223,21 +237,16 @@ def chat(req: ChatRequest):
 
 
 @app.post("/chat/stream")
-async def chat_stream(req: ChatRequest):
+async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
     """
     Streaming version of /chat.
     Sends Server-Sent Events (SSE) as processing progresses.
-    Client sees status updates live — no more staring at a blank screen.
-
-    SSE event types emitted:
-      status        → processing stage updates ("Analyzing intent...")
-      classification → what type was detected
-      result        → final improved prompt and reply
-      error         → something went wrong
-      done          → stream complete
+    Requires JWT authentication.
     """
     async def generate():
         try:
+            logger.info(f"[api] /chat/stream user_id={user.user_id} session={req.session_id}")
+            
             # Step 1 — load history
             yield _sse("status", {"message": "Loading conversation history..."})
             history = get_conversation_history(req.session_id, limit=6)
@@ -252,8 +261,8 @@ async def chat_stream(req: ChatRequest):
             if classification == "CONVERSATION":
                 yield _sse("status", {"message": "Crafting reply..."})
                 reply = handle_conversation(req.message, history)
-                save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="conversation")
-                save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="conversation")
+                save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="conversation", user_id=user.user_id)
+                save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="conversation", user_id=user.user_id)
                 yield _sse("result", {"type": "conversation", "reply": reply, "improved_prompt": None})
 
             elif classification == "FOLLOWUP":
@@ -263,8 +272,8 @@ async def chat_stream(req: ChatRequest):
                 if result:
                     improved = result.get("improved_prompt", "")
                     reply = "Updated! Here's your refined prompt ✨\n\nWant any more tweaks?"
-                    save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="followup")
-                    save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="followup_refined", improved_prompt=improved)
+                    save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="followup", user_id=user.user_id)
+                    save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="followup_refined", improved_prompt=improved, user_id=user.user_id)
                     yield _sse("result", {"type": "followup_refined", "reply": reply, "improved_prompt": improved})
                 else:
                     classification = "NEW_PROMPT"
@@ -273,7 +282,7 @@ async def chat_stream(req: ChatRequest):
                 # Check cache first — instant if hit
                 cached = get_cached_result(req.message)
                 if cached:
-                    yield _sse("status", {"message": "Found cached result — instant! ⚡"})
+                    yield _sse("status", {"message": "Found cached result — instant!"})
                     final_state = cached
                 else:
                     yield _sse("status", {"message": "Analyzing intent..."})
@@ -296,12 +305,12 @@ async def chat_stream(req: ChatRequest):
                     "context": final_state.get("context_result", {}),
                     "domain":  final_state.get("domain_result", {}),
                 }
-                reply = "Here's your supercharged prompt 🚀\n\nWant me to refine it further or try a different angle?"
+                reply = "Here's your supercharged prompt\n\nWant me to refine it further or try a different angle?"
 
-                save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="new_prompt")
-                save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="prompt_improved", improved_prompt=improved)
-                save_history(raw_prompt=req.message, improved_prompt=improved, session_id=req.session_id)
-                save_request(raw_prompt=req.message, improved_prompt=improved, session_id=req.session_id)
+                save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="new_prompt", user_id=user.user_id)
+                save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="prompt_improved", improved_prompt=improved, user_id=user.user_id)
+                save_history(raw_prompt=req.message, improved_prompt=improved, session_id=req.session_id, user_id=user.user_id)
+                save_request(raw_prompt=req.message, improved_prompt=improved, session_id=req.session_id, user_id=user.user_id)
 
                 yield _sse("result", {"type": "prompt_improved", "reply": reply, "improved_prompt": improved, "breakdown": breakdown})
 
@@ -317,19 +326,22 @@ async def chat_stream(req: ChatRequest):
 @app.get("/history")
 def history(
     session_id: Optional[str] = Query(default=None),
-    limit: int = Query(default=10, ge=1, le=100)
+    limit: int = Query(default=10, ge=1, le=100),
+    user: User = Depends(get_current_user)
 ):
-    logger.info(f"[api] /history session={session_id} limit={limit}")
-    data = get_history(session_id=session_id, limit=limit)
+    """Get prompt history — requires JWT."""
+    logger.info(f"[api] /history user_id={user.user_id} session={session_id} limit={limit}")
+    data = get_history(session_id=session_id, limit=limit, user_id=user.user_id)
     return {"count": len(data), "history": data}
 
 
 @app.get("/conversation")
 def conversation(
     session_id: str = Query(..., description="Session ID to retrieve"),
-    limit: int = Query(default=20, ge=1, le=100)
+    limit: int = Query(default=20, ge=1, le=100),
+    user: User = Depends(get_current_user)
 ):
-    """Returns full conversation history for a session."""
-    logger.info(f"[api] /conversation session={session_id}")
+    """Returns full conversation history for a session — requires JWT."""
+    logger.info(f"[api] /conversation user_id={user.user_id} session={session_id}")
     data = get_conversation_history(session_id=session_id, limit=limit)
     return {"count": len(data), "conversation": data}
