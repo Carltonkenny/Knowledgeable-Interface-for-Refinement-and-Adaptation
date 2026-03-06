@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PromptForge — Master Plan</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Clash+Display:wght@400;500;600;700&family=Satoshi:wght@300;400;500;700&display=swap');
+
+:root {
+  --bg: #070809;
+  --s1: #0d0f12;
+  --s2: #131519;
+  --border: #1c1f26;
+  --border2: #252830;
+  --kira: #6366f1;
+  --kira-dim: rgba(99,102,241,0.15);
+  --intent: #f43f5e;
+  --intent-dim: rgba(244,63,94,0.12);
+  --context: #10b981;
+  --context-dim: rgba(16,185,129,0.12);
+  --domain: #f59e0b;
+  --domain-dim: rgba(245,158,11,0.12);
+  --engineer: #8b5cf6;
+  --engineer-dim: rgba(139,92,246,0.12);
+  --profile: #38bdf8;
+  --profile-dim: rgba(56,189,248,0.12);
+  --memory: #ec4899;
+  --memory-dim: rgba(236,72,153,0.12);
+  --mcp: #fb923c;
+  --mcp-dim: rgba(251,146,60,0.12);
+  --success: #22c55e;
+  --text: #cbd5e1;
+  --text-dim: #475569;
+  --text-bright: #f1f5f9;
+  --mono: 'JetBrains Mono', monospace;
+  --display: 'Satoshi', sans-serif;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--display);
+  line-height: 1.7;
+  font-size: 14px;
+}
+
+/* ── PAGE BREAKS ── */
+.page {
+  min-height: 100vh;
+  padding: 64px 72px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── COVER ── */
+.cover {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100vh;
+  background: radial-gradient(ellipse at 20% 50%, rgba(99,102,241,0.08) 0%, transparent 60%),
+              radial-gradient(ellipse at 80% 20%, rgba(16,185,129,0.06) 0%, transparent 50%);
+}
+.cover-eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 4px;
+  color: var(--kira);
+  text-transform: uppercase;
+  margin-bottom: 24px;
+}
+.cover h1 {
+  font-size: 80px;
+  font-weight: 700;
+  color: var(--text-bright);
+  letter-spacing: -3px;
+  line-height: 1;
+  margin-bottom: 16px;
+}
+.cover h1 em { color: var(--kira); font-style: normal; }
+.cover-sub {
+  font-size: 20px;
+  color: var(--text-dim);
+  margin-bottom: 48px;
+  max-width: 600px;
+  font-weight: 300;
+}
+.cover-meta {
+  display: flex;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+.cover-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cover-stat-num {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-bright);
+}
+.cover-stat-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.cover-grid {
+  position: absolute;
+  right: -100px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.03;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 2.2;
+  color: white;
+  white-space: pre;
+  pointer-events: none;
+}
+
+/* ── SECTION HEADERS ── */
+.sec-num {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.sec-title {
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--text-bright);
+  letter-spacing: -1px;
+  margin-bottom: 8px;
+}
+.sec-sub {
+  font-size: 15px;
+  color: var(--text-dim);
+  max-width: 700px;
+  margin-bottom: 40px;
+  font-weight: 300;
+}
+
+/* ── DIVIDER ── */
+.div { height: 1px; background: var(--border); margin: 40px 0; }
+
+/* ── CALLOUT ── */
+.callout {
+  padding: 20px 24px;
+  border-radius: 10px;
+  margin: 20px 0;
+  border-left: 3px solid;
+}
+.callout-kira   { background: var(--kira-dim); border-color: var(--kira); }
+.callout-intent { background: var(--intent-dim); border-color: var(--intent); }
+.callout-ok     { background: rgba(34,197,94,0.08); border-color: var(--success); }
+.callout-warn   { background: var(--domain-dim); border-color: var(--domain); }
+.callout-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.callout-kira .callout-title   { color: var(--kira); }
+.callout-intent .callout-title { color: var(--intent); }
+.callout-ok .callout-title     { color: var(--success); }
+.callout-warn .callout-title   { color: var(--domain); }
+
+/* ── FLOW NODES ── */
+.node {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border: 1px solid;
+  padding: 12px 20px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-align: center;
+  min-width: 100px;
+  transition: transform 0.15s;
+  cursor: default;
+}
+.node:hover { transform: translateY(-2px); }
+.node-sub { font-size: 8px; font-weight: 400; opacity: 0.7; margin-top: 3px; letter-spacing: 0; }
+.n-kira    { background: var(--kira-dim);    border-color: var(--kira);    color: var(--kira); }
+.n-intent  { background: var(--intent-dim);  border-color: var(--intent);  color: var(--intent); }
+.n-ctx     { background: var(--context-dim); border-color: var(--context); color: var(--context); }
+.n-domain  { background: var(--domain-dim);  border-color: var(--domain);  color: var(--domain); }
+.n-eng     { background: var(--engineer-dim);border-color: var(--engineer);color: var(--engineer); }
+.n-profile { background: var(--profile-dim); border-color: var(--profile); color: var(--profile); }
+.n-memory  { background: var(--memory-dim);  border-color: var(--memory);  color: var(--memory); }
+.n-mcp     { background: var(--mcp-dim);     border-color: var(--mcp);     color: var(--mcp); }
+.n-user    { background: rgba(241,245,249,0.05); border-color: #334155; color: #94a3b8; }
+.n-db      { background: rgba(34,197,94,0.08); border-color: var(--success); color: var(--success); }
+.n-cache   { background: rgba(251,146,60,0.08); border-color: var(--mcp); color: var(--mcp); }
+
+.arrow { color: var(--text-dim); font-size: 16px; margin: 0 6px; }
+.arrow-down { display: block; text-align: center; color: var(--text-dim); font-size: 18px; margin: 6px 0; }
+
+/* ── WORKFLOW DIAGRAM ── */
+.flow-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.flow-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.parallel-wrap {
+  border: 1px dashed var(--border2);
+  border-radius: 12px;
+  padding: 16px 20px;
+  position: relative;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.parallel-wrap::before {
+  content: 'PARALLEL';
+  position: absolute;
+  top: -9px; left: 12px;
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 3px;
+  color: var(--text-dim);
+  background: var(--bg);
+  padding: 0 6px;
+}
+.bg-block {
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  margin: 12px 0;
+}
+
+/* ── TABLES ── */
+.t {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin: 16px 0;
+}
+.t th {
+  text-align: left;
+  padding: 10px 14px;
+  background: var(--s1);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+.t td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  line-height: 1.6;
+}
+.t tr:hover td { background: var(--s1); }
+code {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--s2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--context);
+}
+
+/* ── BADGE ── */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.b-kira    { background: var(--kira-dim);    color: var(--kira); }
+.b-intent  { background: var(--intent-dim);  color: var(--intent); }
+.b-ctx     { background: var(--context-dim); color: var(--context); }
+.b-domain  { background: var(--domain-dim);  color: var(--domain); }
+.b-eng     { background: var(--engineer-dim);color: var(--engineer); }
+.b-profile { background: var(--profile-dim); color: var(--profile); }
+.b-memory  { background: var(--memory-dim);  color: var(--memory); }
+.b-mcp     { background: var(--mcp-dim);     color: var(--mcp); }
+.b-ok      { background: rgba(34,197,94,0.1);color: var(--success); }
+.b-warn    { background: var(--domain-dim);  color: var(--domain); }
+.b-bg      { background: rgba(251,146,60,0.1); color: var(--mcp); }
+
+/* ── SCHEMA CARDS ── */
+.schema-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+.schema-card {
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.schema-head {
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+.schema-dot { width: 8px; height: 8px; border-radius: 50%; }
+.schema-row {
+  padding: 8px 16px;
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+.schema-row:last-child { border-bottom: none; }
+.f-name { color: var(--text); }
+.f-type { color: var(--text-dim); font-size: 9px; }
+.f-pk   { color: var(--domain); font-size: 9px; }
+
+/* ── MCP LEVELS ── */
+.mcp-grid {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 16px;
+  margin-top: 16px;
+}
+.mcp-card {
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+}
+.mcp-card::after {
+  content: '';
+  position: absolute;
+  top:0; left:0; right:0;
+  height: 2px;
+}
+.mcp-cold::after  { background: var(--text-dim); }
+.mcp-warm::after  { background: var(--domain); }
+.mcp-tuned::after { background: var(--success); }
+.mcp-lvl {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.mcp-cold  .mcp-lvl { color: var(--text-dim); }
+.mcp-warm  .mcp-lvl { color: var(--domain); }
+.mcp-tuned .mcp-lvl { color: var(--success); }
+.mcp-num { font-size: 36px; font-weight: 700; color: var(--text-bright); margin-bottom: 4px; }
+.mcp-desc { font-size: 12px; color: var(--text-dim); line-height: 1.6; margin-bottom: 14px; }
+.mcp-feat { font-size: 11px; color: var(--text); padding: 6px 0; border-top: 1px solid var(--border); }
+
+/* ── DIALOGUE ── */
+.chat { background: var(--s1); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin: 16px 0; }
+.msg  { display: flex; gap: 10px; margin-bottom: 14px; }
+.msg:last-child { margin-bottom: 0; }
+.av   { width: 30px; height: 30px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 9px; font-weight: 700; flex-shrink: 0; }
+.av-u { background: var(--profile-dim); color: var(--profile); }
+.av-k { background: var(--kira-dim); color: var(--kira); }
+.bubble { background: var(--s2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 13px; line-height: 1.5; flex: 1; }
+.bubble-k { border-color: rgba(99,102,241,0.3); }
+.msg-who { font-family: var(--mono); font-size: 8px; color: var(--text-dim); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; }
+
+/* ── CHECKLIST ── */
+.checklist { list-style: none; margin: 12px 0; }
+.checklist li { padding: 8px 0; border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: flex-start; font-size: 13px; }
+.checklist li:last-child { border-bottom: none; }
+.check-icon { flex-shrink: 0; margin-top: 2px; }
+.check-done { color: var(--success); }
+.check-warn { color: var(--domain); }
+.check-soon { color: var(--kira); }
+
+/* ── MINDMAP ── */
+.mindmap { position: relative; }
+.mm-center {
+  background: var(--kira-dim);
+  border: 2px solid var(--kira);
+  border-radius: 50%;
+  width: 120px; height: 120px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 13px; font-weight: 700;
+  color: var(--kira); text-align: center;
+  margin: 0 auto;
+}
+.mm-row {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin: 16px 0;
+  flex-wrap: wrap;
+}
+.mm-node {
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 12px;
+  text-align: center;
+  min-width: 120px;
+  position: relative;
+}
+.mm-node::before {
+  content: '';
+  position: absolute;
+  top: -16px; left: 50%;
+  width: 1px; height: 16px;
+  background: var(--border2);
+}
+
+/* ── STACK ── */
+.stack-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+.stack-row:last-child { border-bottom: none; }
+.stack-icon {
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.stack-name { font-weight: 600; color: var(--text-bright); font-size: 14px; }
+.stack-role { font-size: 12px; color: var(--text-dim); }
+.stack-badge { margin-left: auto; }
+
+/* ── TWO COL ── */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+/* ── FOOTER ── */
+.page-footer {
+  position: absolute;
+  bottom: 24px; left: 72px; right: 72px;
+  display: flex; justify-content: space-between;
+  font-family: var(--mono); font-size: 9px;
+  color: var(--text-dim); letter-spacing: 2px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+h3 { font-size: 18px; font-weight: 600; color: var(--text-bright); margin: 24px 0 12px; letter-spacing: -0.3px; }
+h4 { font-size: 14px; font-weight: 600; color: var(--text-bright); margin: 16px 0 8px; }
+p  { margin-bottom: 12px; color: var(--text); font-size: 13px; line-height: 1.7; }
+ul { padding-left: 20px; margin-bottom: 12px; }
+li { font-size: 13px; color: var(--text); padding: 3px 0; line-height: 1.6; }
+
+@media(max-width:768px){
+  .page { padding: 40px 24px; }
+  .two-col, .three-col, .mcp-grid { grid-template-columns: 1fr; }
+  .cover h1 { font-size: 48px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════ COVER ═══════════ -->
+<div class="page cover">
+  <div class="cover-eyebrow">// MASTER PLAN — CONFIDENTIAL</div>
+  <h1>Prompt<em>Forge</em></h1>
+  <p class="cover-sub">The complete product blueprint. Adaptive AI orchestration, multi-agent swarm, dynamic personalization, multimodal input, and MCP integration — end to end.</p>
+  <div class="cover-meta">
+    <div class="cover-stat"><div class="cover-stat-num">4</div><div class="cover-stat-label">Core Agents</div></div>
+    <div class="cover-stat"><div class="cover-stat-num">2</div><div class="cover-stat-label">Memory Layers</div></div>
+    <div class="cover-stat"><div class="cover-stat-num">9</div><div class="cover-stat-label">Workflow Phases</div></div>
+    <div class="cover-stat"><div class="cover-stat-num">3</div><div class="cover-stat-label">MCP Trust Levels</div></div>
+    <div class="cover-stat"><div class="cover-stat-num">∞</div><div class="cover-stat-label">Personalization Depth</div></div>
+  </div>
+  <div class="cover-grid">const kira = new Orchestrator()
+kira.loadProfile(user)
+kira.reason(message)
+kira.route(agents)
+kira.stream(response)
+// adapts every session
+// learns every prompt
+// gets better forever</div>
+  <div class="page-footer"><span>PROMPTFORGE V2.0</span><span>MASTER PLAN · MARCH 2026</span></div>
+</div>
+
+<!-- ═══════════ WHAT IT IS ═══════════ -->
+<div class="page">
+  <div class="sec-num">// 01</div>
+  <div class="sec-title">What PromptForge Is</div>
+  <div class="sec-sub">Not a prompt improver. A personal prompt intelligence layer that compounds value over time.</div>
+
+  <div class="two-col">
+    <div>
+      <h3>The Core Problem</h3>
+      <p>Non-technical users get poor results from AI tools because their prompts are vague, contextless, and unstructured. Every other prompt tool takes input and returns output — silently, generically, with no memory of who you are.</p>
+      <p>PromptForge does something fundamentally different. It learns how you think, what you build, and how you communicate. The more you use it, the better it serves you. Switching away means starting over — that is the moat.</p>
+
+      <div class="callout callout-kira">
+        <div class="callout-title">The Data Flywheel</div>
+        More usage → richer profile → smarter routing → better prompts → more usage. This compounds. A competitor can copy the architecture. They cannot copy your users' accumulated history.
+      </div>
+    </div>
+    <div>
+      <h3>What Makes It Different</h3>
+      <ul>
+        <li>Kira — an orchestrator with a distinct personality that adapts to each user</li>
+        <li>4-agent parallel swarm with selective firing based on what is actually needed</li>
+        <li>Two memory layers — structured signals in Supabase, semantic context in LangMem</li>
+        <li>Prompt diff and quality scoring — shows users what changed and why</li>
+        <li>Multimodal — text, files, images, voice all feed the same pipeline</li>
+        <li>MCP server — works inside Cursor, Claude Desktop, any MCP-compatible tool</li>
+        <li>Profile seeded on onboarding — never starts cold</li>
+        <li>Progress visibility — users see their prompt quality improving over time</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="page-footer"><span>PROMPTFORGE V2.0</span><span>SECTION 01 — WHAT IT IS</span></div>
+</div>
+
+<!-- ═══════════ KIRA ═══════════ -->
+<div class="page">
+  <div class="sec-num">// 02</div>
+  <div class="sec-title">Kira — The Orchestrator Personality</div>
+  <div class="sec-sub">Not a router. A personality with routing capability. The face of the product.</div>
+
+  <div class="two-col">
+    <div>
+      <h3>Character Definition</h3>
+      <p>Kira is direct, warm, and slightly opinionated. She speaks like a senior collaborator who respects your time. She never uses filler phrases. She never asks more than one question at a time. She pushes back when your prompt needs it.</p>
+
+      <div class="bg-block">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:2px;margin-bottom:12px;">CONSTANTS — NEVER CHANGE</div>
+        <ul style="list-style:none;padding:0;">
+          <li style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;">✗ Never says "Certainly", "Great question", "Of course"</li>
+          <li style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;">✗ Never asks more than one question</li>
+          <li style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;">✗ Never explains her process in detail</li>
+          <li style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;">✓ Always reads profile before speaking</li>
+          <li style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;">✓ Always has an opinion on your prompt</li>
+          <li style="padding:5px 0;font-size:12px;">✓ Speed is a personality trait — she moves fast</li>
+        </ul>
+      </div>
+
+      <h3>Name Rationale</h3>
+      <p><strong style="color:var(--text-bright);">Kira</strong> — sharp, decisive, gender-neutral feeling. Sounds like someone who moves fast and knows what they're doing. The K sound gives confidence without aggression. Memorable without being obscure.</p>
+      <p>Alternatives if reconsidering: <strong style="color:var(--text-bright);">Prism</strong> (concept maps to multi-angle analysis), <strong style="color:var(--text-bright);">Vesper</strong> (premium, distinctive), <strong style="color:var(--text-bright);">Lumen</strong> (clarity and illumination).</p>
+    </div>
+    <div>
+      <h3>Kira Voice — Cold vs Warm vs Tuned</h3>
+      <p style="font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:1px;">PROMPT: "Help me write something for my team"</p>
+
+      <div style="font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:2px;margin:12px 0 6px;">COLD · 0 SESSIONS</div>
+      <div class="chat" style="margin:0 0 12px;">
+        <div class="msg"><div class="av av-k">K</div><div><div class="msg-who">KIRA</div><div class="bubble bubble-k">Before I engineer this — what's the context? A project update, a performance conversation, or something else?</div></div></div>
+      </div>
+
+      <div style="font-family:var(--mono);font-size:9px;color:var(--domain);letter-spacing:2px;margin:12px 0 6px;">WARM · 15 SESSIONS</div>
+      <div class="chat" style="margin:0 0 12px;">
+        <div class="msg"><div class="av av-k">K</div><div><div class="msg-who">KIRA · knows your domain</div><div class="bubble bubble-k">Running it as internal comms — that's your pattern. Project update or something higher stakes?</div></div></div>
+      </div>
+
+      <div style="font-family:var(--mono);font-size:9px;color:var(--success);letter-spacing:2px;margin:12px 0 6px;">TUNED · 40+ SESSIONS</div>
+      <div class="chat" style="margin:0;">
+        <div class="msg"><div class="av av-k">K</div><div><div class="msg-who">KIRA · full profile active</div><div class="bubble bubble-k">On it. Treating this as a B2B SaaS internal update — your usual territory. Your specificity has been sharp lately, keeping this tight.</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Kira's Single LLM Call — What It Returns</h3>
+  <div class="bg-block" style="font-family:var(--mono);font-size:11px;line-height:2.2;">
+    <span style="color:var(--text-dim);">{</span><br>
+    &nbsp;&nbsp;<span style="color:var(--kira);">"user_facing_message"</span>: <span style="color:var(--context);">"On it. Treating this as B2B copy — adjust me if wrong."</span>,<br>
+    &nbsp;&nbsp;<span style="color:var(--kira);">"proceed_with_swarm"</span>: <span style="color:var(--domain);">true</span>,<br>
+    &nbsp;&nbsp;<span style="color:var(--kira);">"agents_to_run"</span>: <span style="color:var(--domain);">["intent", "domain"]</span>,<br>
+    &nbsp;&nbsp;<span style="color:var(--kira);">"clarification_needed"</span>: <span style="color:var(--domain);">false</span>,<br>
+    &nbsp;&nbsp;<span style="color:var(--kira);">"clarification_question"</span>: <span style="color:var(--domain);">null</span>,<br>
+    &nbsp;&nbsp;<span style="color:var(--kira);">"skip_reasons"</span>: <span style="color:var(--context);">{"context": "no session history"}</span>,<br>
+    &nbsp;&nbsp;<span style="color:var(--kira);">"tone_used"</span>: <span style="color:var(--context);">"direct"</span>,<br>
+    &nbsp;&nbsp;<span style="color:var(--kira);">"profile_applied"</span>: <span style="color:var(--domain);">true</span><br>
+    <span style="color:var(--text-dim);">}</span>
+  </div>
+  <p style="font-size:12px;color:var(--text-dim);">Fast model · 150 tokens max · 0.1 temperature · ~300-500ms · returns structured JSON</p>
+
+  <div class="page-footer"><span>PROMPTFORGE V2.0</span><span>SECTION 02 — KIRA</span></div>
+</div>
+
+<!-- ═══════════ WORKFLOW ═══════════ -->
+<div class="page">
+  <div class="sec-num">// 03</div>
+  <div class="sec-title">Complete Workflow — All 9 Phases</div>
+  <div class="sec-sub">Every component, every data connection, every timing. End to end.</div>
+
+  <!-- Phase 0 -->
+  <div class="bg-block">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+      <div style="width:28px;height:28px;border-radius:50%;background:var(--profile-dim);border:1px solid var(--profile);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--profile);">0</div>
+      <div style="font-size:16px;font-weight:600;color:var(--text-bright);">Onboarding — Runs Once</div>
+      <div class="badge b-profile" style="margin-left:auto;">ONE TIME</div>
+    </div>
+    <div class="flow-row">
+      <div class="node n-user">USER SIGNS UP<div class="node-sub">Supabase Auth · JWT issued</div></div>
+      <span class="arrow">→</span>
+      <div class="node n-kira">3 QUESTIONS<div class="node-sub">domain · audience · frustration</div></div>
+      <span class="arrow">→</span>
+      <div class="node n-db">SUPABASE<div class="node-sub">user_profiles seeded</div></div>
+      <span class="arrow">+</span>
+      <div class="node n-memory">LANGMEM<div class="node-sub">initial facts written</div></div>
+    </div>
+    <p style="font-size:12px;color:var(--text-dim);margin:8px 0 0;">Stolen from Superhuman. First session starts warm, never cold. Profile has signal before user sends one prompt.</p>
+  </div>
+
+  <!-- Phase 1 -->
+  <div class="bg-block">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+      <div style="width:28px;height:28px;border-radius:50%;background:var(--kira-dim);border:1px solid var(--kira);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--kira);">1</div>
+      <div style="font-size:16px;font-weight:600;color:var(--text-bright);">Request Arrives — Validation + Auth</div>
+      <div class="badge b-ok" style="margin-left:auto;">~50ms</div>
+    </div>
+    <div class="flow-row">
+      <div class="node n-user">POST /chat<div class="node-sub">message · session_id · JWT</div></div>
+      <span class="arrow">→</span>
+      <div class="node n-kira">PYDANTIC<div class="node-sub">5-2000 chars · file size · type check</div></div>
+      <span class="arrow">→</span>
+      <div class="node n-db">JWT DECODE<div class="node-sub">extract user_id · verify session ownership via RLS</div></div>
+      <span class="arrow">→</span>
+      <div class="node n-kira">MULTIMODAL CHECK<div class="node-sub">text / file / image / voice path</div></div>
+    </div>
+    <p style="font-size:12px;color:var(--text-dim);margin:8px 0 0;">Voice → POST /transcribe → Whisper API → transcript text → continues as normal text. Files → extract text server-side (PyMuPDF / python-docx) → inject as additional_context. Images → pass base64 to LLM directly.</p>
+  </div>
+
+  <!-- Phase 2 -->
+  <div class="bg-block">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+      <div style="width:28px;height:28px;border-radius:50%;background:var(--memory-dim);border:1px solid var(--memory);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--memory);">2</div>
+      <div style="font-size:16px;font-weight:600;color:var(--text-bright);">Parallel Context Load</div>
+      <div class="badge b-memory" style="margin-left:auto;">~100-200ms</div>
+    </div>
+    <div class="flow-row">
+      <div class="node n-db">SUPABASE<div class="node-sub">user_profiles row · structured signals</div></div>
+      <span class="arrow" style="font-size:24px;color:var(--text-dim);">⟷</span>
+      <div class="node n-memory">LANGMEM<div class="node-sub">semantic memory query · relevant context</div></div>
+      <span class="arrow" style="font-size:24px;color:var(--text-dim);">⟷</span>
+      <div class="node n-db">CONVERSATIONS<div class="node-sub">last 10 turns · session history</div></div>
+    </div>
+    <p style="font-size:12px;color:var(--text-dim);margin:8px 0 0;">All three fire simultaneously via asyncio. Supabase returns structured routing signals. LangMem returns semantic memories relevant to current message. Both feed Kira before she speaks.</p>
+  </div>
+
+  <!-- Phase 3 -->
+  <div class="bg-block">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+      <div style="width:28px;height:28px;border-radius:50%;background:var(--kira-dim);border:1px solid var(--kira);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--kira);">3</div>
+      <div style="font-size:16px;font-weight:600;color:var(--text-bright);">Kira Orchestrator — One Fast LLM Call</div>
+      <div class="badge b-kira" style="margin-left:auto;">~300-500ms</div>
+    </div>
+    <div class="flow-row">
+      <div class="node n-kira">KIRA REASONS<div class="node-sub">message + profile + memory + history</div></div>
+      <span class="arrow">→</span>
+      <div class="node n-kira">SSE: MESSAGE<div class="node-sub">streams to user immediately</div></div>
+      <span class="arrow">+</span>
+      <div class="node n-kira">ROUTING DECISION<div class="node-sub">which agents · clarify? · proceed?</div></div>
+    </div>
+    <div class="callout callout-warn" style="margin:12px 0 0;">
+      <div class="callout-title">Clarification Loop</div>
+      If clarification_needed: save pending_clarification=true + clarification_key to session. Return Kira's question. On next message, detect flag → inject answer → skip orchestrator → fire swarm directly. This prevents re-routing the answer as a new prompt.
+    </div>
+  </div>
+
+  <!-- Phase 4 -->
+  <div class="bg-block">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+      <div style="width:28px;height:28px;border-radius:50%;background:var(--intent-dim);border:1px solid var(--intent);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--intent);">4</div>
+      <div style="font-size:16px;font-weight:600;color:var(--text-bright);">Agent Swarm — Conditional Parallel Execution</div>
+      <div class="badge b-intent" style="margin-left:auto;">~800ms-1.5s</div>
+    </div>
+    <div class="flow-row">
+      <div class="parallel-wrap">
+        <div class="node n-intent">INTENT<div class="node-sub">goal · task · outcome · specificity</div></div>
+        <div class="node n-ctx">CONTEXT<div class="node-sub">user level · audience · gaps</div></div>
+        <div class="node n-domain">DOMAIN<div class="node-sub">field · patterns · norms</div></div>
+      </div>
+      <span class="arrow">→</span>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);padding:10px;">JOIN<br>node</div>
+      <span class="arrow">→</span>
+      <div class="node n-eng">PROMPT ENGINEER<div class="node-sub">full model · 2048 tok · synthesizes all</div></div>
+    </div>
+    <table class="t" style="margin-top:12px;">
+      <thead><tr><th>Agent</th><th>Skip Condition</th><th>Model</th><th>Tokens</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge b-intent">INTENT</span></td><td>Simple direct command with no ambiguity</td><td style="color:var(--text-dim);">Fast</td><td style="color:var(--text-dim);">400</td></tr>
+        <tr><td><span class="badge b-ctx">CONTEXT</span></td><td>First message in session — no history exists</td><td style="color:var(--text-dim);">Fast</td><td style="color:var(--text-dim);">400</td></tr>
+        <tr><td><span class="badge b-domain">DOMAIN</span></td><td>Profile has domain at >85% confidence</td><td style="color:var(--text-dim);">Fast</td><td style="color:var(--text-dim);">400</td></tr>
+        <tr><td><span class="badge b-eng">ENGINEER</span></td><td>Never skipped</td><td style="color:var(--text-dim);">Full</td><td style="color:var(--text-dim);">2048</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Phase 5-9 condensed -->
+  <div class="three-col" style="margin-top:12px;">
+    <div class="bg-block">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--engineer);letter-spacing:2px;margin-bottom:8px;">PHASE 5 · PROMPT ENGINEER</div>
+      <p style="font-size:12px;">Receives all agent outputs + profile + LangMem query for user's best past prompts in this domain as stylistic reference. Returns: improved_prompt, changes_made, quality_score, prompt_diff.</p>
+      <div class="badge b-eng">~1.5-2.5s</div>
+    </div>
+    <div class="bg-block">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--success);letter-spacing:2px;margin-bottom:8px;">PHASE 6 · RESPONSE SENT</div>
+      <p style="font-size:12px;">Improved prompt + Kira commentary + diff + quality score stream via SSE. Done event fires. Request closes. User sees result.</p>
+      <div class="badge b-ok">3-7s total</div>
+    </div>
+    <div class="bg-block">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--mcp);letter-spacing:2px;margin-bottom:8px;">PHASE 7-9 · BACKGROUND</div>
+      <p style="font-size:12px;">Redis cache write. Supabase writes (requests, agent_logs, conversations, prompt_history). LangMem memory write. Profile updater runs post-session.</p>
+      <div class="badge b-bg">ASYNC · user never waits</div>
+    </div>
+  </div>
+
+  <div class="page-footer"><span>PROMPTFORGE V2.0</span><span>SECTION 03 — WORKFLOW</span></div>
+</div>
+
+<!-- ═══════════ EXAMPLE PROMPTS ═══════════ -->
+<div class="page">
+  <div class="sec-num">// 04</div>
+  <div class="sec-title">Example Flows — Real User Scenarios</div>
+  <div class="sec-sub">How every agent combination plays out in practice.</div>
+
+  <h3>Scenario A — First Time User, Vague Prompt</h3>
+  <div class="chat">
+    <div class="msg"><div class="av av-u">U</div><div><div class="msg-who">USER · session 1 · cold profile</div><div class="bubble">"help me write an email to my client"</div></div></div>
+    <div class="msg"><div class="av av-k">K</div><div><div class="msg-who">KIRA · clarification_needed: true</div><div class="bubble bubble-k">Before I engineer this — chasing a late payment, delivering project news, or something else? The stakes change everything.</div></div></div>
+    <div class="msg"><div class="av av-u">U</div><div><div class="msg-who">USER · answers clarification</div><div class="bubble">"project update, we finished a phase"</div></div></div>
+    <div class="msg"><div class="av av-k">K</div><div><div class="msg-who">KIRA · swarm fired · all 3 agents ran · ~5s total</div><div class="bubble bubble-k">Got it. Here's your engineered prompt ↓<br><br><em style="color:var(--engineer);">Write a professional project update email to a client announcing successful completion of [phase name]. Tone: confident and clear. Include: what was accomplished, what it means for the timeline, and a clear next step. Length: under 200 words. No jargon.</em></div></div></div>
+  </div>
+
+  <h3>Scenario B — Returning User, Known Domain</h3>
+  <div class="chat">
+    <div class="msg"><div class="av av-u">U</div><div><div class="msg-who">USER · session 25 · warm profile · domain: SaaS marketing</div><div class="bubble">"write me something for the product launch"</div></div></div>
+    <div class="msg"><div class="av av-k">K</div><div><div class="msg-who">KIRA · domain agent skipped · proceed_with_swarm: true</div><div class="bubble bubble-k">On it. Treating this as a B2B SaaS launch announcement — your usual territory. Firing.</div></div></div>
+    <div class="msg"><div class="av av-k">K</div><div><div class="msg-who">KIRA · intent + context ran · domain skipped · ~3s total</div><div class="bubble bubble-k">Engineered ↓ Quality: Specificity 4/5 · Clarity 5/5 · Actionability 4/5<br><br><em style="color:var(--engineer);">Write a B2B SaaS product launch announcement for [product name]. Target audience: technical decision-makers at mid-market companies. Tone: confident, direct, outcome-focused. Structure: one-line hook, core value proposition, three key capabilities, clear CTA. Length: 150 words max.</em></div></div></div>
+  </div>
+
+  <h3>Scenario C — Followup Refinement</h3>
+  <div class="chat">
+    <div class="msg"><div class="av av-u">U</div><div><div class="msg-who">USER · references previous output</div><div class="bubble">"make it shorter and more punchy"</div></div></div>
+    <div class="msg"><div class="av av-k">K</div><div><div class="msg-who">KIRA · classified as FOLLOWUP · 1 LLM call · ~2s total</div><div class="bubble bubble-k">Tightened it. Cut 40 words, sharpened the hook, made the CTA more direct. Changes: removed passive voice in graf 2, replaced "enabling teams to" with "lets teams", cut the capabilities list from 3 to 2.</div></div></div>
+  </div>
+
+  <h3>Scenario D — Image + Text Input</h3>
+  <div class="chat">
+    <div class="msg"><div class="av av-u">U</div><div><div class="msg-who">USER · uploads screenshot of wireframe</div><div class="bubble">"write copy for this onboarding screen"</div></div></div>
+    <div class="msg"><div class="av av-k">K</div><div><div class="msg-who">KIRA · image passed to prompt engineer · domain: product/UX inferred</div><div class="bubble bubble-k">I can see the wireframe — this is a value proposition screen. Running with product/UX context.</div></div></div>
+  </div>
+
+  <div class="page-footer"><span>PROMPTFORGE V2.0</span><span>SECTION 04 — EXAMPLE FLOWS</span></div>
+</div>
+
+<!-- ═══════════ MEMORY SYSTEM ═══════════ -->
+<div class="page">
+  <div class="sec-num">// 05</div>
+  <div class="sec-title">Two-Layer Memory System</div>
+  <div class="sec-sub">LangMem and Supermemory serve different surfaces and never conflict.</div>
+
+  <div class="two-col">
+    <div>
+      <h3>LangMem — Internal Pipeline Memory</h3>
+      <div class="bg-block">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--memory);letter-spacing:2px;margin-bottom:12px;">OWNS THE APP SURFACE</div>
+        <p style="font-size:12px;">Lives inside LangGraph pipeline. Native integration — no adapter layer. Stores operational intelligence that feeds Kira's routing decisions and agent analysis.</p>
+        <ul style="font-size:12px;padding-left:16px;">
+          <li>Prompt quality history and trends</li>
+          <li>Domain confidence per user</li>
+          <li>Past improved prompts as stylistic reference</li>
+          <li>Clarification patterns and outcomes</li>
+          <li>Agent skip decisions and their accuracy</li>
+          <li>Session-level project context</li>
+        </ul>
+        <div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:6px;font-family:var(--mono);font-size:10px;color:var(--text-dim);">
+          Query: message as search → returns relevant memories<br>
+          Write: after each session as background task<br>
+          Latency: native to LangGraph · ~50ms
+        </div>
+      </div>
+    </div>
+    <div>
+      <h3>Supermemory — MCP Surface Memory</h3>
+      <div class="bg-block">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--mcp);letter-spacing:2px;margin-bottom:12px;">OWNS THE MCP SURFACE</div>
+        <p style="font-size:12px;">Handles context injection when user is in Cursor, Claude Desktop, or any MCP tool. Not called during normal web app requests.</p>
+        <ul style="font-size:12px;padding-left:16px;">
+          <li>Conversational facts mentioned in passing</li>
+          <li>Project context and client details</li>
+          <li>Soft preferences stated naturally</li>
+          <li>Temporal updates — "I moved to SF" supersedes "I live in NYC"</li>
+          <li>MCP context prompt injection at conversation start</li>
+        </ul>
+        <div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:6px;font-family:var(--mono);font-size:10px;color:var(--text-dim);">
+          Called: MCP requests only<br>
+          Write: lighter summary after each session<br>
+          Latency: ~50ms per query
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout callout-ok">
+    <div class="callout-title">The Rule — They Never Conflict</div>
+    LangMem runs on web app requests. Supermemory runs on MCP requests. They write different content — operational signals vs conversational context. They never read each other. Your core moat (LangMem operational intelligence) lives in your own infrastructure, not in a third-party system.
+  </div>
+
+  <h3>Profile Updater Agent</h3>
+  <table class="t">
+    <thead><tr><th>Property</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>Trigger</td><td>Every 5th interaction in a session OR 30 minutes inactivity OR explicit session end</td></tr>
+      <tr><td>Input</td><td>Last 5 sessions of interactions + existing Supabase profile + quality scores + clarification outcomes</td></tr>
+      <tr><td>LLM call</td><td>Fast model · 500 tokens · returns updated profile JSON</td></tr>
+      <tr><td>Output</td><td>Updated user_profiles row in Supabase</td></tr>
+      <tr><td>Execution</td><td>FastAPI BackgroundTask — user never waits</td></tr>
+    </tbody>
+  </table>
+
+  <div class="page-footer"><span>PROMPTFORGE V2.0</span><span>SECTION 05 — MEMORY</span></div>
+</div>
+
+<!-- ═══════════ DATABASE ═══════════ -->
+<div class="page">
+  <div class="sec-num">// 06</div>
+  <div class="sec-title">Database Schema — Supabase</div>
+  <div class="sec-sub">All tables with RLS enforced. Session ID exposure vulnerability eliminated at DB level.</div>
+
+  <div class="schema-grid">
+    <div class="schema-card">
+      <div class="schema-head" style="border-color:var(--profile);">
+        <div class="schema-dot" style="background:var(--profile);"></div>
+        <span style="color:var(--profile);">user_profiles</span>
+        <span style="margin-left:auto;font-size:9px;color:var(--text-dim);">NEW · CORE</span>
+      </div>
+      <div class="schema-row"><span class="f-name">id</span><span class="f-pk">PK · uuid</span></div>
+      <div class="schema-row"><span class="f-name">user_id</span><span class="f-type">uuid FK → auth.users</span></div>
+      <div class="schema-row"><span class="f-name">dominant_domains</span><span class="f-type">text[]</span></div>
+      <div class="schema-row"><span class="f-name">prompt_quality_trend</span><span class="f-type">text</span></div>
+      <div class="schema-row"><span class="f-name">clarification_rate</span><span class="f-type">float</span></div>
+      <div class="schema-row"><span class="f-name">preferred_tone</span><span class="f-type">text</span></div>
+      <div class="schema-row"><span class="f-name">notable_patterns</span><span class="f-type">text[]</span></div>
+      <div class="schema-row"><span class="f-name">personality_adaptation</span><span class="f-type">jsonb</span></div>
+      <div class="schema-row"><span class="f-name">total_sessions</span><span class="f-type">int</span></div>
+      <div class="schema-row"><span class="f-name">mcp_trust_level</span><span class="f-type">int · 0-2</span></div>
+      <div class="schema-row"><span class="f-name">input_modality_trend</span><span class="f-type">text · NEW</span></div>
+      <div class="schema-row"><span class="f-name">updated_at</span><span class="f-type">timestamptz</span></div>
+    </div>
+    <div class="schema-card">
+      <div class="schema-head" style="border-color:var(--mcp);">
+        <div class="schema-dot" style="background:var(--mcp);"></div>
+        <span style="color:var(--mcp);">requests</span>
+        <span style="margin-left:auto;font-size:9px;color:var(--text-dim);">EXISTING + NEW FIELDS</span>
+      </div>
+      <div class="schema-row"><span class="f-name">id</span><span class="f-pk">PK · uuid</span></div>
+      <div class="schema-row"><span class="f-name">user_id</span><span class="f-type">uuid FK · RLS KEY</span></div>
+      <div class="schema-row"><span class="f-name">session_id</span><span class="f-type">uuid</span></div>
+      <div class="schema-row"><span class="f-name">raw_prompt</span><span class="f-type">text</span></div>
+      <div class="schema-row"><span class="f-name">improved_prompt</span><span class="f-type">text</span></div>
+      <div class="schema-row"><span class="f-name">prompt_diff</span><span class="f-type">jsonb · NEW</span></div>
+      <div class="schema-row"><span class="f-name">quality_score</span><span class="f-type">jsonb · NEW</span></div>
+      <div class="schema-row"><span class="f-name">agents_used</span><span class="f-type">text[] · NEW</span></div>
+      <div class="schema-row"><span class="f-name">agents_skipped</span><span class="f-type">text[] · NEW</span></div>
+      <div class="schema-row"><span class="f-name">user_rating</span><span class="f-type">int 1-5 · NEW</span></div>
+      <div class="schema-row"><span class="f-name">input_modality</span><span class="f-type">text · NEW</span></div>
+      <div class="schema-row"><span class="f-name">created_at</span><span class="f-type">timestamptz</span></div>
+    </div>
+    <div class="schema-card">
+      <div class="schema-head" style="border-color:var(--engineer);">
+        <div class="schema-dot" style="background:var(--engineer);"></div>
+        <span style="color:var(--engineer);">conversations</span>
+        <span style="margin-left:auto;font-size:9px;color:var(--text-dim);">EXISTING + RLS</span>
+      </div>
+      <div class="schema-row"><span class="f-name">id</span><span class="f-pk">PK · uuid</span></div>
+      <div class="schema-row"><span class="f-name">user_id</span><span class="f-type">uuid FK · RLS KEY</span></div>
+      <div class="schema-row"><span class="f-name">session_id</span><span class="f-type">uuid</span></div>
+      <div class="schema-row"><span class="f-name">role</span><span class="f-type">text · user/assistant</span></div>
+      <div class="schema-row"><span class="f-name">content</span><span class="f-type">text</span></div>
+      <div class="schema-row"><span class="f-name">message_type</span><span class="f-type">text</span></div>
+      <div class="schema-row"><span class="f-name">kira_tone_used</span><span class="f-type">text · NEW</span></div>
+      <div class="schema-row"><span class="f-name">pending_clarification</span><span class="f-type">bool · NEW</span></div>
+      <div class="schema-row"><span class="f-name">clarification_key</span><span class="f-type">text · NEW</span></div>
+      <div class="schema-row"><span class="f-name">created_at</span><span class="f-type">timestamptz</span></div>
+    </div>
+    <div class="schema-card">
+      <div class="schema-head" style="border-color:var(--context);">
+        <div class="schema-dot" style="background:var(--context);"></div>
+        <span style="color:var(--context);">agent_logs</span>
+        <span style="margin-left:auto;font-size:9px;color:var(--text-dim);">EXISTING + NEW</span>
+      </div>
+      <div class="schema-row"><span class="f-name">id</span><span class="f-pk">PK · uuid</span></div>
+      <div class="schema-row"><span class="f-name">request_id</span><span class="f-type">uuid FK</span></div>
+      <div class="schema-row"><span class="f-name">agent_name</span><span class="f-type">text</span></div>
+      <div class="schema-row"><span class="f-name">output</span><span class="f-type">jsonb</span></div>
+      <div class="schema-row"><span class="f-name">was_skipped</span><span class="f-type">bool · NEW</span></div>
+      <div class="schema-row"><span class="f-name">skip_reason</span><span class="f-type">text · NEW</span></div>
+      <div class="schema-row"><span class="f-name">latency_ms</span><span class="f-type">int · NEW</span></div>
+      <div class="schema-row"><span class="f-name">created_at</span><span class="f-type">timestamptz</span></div>
+    </div>
+  </div>
+
+  <div class="callout callout-ok" style="margin-top:20px;">
+    <div class="callout-title">RLS Policy — Fixes Session ID Exploit</div>
+    <code>CREATE POLICY "users see own data" ON conversations FOR SELECT USING (auth.uid() = user_id);</code><br>
+    Applied to: conversations, requests, user_profiles, agent_logs. No user can read another user's data regardless of session_id.
+  </div>
+
+  <div class="page-footer"><span>PROMPTFORGE V2.0</span><span>SECTION 06 — DATABASE</span></div>
+</div>
+
+<!-- ═══════════ LANGGRAPH STATE ═══════════ -->
+<div class="page">
+  <div class="sec-num">// 07</div>
+  <div class="sec-title">LangGraph State + MCP Architecture</div>
+
+  <div class="two-col">
+    <div>
+      <h3>Complete TypedDict</h3>
+      <div class="bg-block" style="font-family:var(--mono);font-size:11px;line-height:2.1;">
+        <span style="color:var(--text-dim);">class </span><span style="color:var(--domain);">PromptForgeState</span><span style="color:var(--text-dim);">(TypedDict):</span><br>
+        <span style="color:var(--text-dim);">&nbsp;&nbsp;# INPUT</span><br>
+        &nbsp;&nbsp;<span style="color:var(--kira);">message</span>: <span style="color:var(--text-dim);">str</span><br>
+        &nbsp;&nbsp;<span style="color:var(--kira);">session_id</span>: <span style="color:var(--text-dim);">str</span><br>
+        &nbsp;&nbsp;<span style="color:var(--kira);">user_id</span>: <span style="color:var(--text-dim);">str</span><br>
+        &nbsp;&nbsp;<span style="color:var(--kira);">attachments</span>: <span style="color:var(--text-dim);">list[dict]</span><br>
+        &nbsp;&nbsp;<span style="color:var(--kira);">input_modality</span>: <span style="color:var(--text-dim);">str</span><br>
+        &nbsp;&nbsp;<span style="color:var(--kira);">conversation_history</span>: <span style="color:var(--text-dim);">list[dict]</span><br>
+        <span style="color:var(--text-dim);">&nbsp;&nbsp;# MEMORY</span><br>
+        &nbsp;&nbsp;<span style="color:var(--memory);">user_profile</span>: <span style="color:var(--text-dim);">dict</span><br>
+        &nbsp;&nbsp;<span style="color:var(--memory);">langmem_context</span>: <span style="color:var(--text-dim);">list[dict]</span><br>
+        &nbsp;&nbsp;<span style="color:var(--memory);">mcp_trust_level</span>: <span style="color:var(--text-dim);">int</span><br>
+        <span style="color:var(--text-dim);">&nbsp;&nbsp;# ORCHESTRATOR</span><br>
+        &nbsp;&nbsp;<span style="color:var(--kira);">orchestrator_decision</span>: <span style="color:var(--text-dim);">dict</span><br>
+        &nbsp;&nbsp;<span style="color:var(--kira);">user_facing_message</span>: <span style="color:var(--text-dim);">str</span><br>
+        &nbsp;&nbsp;<span style="color:var(--kira);">pending_clarification</span>: <span style="color:var(--text-dim);">bool</span><br>
+        &nbsp;&nbsp;<span style="color:var(--kira);">clarification_key</span>: <span style="color:var(--text-dim);">str | None</span><br>
+        <span style="color:var(--text-dim);">&nbsp;&nbsp;# AGENTS</span><br>
+        &nbsp;&nbsp;<span style="color:var(--intent);">intent_analysis</span>: <span style="color:var(--text-dim);">dict</span><br>
+        &nbsp;&nbsp;<span style="color:var(--context);">context_analysis</span>: <span style="color:var(--text-dim);">dict</span><br>
+        &nbsp;&nbsp;<span style="color:var(--domain);">domain_analysis</span>: <span style="color:var(--text-dim);">dict</span><br>
+        &nbsp;&nbsp;<span style="color:var(--kira);">agents_skipped</span>: <span style="color:var(--text-dim);">list[str]</span><br>
+        &nbsp;&nbsp;<span style="color:var(--kira);">agent_latencies</span>: <span style="color:var(--text-dim);">dict[str,int]</span><br>
+        <span style="color:var(--text-dim);">&nbsp;&nbsp;# OUTPUT</span><br>
+        &nbsp;&nbsp;<span style="color:var(--engineer);">improved_prompt</span>: <span style="color:var(--text-dim);">str</span><br>
+        &nbsp;&nbsp;<span style="color:var(--engineer);">prompt_diff</span>: <span style="color:var(--text-dim);">list[dict]</span><br>
+        &nbsp;&nbsp;<span style="color:var(--engineer);">quality_score</span>: <span style="color:var(--text-dim);">dict</span><br>
+        &nbsp;&nbsp;<span style="color:var(--engineer);">changes_made</span>: <span style="color:var(--text-dim);">list[str]</span><br>
+      </div>
+    </div>
+    <div>
+      <h3>MCP Progressive Trust</h3>
+      <div class="mcp-grid" style="grid-template-columns:1fr;">
+        <div class="mcp-card mcp-cold">
+          <div class="mcp-lvl">Level 0 · Cold</div>
+          <div class="mcp-num">0–10</div>
+          <div class="mcp-desc">MCP works but no profile. Kira tells user: "Use me via the app more — I'll get sharper here."</div>
+          <div class="mcp-feat">All agents run · Generic personality</div>
+        </div>
+        <div class="mcp-card mcp-warm">
+          <div class="mcp-lvl">Level 1 · Warm</div>
+          <div class="mcp-num">10–30</div>
+          <div class="mcp-desc">Domain skip active. Tone adaptation active. Targeted clarification questions.</div>
+          <div class="mcp-feat" style="color:var(--domain);">Domain skip · Tone adaptation</div>
+        </div>
+        <div class="mcp-card mcp-tuned">
+          <div class="mcp-lvl">Level 2 · Tuned</div>
+          <div class="mcp-num">30+</div>
+          <div class="mcp-desc">Full profile. Pattern references. History-aware rewrites. Feels like a senior collaborator.</div>
+          <div class="mcp-feat" style="color:var(--success);">Full personalization · History-aware</div>
+        </div>
+      </div>
+      <div class="callout callout-kira" style="margin-top:16px;">
+        <div class="callout-title">MCP Tool Definitions</div>
+        <code>forge_refine</code> → maps to POST /refine<br>
+        <code>forge_chat</code> → maps to POST /chat<br>
+        Supermemory MCP server injects context at conversation start. Your swarm runs identically — transport layer is the only difference.
+      </div>
+    </div>
+  </div>
+
+  <div class="page-footer"><span>PROMPTFORGE V2.0</span><span>SECTION 07 — STATE + MCP</span></div>
+</div>
+
+<!-- ═══════════ TECH STACK ═══════════ -->
+<div class="page">
+  <div class="sec-num">// 08</div>
+  <div class="sec-title">Full Tech Stack</div>
+  <div class="sec-sub">Every tool, why it is there, and what it replaces.</div>
+
+  <div class="two-col">
+    <div>
+      <h3>Core Infrastructure</h3>
+      <div class="stack-row"><div class="stack-icon" style="background:var(--kira-dim);">⚡</div><div><div class="stack-name">FastAPI + Uvicorn</div><div class="stack-role">API layer · REST endpoints · SSE streaming · BackgroundTasks</div></div><div class="stack-badge"><span class="badge b-ok">EXISTING</span></div></div>
+      <div class="stack-row"><div class="stack-icon" style="background:var(--engineer-dim);">🔗</div><div><div class="stack-name">LangGraph</div><div class="stack-role">StateGraph orchestration · conditional branching · parallel Send()</div></div><div class="stack-badge"><span class="badge b-ok">EXISTING</span></div></div>
+      <div class="stack-row"><div class="stack-icon" style="background:var(--profile-dim);">🗄️</div><div><div class="stack-name">Supabase</div><div class="stack-role">PostgreSQL · Auth · RLS · Supavisor connection pooler</div></div><div class="stack-badge"><span class="badge b-ok">EXISTING</span></div></div>
+      <div class="stack-row"><div class="stack-icon" style="background:var(--mcp-dim);">⚡</div><div><div class="stack-name">Redis (Upstash free)</div><div class="stack-role">SHA-256 keyed cache · shared across instances · survives restarts</div></div><div class="stack-badge"><span class="badge b-kira">ADD</span></div></div>
+      <div class="stack-row"><div class="stack-icon" style="background:var(--memory-dim);">🧠</div><div><div class="stack-name">LangMem</div><div class="stack-role">Internal pipeline memory · native LangGraph · no adapter needed</div></div><div class="stack-badge"><span class="badge b-kira">ADD</span></div></div>
+      <div class="stack-row"><div class="stack-icon" style="background:var(--mcp-dim);">🔌</div><div><div class="stack-name">Supermemory</div><div class="stack-role">MCP surface memory · context injection · MCP server built-in</div></div><div class="stack-badge"><span class="badge b-kira">ADD · MCP ONLY</span></div></div>
+    </div>
+    <div>
+      <h3>LLM + Observability</h3>
+      <div class="stack-row"><div class="stack-icon" style="background:var(--domain-dim);">🤖</div><div><div class="stack-name">OpenAI API (paid)</div><div class="stack-role">GPT-4o-mini for fast agents · GPT-4o for prompt engineer</div></div><div class="stack-badge"><span class="badge b-warn">REPLACE POLLINATIONS</span></div></div>
+      <div class="stack-row"><div class="stack-icon" style="background:var(--context-dim);">🎤</div><div><div class="stack-name">OpenAI Whisper</div><div class="stack-role">Voice transcription · POST /transcribe endpoint</div></div><div class="stack-badge"><span class="badge b-kira">ADD</span></div></div>
+      <div class="stack-row"><div class="stack-icon" style="background:var(--intent-dim);">📊</div><div><div class="stack-name">Langfuse (free tier)</div><div class="stack-role">LLM tracing · quality measurement · agent performance analytics</div></div><div class="stack-badge"><span class="badge b-kira">ADD</span></div></div>
+      <h3>Deployment</h3>
+      <div class="stack-row"><div class="stack-icon" style="background:var(--profile-dim);">🚀</div><div><div class="stack-name">Fly.io (free tier)</div><div class="stack-role">Docker container · multi-region · auto-scaling · 256MB RAM</div></div><div class="stack-badge"><span class="badge b-ok">FREE</span></div></div>
+      <div class="stack-row"><div class="stack-icon" style="background:var(--context-dim);">🌐</div><div><div class="stack-name">Cloudflare (free)</div><div class="stack-role">SSL · DDoS protection · edge rate limiting</div></div><div class="stack-badge"><span class="badge b-ok">FREE</span></div></div>
+      <div class="stack-row"><div class="stack-icon" style="background:var(--engineer-dim);">🔍</div><div><div class="stack-name">Sentry (free tier)</div><div class="stack-role">Error tracking · know when things break before users do</div></div><div class="stack-badge"><span class="badge b-ok">FREE</span></div></div>
+    </div>
+  </div>
+
+  <div class="page-footer"><span>PROMPTFORGE V2.0</span><span>SECTION 08 — STACK</span></div>
+</div>
+
+<!-- ═══════════ WHAT WE STOLE ═══════════ -->
+<div class="page">
+  <div class="sec-num">// 09</div>
+  <div class="sec-title">What We Stole — And From Whom</div>
+  <div class="sec-sub">Every principle borrowed from real products, applied specifically to PromptForge.</div>
+
+  <table class="t">
+    <thead><tr><th>Company</th><th>What We Stole</th><th>How It Applies to PromptForge</th></tr></thead>
+    <tbody>
+      <tr><td style="color:var(--text-bright);font-weight:600;">Character.ai</td><td>Personality stability over personality complexity. Fixed core, adaptive expression.</td><td>Kira's base personality never drifts. Profile only changes HOW she expresses — never WHAT she is. Users always recognize Kira even after 100 sessions.</td></tr>
+      <tr><td style="color:var(--text-bright);font-weight:600;">Notion AI</td><td>Context is the moat. The tool gets smarter because it knows your work, not because the model is better.</td><td>LangMem accumulates your prompt history. The more you use it, the better Kira understands your patterns. Switching away means starting over.</td></tr>
+      <tr><td style="color:var(--text-bright);font-weight:600;">Replika</td><td>Cautionary tale — don't let adaptation drift so far users feel betrayed when you update the model.</td><td>Core personality fixed. When we update Kira's base prompt or switch LLM, users should not feel they're talking to someone different.</td></tr>
+      <tr><td style="color:var(--text-bright);font-weight:600;">Superhuman</td><td>Seed the profile on onboarding. Never start cold.</td><td>Three questions on signup seed Supabase profile + LangMem. First session starts warm. Users feel Kira knows them from interaction one.</td></tr>
+      <tr><td style="color:var(--text-bright);font-weight:600;">Duolingo</td><td>Show visible progress. Intrinsic motivation through improvement visibility.</td><td>Quality score after every prompt. Trend shown every 10 sessions. "Your prompts are 40% more specific than two weeks ago." Users attribute improvement to Kira.</td></tr>
+      <tr><td style="color:var(--text-bright);font-weight:600;">Grammarly</td><td>Show the diff and explain it. Users learn while using. Ambient intelligence everywhere.</td><td>Prompt diff with annotations: "Added audience specification — your original omitted who this was for." MCP server = ambient presence across all tools.</td></tr>
+      <tr><td style="color:var(--text-bright);font-weight:600;">Linear</td><td>Speed as a brand value, not just a performance metric.</td><td>Kira moves fast. Every state feels deliberate and snappy. SSE streaming makes waits tolerable. Speed is personality.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="page-footer"><span>PROMPTFORGE V2.0</span><span>SECTION 09 — PRINCIPLES</span></div>
+</div>
+
+<!-- ═══════════ FRONTEND ═══════════ -->
+<div class="page">
+  <div class="sec-num">// 10</div>
+  <div class="sec-title">Frontend — Interface Design</div>
+  <div class="sec-sub">Professional and clean. Everything in the chat input. No separate upload zones.</div>
+
+  <div class="two-col">
+    <div>
+      <h3>Input Bar — Exactly Like Your Screenshot</h3>
+      <p>Single input area at the bottom. Three icons to the right: plus for file/image, microphone for voice, send button. No visible modality switching. Everything in the conversation flow.</p>
+      <ul>
+        <li><strong style="color:var(--text-bright);">Plus icon</strong> → bottom sheet with two options: choose file or upload image. 5MB max for images, 2MB max for text files.</li>
+        <li><strong style="color:var(--text-bright);">Microphone</strong> → tap to record, waveform animates, transcript populates input field for review before send.</li>
+        <li><strong style="color:var(--text-bright);">Waveform icon</strong> → live audio visualizer during recording.</li>
+        <li><strong style="color:var(--text-bright);">Attachment pill</strong> → small thumbnail or filename above input. Removable before send.</li>
+      </ul>
+
+      <h3>Three Visual Zones</h3>
+      <ul>
+        <li><strong style="color:var(--text-bright);">User messages</strong> — right aligned, clean bubble</li>
+        <li><strong style="color:var(--kira);">Kira's messages</strong> — distinct visual treatment, left aligned, Kira avatar</li>
+        <li><strong style="color:var(--engineer);">Improved prompt output</strong> — card with diff highlight, quality score, copy button</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Personalization Indicator</h3>
+      <p>Small colored dot in the input bar corner. Users learn over time what it means without explanation.</p>
+      <div class="bg-block">
+        <div class="stack-row" style="padding:10px 0;"><div style="width:10px;height:10px;border-radius:50%;background:#475569;flex-shrink:0;"></div><div><div class="stack-name" style="font-size:13px;">Grey dot</div><div class="stack-role">Cold — Kira doesn't know you yet</div></div></div>
+        <div class="stack-row" style="padding:10px 0;"><div style="width:10px;height:10px;border-radius:50%;background:var(--domain);flex-shrink:0;"></div><div><div class="stack-name" style="font-size:13px;">Amber dot</div><div class="stack-role">Warm — Kira has your patterns</div></div></div>
+        <div class="stack-row" style="padding:10px 0;border-bottom:none;"><div style="width:10px;height:10px;border-radius:50%;background:var(--success);flex-shrink:0;"></div><div><div class="stack-name" style="font-size:13px;">Green dot</div><div class="stack-role">Tuned — Kira knows your work deeply</div></div></div>
+      </div>
+
+      <h3>Quality Score Display</h3>
+      <p>Below the improved prompt. Three thin horizontal bars. Specificity · Clarity · Actionability. Clean numbers 1-5. No graphs. No clutter.</p>
+
+      <h3>Reply Threading</h3>
+      <p>Exactly like your screenshot. User can reply directly to Kira's improved prompt output with "make it shorter" — the reply context tells the system exactly which output they're refining. No ambiguity in FOLLOWUP classification.</p>
+    </div>
+  </div>
+
+  <div class="page-footer"><span>PROMPTFORGE V2.0</span><span>SECTION 10 — FRONTEND</span></div>
+</div>
+
+<!-- ═══════════ LAUNCH CHECKLIST ═══════════ -->
+<div class="page">
+  <div class="sec-num">// 11</div>
+  <div class="sec-title">Launch Checklist</div>
+
+  <div class="three-col">
+    <div>
+      <h3 style="color:var(--intent);">Phase 1 — Blockers</h3>
+      <ul class="checklist">
+        <li><span class="check-icon check-warn">⚠</span>Switch Pollinations → OpenAI paid API</li>
+        <li><span class="check-icon check-warn">⚠</span>Supabase Auth + JWT middleware</li>
+        <li><span class="check-icon check-warn">⚠</span>RLS on all tables — fix session ID exploit</li>
+        <li><span class="check-icon check-warn">⚠</span>Redis cache (Upstash free tier)</li>
+        <li><span class="check-icon check-warn">⚠</span>DB saves → BackgroundTasks</li>
+        <li><span class="check-icon check-warn">⚠</span>Remove hot-reload from Dockerfile</li>
+        <li><span class="check-icon check-warn">⚠</span>Lock CORS to frontend domain</li>
+        <li><span class="check-icon check-warn">⚠</span>Enable parallel swarm mode</li>
+        <li><span class="check-icon check-warn">⚠</span>Enable Supavisor pooler</li>
+        <li><span class="check-icon check-warn">⚠</span>MD5 cache key → SHA-256</li>
+      </ul>
+    </div>
+    <div>
+      <h3 style="color:var(--domain);">Phase 2 — Month 1</h3>
+      <ul class="checklist">
+        <li><span class="check-icon check-soon">→</span>Replace classifier with Kira orchestrator</li>
+        <li><span class="check-icon check-soon">→</span>LangMem integration</li>
+        <li><span class="check-icon check-soon">→</span>Onboarding 3-question profile seed</li>
+        <li><span class="check-icon check-soon">→</span>Profile updater background agent</li>
+        <li><span class="check-icon check-soon">→</span>Quality score on every prompt</li>
+        <li><span class="check-icon check-soon">→</span>Prompt diff + change annotations</li>
+        <li><span class="check-icon check-soon">→</span>Langfuse tracing integration</li>
+        <li><span class="check-icon check-soon">→</span>Rate limiting per user</li>
+        <li><span class="check-icon check-soon">→</span>Sentry error tracking</li>
+        <li><span class="check-icon check-soon">→</span>Prompt sanitization</li>
+      </ul>
+    </div>
+    <div>
+      <h3 style="color:var(--success);">Phase 3 — With Traction</h3>
+      <ul class="checklist">
+        <li><span class="check-icon check-done">✓</span>Supermemory MCP server</li>
+        <li><span class="check-icon check-done">✓</span>Voice input (Whisper)</li>
+        <li><span class="check-icon check-done">✓</span>File + image upload</li>
+        <li><span class="check-icon check-done">✓</span>Horizontal scaling (multiple Fly instances)</li>
+        <li><span class="check-icon check-done">✓</span>Fuzzy cache matching</li>
+        <li><span class="check-icon check-done">✓</span>Progress visibility (quality trend)</li>
+        <li><span class="check-icon check-done">✓</span>Prompt history per user</li>
+        <li><span class="check-icon check-done">✓</span>LLM request queue (asyncio semaphore)</li>
+        <li><span class="check-icon check-done">✓</span>Personalization dot indicator</li>
+        <li><span class="check-icon check-done">✓</span>Reply threading for followups</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout callout-intent" style="margin-top:24px;">
+    <div class="callout-title">Most Important Single Move</div>
+    Switch from Pollinations.ai free tier to OpenAI paid before anything else. 12-20s latency is below the threshold users tolerate. With OpenAI paid you get 3-5s sequential, 2-4s parallel. This alone changes whether users stay or leave. Everything else is secondary to this.
+  </div>
+
+  <div class="page-footer"><span>PROMPTFORGE V2.0</span><span>SECTION 11 — CHECKLIST</span></div>
+</div>
+
+<!-- ═══════════ MIND MAP ═══════════ -->
+<div class="page">
+  <div class="sec-num">// 12</div>
+  <div class="sec-title">System Mind Map</div>
+
+  <div style="text-align:center;margin:20px 0 8px;">
+    <div class="mm-center">KIRA<br>ORCHESTRATOR</div>
+  </div>
+  <div style="text-align:center;color:var(--text-dim);font-size:18px;margin-bottom:4px;">↓</div>
+
+  <div class="mm-row">
+    <div class="mm-node" style="border-color:var(--memory);color:var(--memory);">LangMem<br><span style="font-size:10px;color:var(--text-dim);">pipeline memory</span></div>
+    <div class="mm-node" style="border-color:var(--profile);color:var(--profile);">Supabase Profile<br><span style="font-size:10px;color:var(--text-dim);">structured signals</span></div>
+    <div class="mm-node" style="border-color:var(--kira);color:var(--kira);">Conversation<br><span style="font-size:10px;color:var(--text-dim);">history · 10 turns</span></div>
+    <div class="mm-node" style="border-color:var(--mcp);color:var(--mcp);">Multimodal<br><span style="font-size:10px;color:var(--text-dim);">text·file·img·voice</span></div>
+  </div>
+
+  <div style="text-align:center;color:var(--text-dim);font-size:18px;margin-bottom:4px;">↓ routes to</div>
+
+  <div class="mm-row">
+    <div class="mm-node" style="border-color:var(--intent);color:var(--intent);">INTENT AGENT<br><span style="font-size:10px;color:var(--text-dim);">conditional</span></div>
+    <div class="mm-node" style="border-color:var(--context);color:var(--context);">CONTEXT AGENT<br><span style="font-size:10px;color:var(--text-dim);">conditional</span></div>
+    <div class="mm-node" style="border-color:var(--domain);color:var(--domain);">DOMAIN AGENT<br><span style="font-size:10px;color:var(--text-dim);">conditional</span></div>
+    <div class="mm-node" style="border-color:var(--kira);color:var(--kira);">FOLLOWUP<br><span style="font-size:10px;color:var(--text-dim);">1 call · skip swarm</span></div>
+    <div class="mm-node" style="border-color:var(--text-dim);color:var(--text-dim);">CONVERSATION<br><span style="font-size:10px;color:var(--text-dim);">chat only</span></div>
+  </div>
+
+  <div style="text-align:center;color:var(--text-dim);font-size:18px;margin-bottom:4px;">↓ join</div>
+
+  <div class="mm-row" style="justify-content:center;">
+    <div class="mm-node" style="border-color:var(--engineer);color:var(--engineer);min-width:200px;">PROMPT ENGINEER<br><span style="font-size:10px;color:var(--text-dim);">full model · never skipped · synthesizes all</span></div>
+  </div>
+
+  <div style="text-align:center;color:var(--text-dim);font-size:18px;margin-bottom:4px;">↓ outputs</div>
+
+  <div class="mm-row">
+    <div class="mm-node" style="border-color:var(--success);color:var(--success);">Improved Prompt</div>
+    <div class="mm-node" style="border-color:var(--success);color:var(--success);">Prompt Diff</div>
+    <div class="mm-node" style="border-color:var(--success);color:var(--success);">Quality Score</div>
+    <div class="mm-node" style="border-color:var(--success);color:var(--success);">SSE Stream</div>
+  </div>
+
+  <div style="text-align:center;color:var(--text-dim);font-size:18px;margin-bottom:4px;">↓ background</div>
+
+  <div class="mm-row">
+    <div class="mm-node" style="border-color:var(--mcp);color:var(--mcp);">Redis Cache<br><span style="font-size:10px;">SHA-256 key</span></div>
+    <div class="mm-node" style="border-color:var(--profile);color:var(--profile);">Supabase Writes<br><span style="font-size:10px;">4 tables</span></div>
+    <div class="mm-node" style="border-color:var(--memory);color:var(--memory);">LangMem Write<br><span style="font-size:10px;">session facts</span></div>
+    <div class="mm-node" style="border-color:var(--kira);color:var(--kira);">Profile Updater<br><span style="font-size:10px;">post-session</span></div>
+    <div class="mm-node" style="border-color:var(--mcp);color:var(--mcp);">Supermemory<br><span style="font-size:10px;">MCP surface only</span></div>
+  </div>
+
+  <div class="page-footer"><span>PROMPTFORGE V2.0</span><span>SECTION 12 — MIND MAP</span></div>
+</div>
+
+</body>
+</html>

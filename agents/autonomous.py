@@ -22,7 +22,7 @@
 # ─────────────────────────────────────────────
 import logging
 from langchain_core.messages import SystemMessage, HumanMessage
-from config import get_llm, get_fast_llm
+from config import get_llm
 from utils import parse_json_response, format_history
 
 logger = logging.getLogger(__name__)
@@ -217,7 +217,7 @@ def handle_followup(message: str, history: list) -> dict | None:
         logger.warning("[autonomous] FOLLOWUP but no previous prompt → NEW_PROMPT")
         return None
 
-    llm = get_fast_llm()
+    llm = get_llm()
 
     context = f"""Original raw prompt: {last_raw or 'Not available'}
 
