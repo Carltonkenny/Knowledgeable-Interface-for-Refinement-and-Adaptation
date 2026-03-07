@@ -26,7 +26,8 @@ def verify_data_flow():
         'agent_logs': 'Agent analysis outputs',
         'prompt_history': 'Historical prompts for /history',
         'user_profiles': 'User personalization (THE MOAT)',
-        'langmem_memories': 'Pipeline memory (THE MOAT)'
+        'langmem_memories': 'Pipeline memory (THE MOAT)',
+        'supermemory_facts': 'MCP conversational memory (THE MOAT)'
     }
     
     print("Table Status:\n")

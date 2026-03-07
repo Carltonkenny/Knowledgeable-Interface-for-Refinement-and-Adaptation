@@ -1,4 +1,4 @@
-# multimodal/voice.py
+# multimodal/transcribe.py
 # ─────────────────────────────────────────────
 # Voice Transcription — Whisper via Pollinations
 #

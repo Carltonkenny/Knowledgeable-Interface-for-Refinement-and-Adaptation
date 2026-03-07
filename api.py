@@ -27,18 +27,19 @@ from pydantic import BaseModel, Field
 from typing import Any, Optional
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
-from graph.workflow import workflow
+from workflow import workflow
 from state import AgentState
 from database import (
     save_request, save_agent_logs, save_history,
     get_history, save_conversation, get_conversation_history, get_client,
-    get_conversation_count
+    get_conversation_count, update_session_activity, get_last_activity
 )
 from agents.autonomous import classify_message, handle_conversation, handle_followup
 from utils import get_cached_result, set_cached_result
 from auth import User, get_current_user
 from memory import write_to_langmem, update_user_profile, should_trigger_update
 from multimodal import transcribe_voice
+from middleware.rate_limiter import RateLimiterMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Rate limiting middleware (RULES.md Security Rule #8)
+logger.info("[api] Rate limiting enabled: 100 requests/hour per user")
+app.add_middleware(RateLimiterMiddleware)
 
 
 # ── Helpers ───────────────────────────────────
@@ -289,6 +294,10 @@ async def chat(
     logger.info(f"[api] /chat user_id={user.user_id} session={req.session_id} message='{req.message[:60]}'")
 
     try:
+        # ═══ TRACK SESSION ACTIVITY (for inactivity trigger) ═══
+        update_session_activity(user_id=user.user_id, session_id=req.session_id)
+        last_activity = get_last_activity(user_id=user.user_id, session_id=req.session_id)
+
         # ═══ STEP 1: CHECK CLARIFICATION FLAG FIRST ═══
         from database import get_clarification_flag, save_clarification_flag
         
@@ -405,12 +414,13 @@ async def chat(
             # Update user profile if trigger conditions met
             from database import get_conversation_count
             interaction_count = get_conversation_count(req.session_id)
-            if should_trigger_update(interaction_count):
+            if should_trigger_update(interaction_count, last_activity):
                 background_tasks.add_task(
                     update_user_profile,
                     user_id=user.user_id,
                     session_data=final_state,
-                    interaction_count=interaction_count
+                    interaction_count=interaction_count,
+                    last_activity=last_activity
                 )
             
             return ChatResponse(type="prompt_improved", reply=reply, improved_prompt=improved, breakdown=breakdown, session_id=req.session_id)
@@ -669,3 +679,110 @@ async def upload_file(
     except Exception as e:
         logger.exception("[api] /upload error")
         raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
+
+
+# ═══ MCP TOKEN ENDPOINTS ═══════════════════════
+
+@app.post("/mcp/generate-token")
+async def generate_mcp_token(
+    user: User = Depends(get_current_user)
+):
+    """
+    Generate long-lived JWT for MCP access (365 days).
+    
+    User calls this ONCE, copies token to Cursor MCP config.
+    Token can be revoked if compromised.
+    
+    RULES.md Section 9: MCP Integration — JWT authentication
+    
+    Returns:
+        {
+            "mcp_token": "eyJhbGc...",
+            "expires_in_days": 365,
+            "expires_at": "2027-03-07T...",
+            "instructions": "Copy to Cursor MCP config"
+        }
+    """
+    import hashlib
+    from jose import jwt
+    from datetime import timedelta
+    
+    logger.info(f"[api] /mcp/generate-token user_id={user.user_id}")
+    
+    try:
+        db = get_client()
+        
+        # Generate long-lived token (365 days)
+        expires_at = datetime.now(timezone.utc) + timedelta(days=365)
+        
+        payload = {
+            "sub": user.user_id,
+            "type": "mcp_access",
+            "iss": os.getenv("SUPABASE_URL"),
+            "exp": expires_at
+        }
+        
+        mcp_token = jwt.encode(
+            payload,
+            os.getenv("SUPABASE_JWT_SECRET"),
+            algorithm="HS256"
+        )
+        
+        # Store token hash (for revocation)
+        token_hash = hashlib.sha256(mcp_token.encode()).hexdigest()
+        
+        db.table("mcp_tokens").insert({
+            "user_id": user.user_id,
+            "token_hash": token_hash,
+            "token_type": "mcp_access",
+            "expires_at": expires_at.isoformat(),
+            "revoked": False
+        }).execute()
+        
+        logger.info(f"[api] generated MCP token (expires {expires_at.date()})")
+        
+        return {
+            "mcp_token": mcp_token,
+            "expires_in_days": 365,
+            "expires_at": expires_at.isoformat(),
+            "instructions": "Copy to Cursor MCP config. Valid for 365 days."
+        }
+        
+    except Exception as e:
+        logger.exception("[api] /mcp/generate-token error")
+        raise HTTPException(status_code=500, detail=f"Token generation failed: {str(e)}")
+
+
+@app.get("/mcp/list-tokens")
+async def list_mcp_tokens(user: User = Depends(get_current_user)):
+    """List all active MCP tokens for current user."""
+    try:
+        db = get_client()
+        result = db.table("mcp_tokens").select(
+            "id, expires_at, revoked, created_at"
+        ).eq("user_id", user.user_id).eq("revoked", False).execute()
+        
+        return {"tokens": result.data, "count": len(result.data)}
+    except Exception as e:
+        logger.exception("[api] /mcp/list-tokens error")
+        raise HTTPException(status_code=500, detail=f"Failed: {str(e)}")
+
+
+@app.post("/mcp/revoke-token/{token_id}")
+async def revoke_mcp_token(token_id: str, user: User = Depends(get_current_user)):
+    """Revoke MCP token (immediate invalidation)."""
+    try:
+        db = get_client()
+        result = db.table("mcp_tokens").update({"revoked": True}).eq(
+            "id", token_id
+        ).eq("user_id", user.user_id).execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Token not found")
+        
+        return {"success": True, "message": "Token revoked"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("[api] /mcp/revoke-token error")
+        raise HTTPException(status_code=500, detail=f"Failed: {str(e)}")

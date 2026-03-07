@@ -19,7 +19,7 @@
 import os
 import logging
 from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from database import get_client, get_user_profile, save_user_profile
 from dotenv import load_dotenv
 
@@ -71,7 +71,12 @@ def update_user_profile(
         
         # Trigger 2: 30 minutes inactivity
         if last_activity:
-            inactivity = datetime.utcnow() - last_activity
+            # Use timezone-aware datetime
+            now = datetime.now(timezone.utc)
+            # Handle both timezone-aware and naive datetimes
+            if last_activity.tzinfo is None:
+                last_activity = last_activity.replace(tzinfo=timezone.utc)
+            inactivity = now - last_activity
             if inactivity > timedelta(minutes=INACTIVITY_MINUTES):
                 logger.info(f"[profile] trigger: {INACTIVITY_MINUTES}min inactivity")
                 should_update = True
@@ -156,24 +161,29 @@ def should_trigger_update(
 ) -> bool:
     """
     Check if profile update should be triggered.
-    
+
     Call this at the end of each session to decide whether
     to add profile update to background tasks.
-    
+
     Args:
         interaction_count: Total interactions in session
         last_activity: Last activity timestamp
-        
+
     Returns:
         True if update should be triggered, False otherwise
     """
     # Trigger 1: Every 5th interaction
     if interaction_count % INTERACTION_THRESHOLD == 0:
         return True
-    
+
     # Trigger 2: 30 minutes inactivity
     if last_activity:
-        if datetime.utcnow() - last_activity > timedelta(minutes=INACTIVITY_MINUTES):
+        # Use timezone-aware datetime
+        now = datetime.now(timezone.utc)
+        # Handle both timezone-aware and naive datetimes
+        if last_activity.tzinfo is None:
+            last_activity = last_activity.replace(tzinfo=timezone.utc)
+        if now - last_activity > timedelta(minutes=INACTIVITY_MINUTES):
             return True
-    
+
     return False

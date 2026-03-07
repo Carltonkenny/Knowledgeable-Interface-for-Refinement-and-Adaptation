@@ -8,7 +8,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from state import AgentState
-from graph.workflow import workflow, route_to_agents, PARALLEL_MODE
+from workflow import workflow, route_to_agents, PARALLEL_MODE
 from agents.autonomous import orchestrator_node
 
 GREEN = "[PASS]"
@@ -25,7 +25,7 @@ def test_workflow_structure():
     print("="*70)
     
     try:
-        from graph.workflow import workflow
+        from workflow import workflow
         print(GREEN, "Workflow compiles successfully")
         passed += 1
     except Exception as e:
@@ -40,7 +40,7 @@ def test_workflow_structure():
         passed += 1
     
     try:
-        from graph.workflow import route_to_agents
+        from workflow import route_to_agents
         print(GREEN, "route_to_agents function exists")
         passed += 1
     except Exception as e:

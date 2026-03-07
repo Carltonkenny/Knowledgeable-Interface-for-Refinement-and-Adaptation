@@ -25,6 +25,7 @@ import uuid
 import logging
 from typing import Optional
 from functools import lru_cache
+from datetime import datetime, timezone
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -428,3 +429,81 @@ def get_clarification_flag(session_id: str, user_id: str) -> tuple[bool, Optiona
     except Exception as e:
         logger.error(f"[db] get_clarification_flag failed: {e}")
         return (False, None)
+
+
+# ═══ Session Tracking Functions ════════════════
+
+def update_session_activity(user_id: str, session_id: str) -> bool:
+    """
+    Update last activity timestamp for session.
+    Used for profile updater inactivity trigger (RULES.md: 30min inactivity).
+
+    Args:
+        user_id: User UUID from JWT
+        session_id: Session identifier
+
+    Returns:
+        True if successful, False otherwise
+
+    Example:
+        update_session_activity("user-uuid", "session-123")
+    """
+    try:
+        db = get_client()
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Try to update existing session
+        result = db.table("user_sessions").update({
+            "last_activity": now
+        }).eq("user_id", user_id).eq("session_id", session_id).execute()
+
+        # If no rows updated, insert new session
+        if not result.data or len(result.data) == 0:
+            db.table("user_sessions").insert({
+                "user_id": user_id,
+                "session_id": session_id,
+                "last_activity": now
+            }).execute()
+
+        logger.debug(f"[db] updated session activity for {user_id[:8]}... session={session_id}")
+        return True
+
+    except Exception as e:
+        logger.error(f"[db] update_session_activity failed: {e}")
+        return False
+
+
+def get_last_activity(user_id: str, session_id: str) -> Optional[datetime]:
+    """
+    Get last activity timestamp for session.
+
+    Args:
+        user_id: User UUID from JWT
+        session_id: Session identifier
+
+    Returns:
+        Last activity datetime or None if not found
+
+    Example:
+        last = get_last_activity("user-uuid", "session-123")
+        if last and is_inactive(last):
+            trigger_profile_update()
+    """
+    try:
+        db = get_client()
+        result = db.table("user_sessions").select("last_activity").eq(
+            "user_id", user_id).eq("session_id", session_id).execute()
+
+        if result.data and len(result.data) > 0:
+            last_activity_str = result.data[0].get("last_activity")
+            if last_activity_str:
+                # Parse ISO format string to datetime
+                last_activity = datetime.fromisoformat(last_activity_str.replace('Z', '+00:00'))
+                logger.debug(f"[db] last activity for {user_id[:8]}...: {last_activity}")
+                return last_activity
+
+        return None
+
+    except Exception as e:
+        logger.error(f"[db] get_last_activity failed: {e}")
+        return None

@@ -17,7 +17,7 @@
 # ─────────────────────────────────────────────
 
 from multimodal.validators import validate_upload, sanitize_text
-from multimodal.voice import transcribe_voice
+from multimodal.transcribe import transcribe_voice
 from multimodal.image import process_image
 from multimodal.files import extract_text_from_file
 

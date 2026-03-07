@@ -1,5 +1,5 @@
 # debug.py — multi-industry test
-from graph.workflow import workflow
+from workflow import workflow
 from state import AgentState
 from langchain_core.messages import HumanMessage
 

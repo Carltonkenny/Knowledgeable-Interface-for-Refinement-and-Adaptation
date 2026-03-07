@@ -15,7 +15,7 @@ import json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from state import AgentState
-from graph.workflow import workflow, PARALLEL_MODE
+from workflow import workflow, PARALLEL_MODE
 from agents.autonomous import orchestrator_node
 from config import MODEL_FULL, MODEL_FAST, BASE_URL
 

@@ -19,10 +19,15 @@ logger = logging.getLogger(__name__)
 # Official Gen API: https://gen.pollinations.ai
 # Docs: https://gen.pollinations.ai (OpenAPI)
 # API Key: enter.pollinations.ai
-# Your key: sk_pi4kaulXNxktq6pGu2iOenFLEomriawF
+# SECURITY: API key loaded from .env — never commit hardcoded keys
 
 BASE_URL = "https://gen.pollinations.ai/v1"
-API_KEY = "sk_pi4kaulXNxktq6pGu2iOenFLEomriawF"
+API_KEY = os.getenv("POLLINATIONS_API_KEY")
+
+# Validate API key is set
+if not API_KEY:
+    logger.error("[config] POLLINATIONS_API_KEY not set in .env")
+    raise ValueError("POLLINATIONS_API_KEY environment variable is required")
 
 # Models from official API:
 # - openai: OpenAI GPT-5 Mini (best quality)

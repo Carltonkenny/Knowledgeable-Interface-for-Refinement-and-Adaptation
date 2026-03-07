@@ -13,7 +13,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from state import AgentState
-from graph.workflow import workflow, route_to_agents, PARALLEL_MODE
+from workflow import workflow, route_to_agents, PARALLEL_MODE
 from agents.autonomous import orchestrator_node
 
 GREEN = "\033[92m"
@@ -55,7 +55,7 @@ def test_workflow_structure():
     
     # Test 1: Workflow compiles
     try:
-        from graph.workflow import workflow
+        from workflow import workflow
         print_pass("Workflow compiles successfully")
         passed += 1
     except Exception as e:
@@ -63,7 +63,7 @@ def test_workflow_structure():
         failed += 1
     
     # Test 2: PARALLEL_MODE is enabled
-    from graph.workflow import PARALLEL_MODE
+    from workflow import PARALLEL_MODE
     if PARALLEL_MODE:
         print_pass("PARALLEL_MODE = True (parallel execution enabled)")
         passed += 1
@@ -73,7 +73,7 @@ def test_workflow_structure():
     
     # Test 3: route_to_agents function exists
     try:
-        from graph.workflow import route_to_agents
+        from workflow import route_to_agents
         print_pass("route_to_agents function exists")
         passed += 1
     except Exception as e:
@@ -285,7 +285,7 @@ def test_parallel_execution():
     print("PART 5: PARALLEL EXECUTION TESTS")
     print("="*70)
     
-    from graph.workflow import PARALLEL_MODE
+    from workflow import PARALLEL_MODE
     
     if PARALLEL_MODE:
         print_pass("PARALLEL_MODE = True (parallel execution enabled)")
