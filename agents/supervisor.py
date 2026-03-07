@@ -3,7 +3,7 @@
 # Orchestrator for the swarm — entry and exit points, no analysis logic.
 #
 # Two functions:
-#   supervisor_entry  → Entry node, passes raw_prompt through so LangGraph has state to write.
+#   supervisor_entry  → Entry node, passes message through so LangGraph has state to write.
 #   supervisor_collect → Exit node, writes improved_prompt to satisfy LangGraph's requirement
 #                        that every node must write to state. api.py reads full state directly.
 #
@@ -18,10 +18,9 @@ from state import AgentState
 
 def supervisor_entry(state: AgentState) -> dict:
     """
-    Entry node — passes raw_prompt through so LangGraph
-    has something to write to state.
+    Entry node — passes message through so LangGraph has state to write.
     """
-    return {"raw_prompt": state["raw_prompt"]}
+    return {"message": state["message"]}
 
 
 def supervisor_collect(state: AgentState) -> dict:

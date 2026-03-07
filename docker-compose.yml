@@ -1,0 +1,67 @@
+# PromptForge v2.0 - Docker Compose
+# Orchestrates API + Redis + (optional) Supabase local
+# ─────────────────────────────────────────────
+
+services:
+  # ── Redis Cache ──────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: promptforge-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── PromptForge API ──────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: promptforge-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # LLM Provider (Pollinations.ai)
+      - POLLINATIONS_API_KEY=${POLLINATIONS_API_KEY}
+      - POLLINATIONS_MODEL_FULL=${POLLINATIONS_MODEL_FULL:-nova-fast}
+      
+      # Database (Supabase)
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
+      
+      # Redis
+      - REDIS_URL=redis://redis:6379
+      
+      # Frontend URL (CORS)
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:9000}
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      # Mount .env for runtime config changes
+      - ./.env:/app/.env:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ── Volumes ───────────────────────────────────
+volumes:
+  redis_data:
+    driver: local

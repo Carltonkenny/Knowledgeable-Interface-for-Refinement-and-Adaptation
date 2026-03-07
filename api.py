@@ -20,7 +20,7 @@ import json
 import asyncio
 import logging
 import os
-from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi import FastAPI, HTTPException, Query, Depends, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -31,11 +31,14 @@ from graph.workflow import workflow
 from state import AgentState
 from database import (
     save_request, save_agent_logs, save_history,
-    get_history, save_conversation, get_conversation_history
+    get_history, save_conversation, get_conversation_history, get_client,
+    get_conversation_count
 )
 from agents.autonomous import classify_message, handle_conversation, handle_followup
 from utils import get_cached_result, set_cached_result
 from auth import User, get_current_user
+from memory import write_to_langmem, update_user_profile, should_trigger_update
+from multimodal import transcribe_voice
 
 logger = logging.getLogger(__name__)
 
@@ -104,10 +107,10 @@ def _run_swarm(prompt: str) -> dict:
         return cached
 
     initial_state = AgentState(
-        raw_prompt=prompt,
-        intent_result={},
-        context_result={},
-        domain_result={},
+        message=prompt,
+        intent_analysis={},
+        context_analysis={},
+        domain_analysis={},
         improved_prompt="",
     )
 
@@ -233,31 +236,31 @@ async def refine(req: RefineRequest, user: User = Depends(get_current_user)):
         final_state = _run_swarm(req.prompt)
 
         request_id = save_request(
-            raw_prompt=final_state["raw_prompt"],
+            raw_prompt=final_state["message"],
             improved_prompt=final_state.get("improved_prompt", ""),
             session_id=req.session_id,
             user_id=user.user_id  # Add user_id for RLS
         )
         if request_id:
             save_agent_logs(request_id, {
-                "intent_agent":  final_state.get("intent_result", {}),
-                "context_agent": final_state.get("context_result", {}),
-                "domain_agent":  final_state.get("domain_result", {}),
+                "intent_agent":  final_state.get("intent_analysis", {}),
+                "context_agent": final_state.get("context_analysis", {}),
+                "domain_agent":  final_state.get("domain_analysis", {}),
             })
         save_history(
-            raw_prompt=final_state["raw_prompt"],
+            raw_prompt=final_state["message"],
             improved_prompt=final_state.get("improved_prompt", ""),
             session_id=req.session_id,
             user_id=user.user_id  # Add user_id for RLS
         )
 
         return RefineResponse(
-            original_prompt=final_state["raw_prompt"],
+            original_prompt=final_state["message"],
             improved_prompt=final_state.get("improved_prompt", ""),
             breakdown={
-                "intent":  final_state.get("intent_result", {}),
-                "context": final_state.get("context_result", {}),
-                "domain":  final_state.get("domain_result", {}),
+                "intent":  final_state.get("intent_analysis", {}),
+                "context": final_state.get("context_analysis", {}),
+                "domain":  final_state.get("domain_analysis", {}),
             },
             session_id=req.session_id
         )
@@ -269,11 +272,19 @@ async def refine(req: RefineRequest, user: User = Depends(get_current_user)):
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest, user: User = Depends(get_current_user)):
+async def chat(
+    req: ChatRequest,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user)
+):
     """
     Conversational endpoint with memory.
     Checks clarification loop FIRST, then classifies → routes → saves both turns.
     Requires JWT authentication.
+    
+    Background Tasks (user NEVER waits):
+    - write_to_langmem(): Store session in pipeline memory
+    - update_user_profile(): Update user profile every 5th interaction
     """
     logger.info(f"[api] /chat user_id={user.user_id} session={req.session_id} message='{req.message[:60]}'")
 
@@ -342,17 +353,66 @@ async def chat(req: ChatRequest, user: User = Depends(get_current_user)):
 
         if classification == "NEW_PROMPT":
             final_state = _run_swarm(req.message)
+            
+            # ═══ CHECK IF CLARIFICATION NEEDED ═══
+            # Kira may have determined clarification is needed
+            if final_state.get("pending_clarification"):
+                clarification_key = final_state.get("clarification_key", "topic")
+                user_facing_message = final_state.get("user_facing_message", "I need more information.")
+                
+                # SAVE THE FLAG (critical for clarification loop!)
+                save_clarification_flag(
+                    session_id=req.session_id,
+                    user_id=user.user_id,
+                    pending=True,
+                    clarification_key=clarification_key
+                )
+                
+                # Save user message and Kira's question to conversation
+                save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="new_prompt", user_id=user.user_id)
+                save_conversation(session_id=req.session_id, role="assistant", message=user_facing_message, message_type="clarification_question", user_id=user.user_id)
+                
+                logger.info(f"[api] clarification requested: key={clarification_key}")
+                return ChatResponse(
+                    type="clarification_requested",
+                    reply=user_facing_message,
+                    improved_prompt=None,
+                    breakdown=None,
+                    session_id=req.session_id
+                )
+            
+            # Normal flow - no clarification needed
             improved = final_state.get("improved_prompt", "")
             breakdown = {
-                "intent":  final_state.get("intent_result", {}),
-                "context": final_state.get("context_result", {}),
-                "domain":  final_state.get("domain_result", {}),
+                "intent":  final_state.get("intent_analysis", {}),
+                "context": final_state.get("context_analysis", {}),
+                "domain":  final_state.get("domain_analysis", {}),
             }
             reply = "Here's your supercharged prompt 🚀\n\nWant me to refine it further, make it more specific, or try a different angle?"
             save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="new_prompt", user_id=user.user_id)
             save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="prompt_improved", improved_prompt=improved, user_id=user.user_id)
             save_history(raw_prompt=req.message, improved_prompt=improved, session_id=req.session_id, user_id=user.user_id)
             save_request(raw_prompt=req.message, improved_prompt=improved, session_id=req.session_id, user_id=user.user_id)
+            
+            # ═══ BACKGROUND TASKS (user never waits) ═══
+            # Write to LangMem for future context
+            background_tasks.add_task(
+                write_to_langmem,
+                user_id=user.user_id,
+                session_result=final_state
+            )
+            
+            # Update user profile if trigger conditions met
+            from database import get_conversation_count
+            interaction_count = get_conversation_count(req.session_id)
+            if should_trigger_update(interaction_count):
+                background_tasks.add_task(
+                    update_user_profile,
+                    user_id=user.user_id,
+                    session_data=final_state,
+                    interaction_count=interaction_count
+                )
+            
             return ChatResponse(type="prompt_improved", reply=reply, improved_prompt=improved, breakdown=breakdown, session_id=req.session_id)
 
     except HTTPException:
@@ -425,11 +485,32 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
                     loop = asyncio.get_event_loop()
                     final_state = await loop.run_in_executor(None, _run_swarm, req.message)
 
+                # ═══ CHECK IF CLARIFICATION NEEDED ═══
+                if final_state.get("pending_clarification"):
+                    clarification_key = final_state.get("clarification_key", "topic")
+                    user_facing_message = final_state.get("user_facing_message", "I need more information.")
+                    
+                    # SAVE THE FLAG
+                    save_clarification_flag(
+                        session_id=req.session_id,
+                        user_id=user.user_id,
+                        pending=True,
+                        clarification_key=clarification_key
+                    )
+                    
+                    save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="new_prompt", user_id=user.user_id)
+                    save_conversation(session_id=req.session_id, role="assistant", message=user_facing_message, message_type="clarification_question", user_id=user.user_id)
+                    
+                    yield _sse("status", {"message": "Clarification needed"})
+                    yield _sse("result", {"type": "clarification_requested", "reply": user_facing_message, "clarification_key": clarification_key})
+                    yield _sse("done", {"message": "Complete"})
+                    return
+
                 improved = final_state.get("improved_prompt", "")
                 breakdown = {
-                    "intent":  final_state.get("intent_result", {}),
-                    "context": final_state.get("context_result", {}),
-                    "domain":  final_state.get("domain_result", {}),
+                    "intent":  final_state.get("intent_analysis", {}),
+                    "context": final_state.get("context_analysis", {}),
+                    "domain":  final_state.get("domain_analysis", {}),
                 }
                 reply = "Here's your supercharged prompt\n\nWant me to refine it further or try a different angle?"
 
@@ -471,3 +552,120 @@ def conversation(
     logger.info(f"[api] /conversation user_id={user.user_id} session={session_id}")
     data = get_conversation_history(session_id=session_id, limit=limit)
     return {"count": len(data), "conversation": data}
+
+
+@app.post("/transcribe")
+async def transcribe(
+    file: UploadFile = File(..., description="Audio file (MP3, WAV, M4A, etc.)"),
+    user: User = Depends(get_current_user)
+):
+    """
+    Transcribe voice audio to text using Whisper.
+    
+    RULES.md: JWT required, file size validation, Supabase Storage RLS
+    
+    Accepts: MP3, MP4, MPEG, MPGA, M4A, WAV, WebM
+    Max size: 25MB
+    
+    Returns: {text: "transcribed text"}
+    """
+    from fastapi import UploadFile, File
+    from database import get_client
+    
+    logger.info(f"[api] /transcribe user_id={user.user_id}")
+    
+    try:
+        db = get_client()
+        result = await transcribe_voice(
+            file=file,
+            user_id=user.user_id,
+            session_id="transcribe",
+            supabase=db
+        )
+        
+        return {
+            "text": result["transcript"],
+            "file_url": result["file_url"],
+            "input_modality": result["input_modality"],
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("[api] /transcribe error")
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+
+
+@app.post("/upload")
+async def upload_file(
+    file: UploadFile = File(..., description="Upload audio, image, or document file"),
+    user: User = Depends(get_current_user)
+):
+    """
+    Upload and process multimodal files (voice, image, documents).
+    
+    RULES.md: JWT required, file size validation, Supabase Storage RLS
+    
+    Accepts:
+    - Audio: MP3, MP4, MPEG, MPGA, M4A, WAV, WebM (max 25MB)
+    - Image: JPEG, PNG, GIF, WebP (max 5MB)
+    - Documents: PDF, DOCX, TXT (max 2MB)
+    
+    Returns: Processed content (transcript, base64, or extracted text)
+    """
+    from database import get_client
+    from multimodal import process_image, extract_text_from_file
+    
+    logger.info(f"[api] /upload user_id={user.user_id} file={file.filename} type={file.content_type}")
+    
+    try:
+        db = get_client()
+        
+        # Process based on file type
+        if file.content_type.startswith("audio/"):
+            # Voice → Whisper transcription
+            result = await transcribe_voice(file, user.user_id, "upload", db)
+            return {
+                "success": True,
+                "type": "voice",
+                "text": result["transcript"],
+                "file_url": result["file_url"],
+            }
+        
+        elif file.content_type.startswith("image/"):
+            # Image → Base64 for GPT-4o Vision
+            result = await process_image(file, user.user_id, "upload", db)
+            return {
+                "success": True,
+                "type": "image",
+                "base64_image": result["base64_image"],
+                "media_type": result["media_type"],
+                "file_url": result["file_url"],
+            }
+        
+        elif file.content_type in [
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "text/plain"
+        ]:
+            # Document → Text extraction
+            result = await extract_text_from_file(file, user.user_id, "upload", db)
+            return {
+                "success": True,
+                "type": "file",
+                "text": result["extracted_text"],
+                "file_type": result["file_type"],
+                "file_url": result["file_url"],
+            }
+        
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type: {file.content_type}. Supported: audio/*, image/*, application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, text/plain"
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("[api] /upload error")
+        raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")

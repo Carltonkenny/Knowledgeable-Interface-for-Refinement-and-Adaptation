@@ -211,6 +211,22 @@ def save_conversation(
         logger.error(f"[db] save_conversation failed: {e}")
 
 
+def get_conversation_count(session_id: str) -> int:
+    """
+    Count total conversations in a session.
+    Used to determine if profile update should be triggered (every 5th interaction).
+    """
+    try:
+        db = get_client()
+        result = db.table("conversations").select("id", count="exact").eq("session_id", session_id).execute()
+        count = len(result.data)
+        logger.info(f"[db] conversation count for session={session_id}: {count}")
+        return count
+    except Exception as e:
+        logger.error(f"[db] get_conversation_count failed: {e}")
+        return 0
+
+
 def get_conversation_history(session_id: str, limit: int = 6) -> list:
     """
     Retrieves last N turns of conversation for a session.

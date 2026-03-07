@@ -1,53 +1,47 @@
-# ─────────────────────────────────────────────
-# Docker Ignore — excludes files from Docker build
-# ─────────────────────────────────────────────
-
 # Git
 .git
 .gitignore
 
-# Python cache
-__pycache__/
+# Python
+__pycache__
 *.py[cod]
 *$py.class
 *.so
-
-# Virtual environment
-venv/
-ENV/
+.Python
 env/
+venv/
 .venv/
-NAZI/
-
-# Environment variables
-.env
-.env.*
+*.egg-info/
+.eggs/
 
 # IDE
-.vscode/
 .idea/
+.vscode/
 *.swp
 *.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-logs/
+*~
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
-tests/
+.tox/
 
 # Docker
 Dockerfile
 docker-compose.yml
 .dockerignore
 
-# Documentation (optional — reduce image size)
+# Documentation
+DOCS/
 *.md
-docs/
+!README.md
+
+# Misc
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Local environment (optional - comment out to include .env in build)
+# .env
