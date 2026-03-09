@@ -1,0 +1,25 @@
+# Next.js
+.next/
+out/
+*.log
+
+# Dependencies
+node_modules/
+
+# Environment
+.env*.local
+!.env.example
+
+# Keep lib/ and other essential folders
+!lib/
+!components/
+!features/
+!app/
+!styles/
+
+# Testing
+coverage/
+
+# Misc
+.DS_Store
+*.pem
