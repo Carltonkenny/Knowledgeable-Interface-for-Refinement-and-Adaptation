@@ -1,6 +1,17 @@
 // lib/constants.ts
 // App-wide constants (routes, limits, messages)
 
+export type OnboardingQuestionType = 'grid' | 'list' | 'chips'
+
+export interface OnboardingQuestion {
+  id: string
+  question: string
+  type: OnboardingQuestionType
+  options: Array<{ label: string; icon?: string }>
+  hasTextFallback?: boolean
+  textPlaceholder?: string
+}
+
 export const ROUTES = {
   HOME: '/',
   LOGIN: '/login',
@@ -86,4 +97,4 @@ export const ONBOARDING_QUESTIONS = [
     hasTextFallback: true,
     textPlaceholder: "Or describe it in your own words...",
   },
-] as const
+] as const satisfies OnboardingQuestion[]
