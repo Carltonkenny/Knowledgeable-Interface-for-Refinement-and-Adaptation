@@ -1,0 +1,140 @@
+// lib/stream.ts
+// SSE parser for /chat/stream. This is the only place that knows about SSE event shapes.
+// No component ever parses SSE directly.
+
+import { ENV } from './env'
+import { MOCK_SSE_SEQUENCE } from './mocks'
+import type { ChatResult } from './api'
+import type { StreamCallbacks } from './types'
+
+// ── SSE Event Types (must match backend exactly) ───────────────────────────
+
+export type StreamEventType =
+  | 'status'
+  | 'kira_message'
+  | 'classification'
+  | 'result'
+  | 'done'
+  | 'error'
+
+export interface StatusEvent {
+  type: 'status'
+  data: { message: string }
+}
+
+export interface KiraMessageEvent {
+  type: 'kira_message'
+  data: { message: string; complete: boolean }
+}
+
+export interface ResultEvent {
+  type: 'result'
+  data: ChatResult
+}
+
+export interface ErrorEvent {
+  type: 'error'
+  data: { message: string; code?: string }
+}
+
+export type TypedStreamEvent =
+  | StatusEvent
+  | KiraMessageEvent
+  | ResultEvent
+  | ErrorEvent
+  | { type: 'classification'; data: unknown }
+  | { type: 'done'; data: unknown }
+
+// ── Parser ─────────────────────────────────────────────────────────────────
+
+export async function parseStream(
+  url: string,
+  body: unknown,
+  token: string,
+  callbacks: StreamCallbacks,
+  signal?: AbortSignal
+): Promise<void> {
+  // Mock mode — simulate SSE with timed callbacks
+  if (ENV.USE_MOCKS) {
+    for (const item of MOCK_SSE_SEQUENCE) {
+      await new Promise(r => setTimeout(r, item.delay))
+      if (signal?.aborted) return
+      
+      const e = item.event
+      if (e.type === 'status') {
+        callbacks.onStatus?.(e.data.message)
+      } else if (e.type === 'kira_message') {
+        callbacks.onKiraMessage?.(e.data.message, e.data.complete)
+      } else if (e.type === 'result') {
+        callbacks.onResult?.(e.data as ChatResult)
+      } else if (e.type === 'done') {
+        callbacks.onDone?.()
+      }
+    }
+    return
+  }
+
+  // Real SSE stream
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+    signal,
+  })
+
+  if (!res.ok) {
+    callbacks.onError?.(`Request failed: ${res.status}`)
+    return
+  }
+
+  if (!res.body) {
+    callbacks.onError?.('No response body')
+    return
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      const raw = line.slice(6).trim()
+      if (!raw || raw === '[DONE]') continue
+
+      try {
+        const event: TypedStreamEvent = JSON.parse(raw)
+        switch (event.type) {
+          case 'status':
+            callbacks.onStatus?.((event.data as StatusEvent['data']).message)
+            break
+          case 'kira_message':
+            const km = event.data as KiraMessageEvent['data']
+            callbacks.onKiraMessage?.(km.message, km.complete)
+            break
+          case 'result':
+            callbacks.onResult?.(event.data as ChatResult)
+            break
+          case 'error':
+            callbacks.onError?.((event.data as ErrorEvent['data']).message)
+            break
+          case 'done':
+            callbacks.onDone?.()
+            break
+        }
+      } catch {
+        // Malformed JSON from stream — skip silently
+      }
+    }
+  }
+}
