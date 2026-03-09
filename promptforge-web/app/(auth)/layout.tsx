@@ -9,6 +9,8 @@ interface AuthLayoutProps {
 }
 
 export default function AuthLayout({ children }: AuthLayoutProps) {
+  // Note: We use "signup" as default since most traffic will be new users
+  // For login-specific copy, create app/(auth)/login/layout.tsx
   return (
     <div className="min-h-screen grid grid-cols-1 lg:grid-cols-2">
       {/* Left Panel — Kira quote + branding */}

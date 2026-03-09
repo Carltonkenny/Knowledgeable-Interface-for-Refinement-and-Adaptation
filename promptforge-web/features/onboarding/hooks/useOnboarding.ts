@@ -31,12 +31,24 @@ export function useOnboarding() {
 
   /**
    * Select an option for current question
+   * Grid/List = single select, Chips = multi-select
    */
   function selectOption(value: string) {
-    setAnswers(prev => ({
-      ...prev,
-      [currentQuestion.id]: [...(prev[currentQuestion.id] || []), value],
-    }))
+    const questionType = currentQuestion.type
+    
+    if (questionType === 'chips') {
+      // Multi-select for chips
+      setAnswers(prev => ({
+        ...prev,
+        [currentQuestion.id]: [...(prev[currentQuestion.id] || []), value],
+      }))
+    } else {
+      // Single select for grid/list (replace existing)
+      setAnswers(prev => ({
+        ...prev,
+        [currentQuestion.id]: [value],
+      }))
+    }
   }
 
   /**

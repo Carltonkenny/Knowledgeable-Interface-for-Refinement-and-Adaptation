@@ -11,9 +11,11 @@ import { ROUTES } from '@/lib/constants'
 import OnboardingLayout from '@/features/onboarding/components/OnboardingLayout'
 import OnboardingStep from '@/features/onboarding/components/OnboardingStep'
 import { useOnboarding } from '@/features/onboarding/hooks/useOnboarding'
+import { getSupabaseClient } from '@/lib/supabase'
 
 export default function OnboardingPage() {
   const [loading, setLoading] = useState(true)
+  const [hasProfile, setHasProfile] = useState(false)
   const router = useRouter()
   const {
     step,
@@ -29,9 +31,9 @@ export default function OnboardingPage() {
     currentQuestion,
   } = useOnboarding()
 
-  // Session check on mount
+  // Session + profile check on mount
   useEffect(() => {
-    async function checkSession() {
+    async function checkSessionAndProfile() {
       try {
         const session = await getSession()
         
@@ -41,15 +43,29 @@ export default function OnboardingPage() {
           return
         }
 
-        // Session exists — continue
+        // Check if user already has a profile
+        const supabase = getSupabaseClient()
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('user_id')
+          .eq('user_id', session.user.id)
+          .single()
+
+        if (profile) {
+          // Profile exists — redirect to app
+          router.push(ROUTES.APP)
+          return
+        }
+
+        // No profile — show onboarding
         setLoading(false)
       } catch (error) {
-        console.error('[Onboarding] Session check failed', error)
+        console.error('[Onboarding] Session/profile check failed', error)
         router.push(ROUTES.LOGIN)
       }
     }
 
-    checkSession()
+    checkSessionAndProfile()
   }, [router])
 
   // Loading state
