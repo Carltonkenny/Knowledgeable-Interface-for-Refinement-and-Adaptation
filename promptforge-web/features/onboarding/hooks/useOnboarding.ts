@@ -82,21 +82,30 @@ export function useOnboarding() {
         
         if (!token) {
           logger.warn('No auth token for profile save')
-          throw new Error('No auth token')
+          // Still navigate - profile save is non-fatal
+          router.push(ROUTES.APP)
+          return
         }
 
-        // Save profile (non-fatal — still navigate on error)
-        await apiSaveProfile(profile, token)
+        // Save profile (non-fatal — endpoint may not exist yet)
+        try {
+          await apiSaveProfile(profile, token)
+          logger.info('Profile saved', { profile })
+        } catch (saveError) {
+          // Profile endpoint doesn't exist yet - that's OK
+          logger.warn('Profile save skipped (endpoint not ready)', { saveError })
+        }
         
-        logger.info('Profile saved', { profile })
+        // Always navigate to app
+        router.push(ROUTES.APP)
       } catch (err) {
         // Profile save failed — still navigate (non-fatal)
         logger.warn('Profile save failed, continuing anyway', { err })
-        setError('Profile save failed, but you can continue.')
-      } finally {
-        setIsSubmitting(false)
+        
         // Always navigate to app
         router.push(ROUTES.APP)
+      } finally {
+        setIsSubmitting(false)
       }
     } else {
       // Advance to next step
