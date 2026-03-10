@@ -135,11 +135,11 @@ export function LiveDemoWidget() {
         {state === 'loading' && (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <Chip variant="kira" label="Reading context" active />
-              <Chip variant="intent" label="Analyzing intent" active />
-              <Chip variant="context" label="Context" skipped />
-              <Chip variant="domain" label="Domain" active />
-              <Chip variant="engineer" label="Crafting prompt" active />
+              <Chip variant="kira" active>Reading context</Chip>
+              <Chip variant="intent" active>Analyzing intent</Chip>
+              <Chip variant="context" skipped>Context</Chip>
+              <Chip variant="domain" active>Domain</Chip>
+              <Chip variant="engineer" active>Crafting prompt</Chip>
             </div>
             <p className="font-mono text-[10px] text-text-dim">
               Engineering prompt...

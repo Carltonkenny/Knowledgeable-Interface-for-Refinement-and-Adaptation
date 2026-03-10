@@ -87,10 +87,11 @@ export function HowItWorksSection() {
                       <Chip
                         key={i}
                         variant={chip.variant}
-                        label={chip.label}
                         active={chip.active}
                         skipped={chip.skipped}
-                      />
+                      >
+                        {chip.label}
+                      </Chip>
                     ))}
                   </div>
                 )}
