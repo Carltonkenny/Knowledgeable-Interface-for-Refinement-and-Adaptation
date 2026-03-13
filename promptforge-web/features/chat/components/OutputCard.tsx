@@ -15,12 +15,18 @@ interface OutputCardProps {
   isCopied: boolean
 }
 
+// Helper function for safe diff counting (DRY principle)
+const countDiffType = (diff: ChatResult['diff'], type: 'add' | 'remove'): number => {
+  if (!Array.isArray(diff)) return 0
+  return diff.filter((d) => d?.type === type).length
+}
+
 export default function OutputCard({ result, onCopy, isCopied }: OutputCardProps) {
   const [showDiff, setShowDiff] = useState(false)
 
-  // Count additions/removals for annotation chips
-  const additions = result.diff.filter((d) => d.type === 'add').length
-  const removals = result.diff.filter((d) => d.type === 'remove').length
+  // Count additions/removals for annotation chips using safe helper
+  const additions = countDiffType(result.diff, 'add')
+  const removals = countDiffType(result.diff, 'remove')
 
   return (
     <div className="mb-6">
@@ -73,7 +79,7 @@ export default function OutputCard({ result, onCopy, isCopied }: OutputCardProps
           )}
 
           {/* Quality scores */}
-          <QualityScores scores={result.quality_score} />
+          {result.quality_score && <QualityScores scores={result.quality_score} />}
 
           {/* Actions */}
           <div className="flex gap-2 mt-4 pt-4 border-t border-border-subtle">

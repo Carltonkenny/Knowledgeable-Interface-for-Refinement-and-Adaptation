@@ -32,6 +32,9 @@ export interface ChatResult {
   memories_applied: number
   latency_ms: number
   agents_run: string[]
+  // For conversation/followup responses
+  type?: string
+  reply?: string
 }
 
 // ── Chat Messages (used by useKiraStream + MessageList + all message components) ──

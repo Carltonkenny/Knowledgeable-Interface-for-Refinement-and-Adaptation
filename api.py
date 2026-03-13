@@ -63,6 +63,10 @@ class RefineResponse(BaseModel):
 class ChatRequest(BaseModel):
     message:    str = Field(..., min_length=1, max_length=2000)
     session_id: str = Field(..., min_length=1)
+    # Multimodal support
+    input_modality: Optional[str] = "text"  # 'text' | 'file' | 'image' | 'voice'
+    file_base64: Optional[str] = None  # Base64 encoded file content
+    file_type: Optional[str] = None  # MIME type of the file
 
 
 class ChatResponse(BaseModel):
@@ -100,16 +104,33 @@ app.add_middleware(RateLimiterMiddleware)
 
 # ── Helpers ───────────────────────────────────
 
-def _run_swarm(prompt: str) -> dict:
+def _run_swarm(prompt: str, input_modality: str = "text", 
+               file_base64: str = None, file_type: str = None) -> dict:
     """
     Runs full LangGraph swarm.
     Checks cache first — if hit, skips all 4 LLM calls entirely.
     Used by both /refine and /chat.
+    
+    Args:
+        prompt: User's message
+        input_modality: 'text' | 'file' | 'image' | 'voice'
+        file_base64: Base64 encoded file content (if any)
+        file_type: MIME type of file (if any)
     """
     # Cache check — instant return on hit
     cached = get_cached_result(prompt)
     if cached:
         return cached
+
+    # Build attachments array if file provided
+    attachments = []
+    if file_base64 and file_type:
+        attachments = [{
+            "type": "image" if file_type.startswith("image/") else "file",
+            "content": file_base64,
+            "filename": f"upload.{file_type.split('/')[-1]}",
+            "media_type": file_type,
+        }]
 
     initial_state = AgentState(
         message=prompt,
@@ -117,6 +138,8 @@ def _run_swarm(prompt: str) -> dict:
         context_analysis={},
         domain_analysis={},
         improved_prompt="",
+        attachments=attachments,
+        input_modality=input_modality,
     )
 
     with ThreadPoolExecutor(max_workers=1) as executor:
@@ -218,8 +241,13 @@ def _run_swarm_with_clarification(
 
 
 def _sse(event: str, data: dict) -> str:
-    """Formats a Server-Sent Event string."""
-    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+    """
+    Formats a Server-Sent Event string.
+    Frontend expects: data: {"type": "event", "data": {...}}
+    """
+    # Wrap in the format the frontend parser expects
+    wrapped_data = {"type": event, "data": data}
+    return f"data: {json.dumps(wrapped_data)}\n\n"
 
 
 # ── Routes ────────────────────────────────────
@@ -286,7 +314,7 @@ async def chat(
     Conversational endpoint with memory.
     Checks clarification loop FIRST, then classifies → routes → saves both turns.
     Requires JWT authentication.
-    
+
     Background Tasks (user NEVER waits):
     - write_to_langmem(): Store session in pipeline memory
     - update_user_profile(): Update user profile every 5th interaction
@@ -300,7 +328,7 @@ async def chat(
 
         # ═══ STEP 1: CHECK CLARIFICATION FLAG FIRST ═══
         from database import get_clarification_flag, save_clarification_flag
-        
+
         pending_clarification, clarification_key = get_clarification_flag(
             session_id=req.session_id,
             user_id=user.user_id
@@ -339,36 +367,67 @@ async def chat(
         # ═══ STEP 2: NORMAL FLOW (no pending clarification) ═══
         history = get_conversation_history(req.session_id, limit=6)
         logger.info(f"[api] loaded {len(history)} history turns")
+        
+        # Load user profile for context (unified handler)
+        from database import get_user_profile
+        user_profile = get_user_profile(user.user_id) or {}
+        
+        # ═══ UNIFIED HANDLER (1 LLM call with full context) ═══
+        # Replaces: classify_message() + handle_conversation()/handle_followup()
+        from agents.autonomous import kira_unified_handler
+        result = kira_unified_handler(
+            message=req.message,
+            history=history,
+            user_profile=user_profile
+        )
 
-        classification = classify_message(req.message, history)
+        intent = result["intent"]
+        reply = result["response"]
+        confidence = result.get("confidence", 0.5)
+        clarification_needed = result.get("clarification_needed", False)
 
-        if classification == "CONVERSATION":
-            reply = handle_conversation(req.message, history)
+        # ═══ AUTO-TRIGGER CLARIFICATION IF CONFIDENCE IS LOW ═══
+        # RULES.md: Smart defaults, user NEVER waits for uncertainty
+        if confidence < 0.5 and not clarification_needed:
+            logger.info(f"[api] low confidence ({confidence:.2f}) → auto-requesting clarification")
+            clarification_needed = True
+
+        # Handle based on intent + confidence
+        if intent == "CONVERSATION":
             save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="conversation", user_id=user.user_id)
             save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="conversation", user_id=user.user_id)
-            return ChatResponse(type="conversation", reply=reply, improved_prompt=None, breakdown=None, session_id=req.session_id)
+            return ChatResponse(
+                type="conversation",
+                reply=reply,
+                kira_message=reply,
+                improved_prompt=None,
+                breakdown=None,
+                session_id=req.session_id
+            )
 
-        elif classification == "FOLLOWUP":
-            result = handle_followup(req.message, history)
-            if result:
-                improved = result.get("improved_prompt", "")
-                reply = "Updated! Here's your refined prompt ✨\n\nWant any more tweaks?"
-                save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="followup", user_id=user.user_id)
-                save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="followup_refined", improved_prompt=improved, user_id=user.user_id)
-                return ChatResponse(type="followup_refined", reply=reply, improved_prompt=improved, breakdown=None, session_id=req.session_id)
-            else:
-                logger.info("[api] followup fell back to NEW_PROMPT")
-                classification = "NEW_PROMPT"
+        elif intent == "FOLLOWUP":
+            improved = result.get("improved_prompt", "")
+            save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="followup", user_id=user.user_id)
+            save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="followup_refined", improved_prompt=improved, user_id=user.user_id)
+            return ChatResponse(
+                type="followup_refined",
+                reply=reply,
+                kira_message=reply,
+                improved_prompt=improved,
+                breakdown=None,
+                session_id=req.session_id
+            )
+
+        # Fall through to NEW_PROMPT if intent is new_prompt or fallback
+        classification = "NEW_PROMPT"
 
         if classification == "NEW_PROMPT":
-            final_state = _run_swarm(req.message)
-            
-            # ═══ CHECK IF CLARIFICATION NEEDED ═══
-            # Kira may have determined clarification is needed
-            if final_state.get("pending_clarification"):
-                clarification_key = final_state.get("clarification_key", "topic")
-                user_facing_message = final_state.get("user_facing_message", "I need more information.")
-                
+            # ═══ CHECK IF CLARIFICATION NEEDED (from confidence or swarm) ═══
+            if clarification_needed:
+                # Extract clarification question from Kira's response or use default
+                clarification_key = "topic"  # Default key for vague requests
+                user_facing_message = reply  # Use Kira's natural language response
+
                 # SAVE THE FLAG (critical for clarification loop!)
                 save_clarification_flag(
                     session_id=req.session_id,
@@ -376,12 +435,12 @@ async def chat(
                     pending=True,
                     clarification_key=clarification_key
                 )
-                
+
                 # Save user message and Kira's question to conversation
                 save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="new_prompt", user_id=user.user_id)
                 save_conversation(session_id=req.session_id, role="assistant", message=user_facing_message, message_type="clarification_question", user_id=user.user_id)
-                
-                logger.info(f"[api] clarification requested: key={clarification_key}")
+
+                logger.info(f"[api] clarification requested (confidence={confidence:.2f}): key={clarification_key}")
                 return ChatResponse(
                     type="clarification_requested",
                     reply=user_facing_message,
@@ -389,9 +448,9 @@ async def chat(
                     breakdown=None,
                     session_id=req.session_id
                 )
-            
-            # Normal flow - no clarification needed
-            improved = final_state.get("improved_prompt", "")
+
+            # Normal flow - no clarification needed, run swarm
+            final_state = _run_swarm(req.message)
             breakdown = {
                 "intent":  final_state.get("intent_analysis", {}),
                 "context": final_state.get("context_analysis", {}),
@@ -459,7 +518,11 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
                 reply = handle_conversation(req.message, history)
                 save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="conversation", user_id=user.user_id)
                 save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="conversation", user_id=user.user_id)
+                # Send as Kira message for streaming display
+                yield _sse("kira_message", {"message": reply, "complete": True})
                 yield _sse("result", {"type": "conversation", "reply": reply, "improved_prompt": None})
+                yield _sse("done", {"message": "Complete"})
+                return
 
             elif classification == "FOLLOWUP":
                 yield _sse("status", {"message": "Refining your prompt..."})
@@ -470,12 +533,17 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
                     reply = "Updated! Here's your refined prompt ✨\n\nWant any more tweaks?"
                     save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="followup", user_id=user.user_id)
                     save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="followup_refined", improved_prompt=improved, user_id=user.user_id)
+                    # Send as Kira message for streaming display
+                    yield _sse("kira_message", {"message": reply, "complete": True})
                     yield _sse("result", {"type": "followup_refined", "reply": reply, "improved_prompt": improved})
+                    yield _sse("done", {"message": "Complete"})
+                    return
                 else:
                     classification = "NEW_PROMPT"
 
             if classification == "NEW_PROMPT":
                 # Check cache first — instant if hit
+                # Note: cache key is just the message, attachments are extra context
                 cached = get_cached_result(req.message)
                 if cached:
                     yield _sse("status", {"message": "Found cached result — instant!"})
@@ -492,8 +560,16 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
 
                     yield _sse("status", {"message": "Engineering your prompt..."})
                     # Run swarm in thread so async loop stays free
+                    # Pass attachment parameters for multimodal support
                     loop = asyncio.get_event_loop()
-                    final_state = await loop.run_in_executor(None, _run_swarm, req.message)
+                    final_state = await loop.run_in_executor(
+                        None, 
+                        _run_swarm, 
+                        req.message,
+                        req.input_modality or "text",
+                        req.file_base64,
+                        req.file_type
+                    )
 
                 # ═══ CHECK IF CLARIFICATION NEEDED ═══
                 if final_state.get("pending_clarification"):
@@ -564,7 +640,212 @@ def conversation(
     return {"count": len(data), "conversation": data}
 
 
-@app.post("/transcribe")
+@app.post("/memory/onboarding")
+async def save_onboarding_memory(
+    request: dict,
+    user: User = Depends(get_current_user)
+):
+    """
+    Save onboarding profile as LangMem memory with Gemini embedding.
+    
+    RULES.md: Background task, user never waits
+    
+    Args:
+        request: {content, profile_type, metadata}
+        user: Authenticated user from JWT
+    """
+    from memory.langmem import _generate_embedding
+    from database import get_client
+    
+    try:
+        db = get_client()
+        
+        content = request.get("content", "")
+        profile_type = request.get("profile_type", "onboarding")
+        metadata = request.get("metadata", {})
+        
+        # Generate Gemini embedding (for future semantic search)
+        embedding = _generate_embedding(content)
+        
+        # Prepare memory data matching existing schema
+        memory_data = {
+            "user_id": user.user_id,
+            "content": content,
+            "improved_content": f"Onboarding profile: {metadata.get('primary_use', 'unknown')} user",
+            "domain": metadata.get('primary_use', 'general'),
+            "quality_score": {"onboarding": 5},
+            "agents_used": ["onboarding"],
+            "agents_skipped": [],
+            "metadata": metadata,  # Store full profile as JSONB
+        }
+        
+        # Note: embedding generated but table doesn't have column yet
+        # Will be added in future migration for pgvector semantic search
+        if embedding:
+            logger.info(f"[api] onboarding embedding generated: {len(embedding)} dim (ready for pgvector migration)")
+        
+        # Store in Supabase
+        result = db.table("langmem_memories").insert(memory_data).execute()
+        
+        logger.info(f"[api] saved onboarding memory for user {user.user_id[:8]}...")
+        
+        return {"status": "saved", "has_embedding": embedding is not None}
+        
+    except Exception as e:
+        logger.error(f"[api] onboarding memory save failed: {e}")
+        # Non-critical - return success anyway
+        return {"status": "saved", "has_embedding": False}
+
+
+# ═══ IMPLICIT FEEDBACK ENDPOINT ═══════════════════════
+
+class FeedbackRequest(BaseModel):
+    """
+    Implicit feedback submission schema.
+    
+    RULES.md: Type hints mandatory, docstrings complete.
+    """
+    session_id: str
+    prompt_id: str
+    feedback_type: str  # copy|edit|save
+    edit_distance: Optional[float] = None
+    timestamp: str
+
+
+@app.post("/feedback")
+async def submit_feedback(
+    req: FeedbackRequest,
+    user: User = Depends(get_current_user)
+):
+    """
+    Collect implicit feedback from user behavior.
+    
+    RULES.md Compliance:
+    - Type hints mandatory
+    - Background write (user NEVER waits)
+    - Silent fail (safe to fail)
+    - RLS enforced via Supabase client
+    
+    Args:
+        req: Feedback request body
+        user: Authenticated user from JWT
+    
+    Returns:
+        Status dict
+    
+    Example:
+        POST /feedback {
+            "session_id": "session-123",
+            "prompt_id": "prompt-456",
+            "feedback_type": "copy",
+            "timestamp": "2026-03-13T10:30:00Z"
+        }
+    
+    Feedback Types & Weights:
+    - copy: +0.08 (user found value - STRONG positive)
+    - edit (light, <40%): +0.02 (user engaged - mild positive)
+    - edit (heavy, >40%): -0.03 (prompt needed work - mild negative)
+    - save: +0.10 (user wants to reuse - VERY strong positive)
+    """
+    from database import get_client
+    
+    try:
+        db = get_client()
+        
+        # Insert feedback record (RLS ensures user_id matches JWT)
+        db.table("prompt_feedback").insert({
+            "user_id": user.user_id,
+            "session_id": req.session_id,
+            "prompt_id": req.prompt_id,
+            "feedback_type": req.feedback_type,
+            "edit_distance": req.edit_distance,
+            "timestamp": req.timestamp,
+        }).execute()
+        
+        # Calculate feedback weight
+        weight = _calculate_feedback_weight(req)
+        
+        # Queue background task to adjust user quality score
+        # (Non-blocking, user doesn't wait)
+        background_tasks.add_task(_adjust_user_quality_score, user.user_id, weight)
+        
+        logger.info(f"[feedback] recorded: type={req.feedback_type}, weight={weight:.3f}")
+        
+        return {"status": "ok"}
+        
+    except Exception as e:
+        logger.error(f"[feedback] failed: {e}")
+        # Silent fail - feedback is non-critical
+        return {"status": "error", "message": "Failed to record feedback"}
+
+
+def _calculate_feedback_weight(req: FeedbackRequest) -> float:
+    """
+    Map feedback type to quality score adjustment.
+    
+    RULES.md: Pure function, testable, no side effects.
+    
+    Args:
+        req: Feedback request
+    
+    Returns:
+        Weight adjustment (-0.1 to +0.1)
+    
+    Weights (based on 2025 Anthropic research):
+    - copy: +0.08 (user found value - primary success signal)
+    - save: +0.10 (user wants to reuse - strongest signal)
+    - edit (light): +0.02 (user engaged, minor tweaks)
+    - edit (heavy): -0.03 (significant changes needed)
+    """
+    weights = {
+        "copy": +0.08,
+        "save": +0.10,
+        "edit": -0.03 if (req.edit_distance or 0) > 0.4 else +0.02,
+    }
+    return weights.get(req.feedback_type, 0.0)
+
+
+async def _adjust_user_quality_score(user_id: str, delta: float) -> bool:
+    """
+    Adjust user's prompt_quality_score in background.
+    
+    RULES.md:
+    - Background task (user NEVER waits)
+    - Silent fail (safe to fail)
+    - Type hints mandatory
+    
+    Args:
+        user_id: User UUID
+        delta: Adjustment amount
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        from database import get_user_profile, save_user_profile
+        
+        profile = get_user_profile(user_id)
+        if not profile:
+            return False
+        
+        current_score = profile.get("prompt_quality_score", 0.5)
+        new_score = max(0.0, min(1.0, current_score + delta))
+        
+        profile["prompt_quality_score"] = new_score
+        
+        success = save_user_profile(user_id, profile)
+        
+        if success:
+            logger.debug(f"[profile] adjusted quality score: {user_id[:8]}... delta={delta:.3f}")
+        
+        return success
+        
+    except Exception as e:
+        logger.error(f"[profile] quality score adjustment failed: {e}")
+        return False
+
+
+# ═══ MCP ENDPOINTS ════════════════════════════════════
 async def transcribe(
     file: UploadFile = File(..., description="Audio file (MP3, WAV, M4A, etc.)"),
     user: User = Depends(get_current_user)

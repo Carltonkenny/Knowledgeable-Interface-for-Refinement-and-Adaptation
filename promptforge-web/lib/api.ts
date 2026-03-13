@@ -26,6 +26,9 @@ export interface ChatResult {
   memories_applied: number
   latency_ms: number
   agents_run: string[]
+  // For conversation/followup responses (RULES.md: Type-safe response shape)
+  type?: string
+  reply?: string
 }
 
 export interface DiffItem {
@@ -109,7 +112,9 @@ export async function apiHistory(
     : `${API_BASE}/history`
   const res = await fetch(url, { headers: await authHeaders(token) })
   if (!res.ok) throw new ApiError(res.status, await res.text())
-  return res.json()
+  const data = await res.json()
+  // Backend returns {count, history} - extract the history array
+  return data.history || data || []
 }
 
 export async function apiConversation(

@@ -204,3 +204,110 @@ export async function getAccessToken(): Promise<string | null> {
   const session = await getSession()
   return session?.access_token ?? null
 }
+
+/**
+ * Check if user has accepted terms and conditions
+ * @returns true if accepted, false otherwise
+ */
+export async function hasAcceptedTerms(): Promise<boolean> {
+  const session = await getSession()
+  if (!session) return false
+  
+  // Check user metadata for terms acceptance
+  const userMetadata = session.user?.user_metadata as { terms_accepted?: boolean }
+  return userMetadata?.terms_accepted === true
+}
+
+/**
+ * Mark user as having accepted terms and conditions
+ */
+export async function acceptTerms(): Promise<void> {
+  const supabase = getSupabaseAuthClient()
+  
+  const { error } = await supabase.auth.updateUser({
+    data: { terms_accepted: true, terms_accepted_at: new Date().toISOString() }
+  })
+  
+  if (error) {
+    throw new Error('Failed to record terms acceptance')
+  }
+}
+
+/**
+ * Check if user has completed onboarding
+ * @returns true if completed, false otherwise
+ */
+export async function hasCompletedOnboarding(): Promise<boolean> {
+  const session = await getSession()
+  if (!session) return false
+  
+  const userMetadata = session.user?.user_metadata as { onboarding_completed?: boolean }
+  return userMetadata?.onboarding_completed === true
+}
+
+/**
+ * Mark user as having completed onboarding
+ */
+export async function completeOnboarding(): Promise<void> {
+  const supabase = getSupabaseAuthClient()
+  
+  const { error } = await supabase.auth.updateUser({
+    data: { onboarding_completed: true, onboarding_completed_at: new Date().toISOString() }
+  })
+  
+  if (error) {
+    throw new Error('Failed to record onboarding completion')
+  }
+}
+
+/**
+ * Save onboarding profile data to Supabase
+ * This saves to user_metadata AND creates LangMem memories with embeddings
+ */
+export async function saveOnboardingProfile(profile: {
+  primary_use: string
+  audience: string
+  ai_frustration: string
+  frustration_detail?: string
+}): Promise<void> {
+  const supabase = getSupabaseAuthClient()
+  
+  // Save to user metadata
+  const { error } = await supabase.auth.updateUser({
+    data: { 
+      onboarding_profile: profile,
+      onboarding_profile_set_at: new Date().toISOString()
+    }
+  })
+  
+  if (error) {
+    throw new Error('Failed to save onboarding profile')
+  }
+  
+  // Also save as LangMem memory with embedding (for semantic search)
+  try {
+    const profileContent = `
+      User's primary use: ${profile.primary_use}
+      Target audience: ${profile.audience}
+      AI frustration: ${profile.ai_frustration}
+      Additional details: ${profile.frustration_detail || 'none'}
+    `
+    
+    // This will be picked up by backend LangMem system
+    // The backend will generate Gemini embedding and store in Supabase
+    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/memory/onboarding`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: profileContent,
+        profile_type: 'onboarding',
+        metadata: profile
+      })
+    })
+  } catch (error) {
+    // Non-critical - profile saved even if memory fails
+    console.warn('Failed to create LangMem memory for onboarding:', error)
+  }
+}

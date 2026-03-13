@@ -8,10 +8,16 @@ interface QualityScoresProps {
 }
 
 export default function QualityScores({ scores }: QualityScoresProps) {
+  // Type guard per RULES.md type safety standards
+  if (!scores || typeof scores !== 'object') return null
+  if (typeof scores.specificity !== 'number') return null
+  if (typeof scores.clarity !== 'number') return null
+  if (typeof scores.actionability !== 'number') return null
+
   const items = [
-    { label: 'Specificity', value: scores.specificity },
-    { label: 'Clarity', value: scores.clarity },
-    { label: 'Actionability', value: scores.actionability },
+    { label: 'Specificity', value: scores.specificity ?? 0 },
+    { label: 'Clarity', value: scores.clarity ?? 0 },
+    { label: 'Actionability', value: scores.actionability ?? 0 },
   ]
 
   return (

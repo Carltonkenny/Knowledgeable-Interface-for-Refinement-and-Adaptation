@@ -21,6 +21,7 @@ import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone, timedelta
 from database import get_client, get_user_profile, save_user_profile
+from .langmem import get_quality_trend  # FR-3: Quality trend analysis
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -105,20 +106,11 @@ def update_user_profile(
             dominant_domains.append(domain)
             # Keep only top 3
             dominant_domains = dominant_domains[-3:]
-        
-        # Update quality trend
-        avg_quality = sum([
-            quality_score.get("specificity", 3),
-            quality_score.get("clarity", 3),
-            quality_score.get("actionability", 3),
-        ]) / 3
-        
-        if avg_quality >= 4.0:
-            quality_trend = "improving"
-        elif avg_quality >= 3.0:
-            quality_trend = "stable"
-        else:
-            quality_trend = "declining"
+
+        # ═══ FR-3: QUALITY TREND ANALYSIS (SPEC V1) ═══
+        # Calculate trend from last 10 sessions (not just current session score)
+        quality_trend = get_quality_trend(user_id, last_n=10)
+        logger.debug(f"[profile] quality trend for {user_id[:8]}...: {quality_trend}")
         
         # Update clarification rate
         current_rate = existing_profile.get("clarification_rate", 0.0)

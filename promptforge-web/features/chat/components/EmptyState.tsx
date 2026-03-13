@@ -9,7 +9,7 @@ interface EmptyStateProps {
 export default function EmptyState({ domain, onSuggestionClick }: EmptyStateProps) {
   // Domain-aware suggestions
   const suggestions = domain
-    ? domainSuggestions[domain.toLowerCase()] || defaultSuggestions
+    ? domainSuggestions[(domain || '').toLowerCase()] || defaultSuggestions
     : defaultSuggestions
 
   return (

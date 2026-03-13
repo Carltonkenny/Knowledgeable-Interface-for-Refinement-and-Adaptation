@@ -50,6 +50,36 @@ Always respond with ONLY this JSON:
 
 # ═══ PROMPT ENGINEER AGENT ═══════════════════
 
+def generate_diff(original: str, improved: str) -> list:
+    """
+    Generate a simple diff between original and improved prompts.
+    Returns array of {type: 'add'|'remove'|'keep', text: str}
+    
+    This is a simplified diff - just marks added/removed sentences.
+    """
+    # Simple sentence-level diff
+    original_sentences = [s.strip() for s in original.replace('\n', ' ').split('.') if s.strip()]
+    improved_sentences = [s.strip() for s in improved.replace('\n', ' ').split('.') if s.strip()]
+    
+    diff = []
+    
+    # Mark removed sentences
+    for sent in original_sentences:
+        if sent not in improved_sentences and sent:
+            diff.append({'type': 'remove', 'text': sent + '. '})
+    
+    # Mark added sentences
+    for sent in improved_sentences:
+        if sent not in original_sentences and sent:
+            diff.append({'type': 'add', 'text': sent + '. '})
+    
+    # If no changes detected, mark as keep
+    if not diff:
+        diff = [{'type': 'keep', 'text': improved}]
+    
+    return diff
+
+
 def prompt_engineer_agent(state: AgentState) -> Dict[str, Any]:
     """
     Rewrites raw prompt using swarm analysis.
@@ -81,10 +111,15 @@ def prompt_engineer_agent(state: AgentState) -> Dict[str, Any]:
     ]):
         logger.warning("[prompt_engineer] all swarm results empty - returning fallback")
         latency_ms = int((time.time() - start_time) * 1000)
+        
+        # Generate diff showing no changes
+        prompt_diff = generate_diff(prompt, f"[Analysis failed] Original: {prompt}")
+        
         return {
             "improved_prompt": f"[Analysis failed] Original: {prompt}",
             "quality_score": {"specificity": 1, "clarity": 1, "actionability": 1},
             "changes_made": ["No analysis available - returning original"],
+            "prompt_diff": prompt_diff,
             "was_skipped": False,
             "skip_reason": None,
             "latency_ms": latency_ms,
@@ -93,7 +128,7 @@ def prompt_engineer_agent(state: AgentState) -> Dict[str, Any]:
     # ═══ PREPARE CONTEXT FOR LLM ═══
     try:
         llm = get_llm()
-        
+
         # Get user's best past prompts for style reference
         domain = state.get('domain_analysis', {}).get('primary_domain', 'general')
         style_reference = get_style_reference(
@@ -101,8 +136,53 @@ def prompt_engineer_agent(state: AgentState) -> Dict[str, Any]:
             domain=domain,
             count=5
         )
-        
+
         style_context = f"\n\nUser's best past prompts (for style reference):\n{json.dumps(style_reference, indent=2)}" if style_reference else ""
+
+        # ═══ FR-1: AI FRUSTRATION CONSTRAINT (SPEC V1) ═══
+        # Add user-specific constraints based on their onboarding frustration
+        user_profile = state.get('user_profile', {})
+        frustration = user_profile.get('ai_frustration', '')
+        frustration_detail = user_profile.get('frustration_detail', '')
+
+        frustration_constraint = ""
+        if frustration == 'too_vague':
+            frustration_constraint = "\n\nUSER PREFERENCE: AI responses are too vague. Be extremely specific with concrete examples. Avoid generic statements."
+        elif frustration == 'too_wordy':
+            frustration_constraint = "\n\nUSER PREFERENCE: AI responses are too wordy. Be concise and direct. Get to the point quickly."
+        elif frustration == 'too_brief':
+            frustration_constraint = "\n\nUSER PREFERENCE: AI responses are too brief. Provide detailed explanations with context. Don't skip steps."
+        elif frustration == 'wrong_tone':
+            frustration_constraint = "\n\nUSER PREFERENCE: AI uses wrong tone. Match the tone carefully to the audience and purpose."
+        elif frustration == 'repeats':
+            frustration_constraint = "\n\nUSER PREFERENCE: AI repeats itself. Don't say the same thing multiple times. Each sentence should add value."
+        elif frustration == 'misses_context':
+            frustration_constraint = "\n\nUSER PREFERENCE: AI misses context. Consider the full situation. Ask clarifying questions if needed."
+
+        if frustration_constraint:
+            logger.debug(f"[prompt_engineer] frustration constraint added: {frustration}")
+
+        # ═══ FR-4: AUDIENCE CONSTRAINT (SPEC V1) ═══
+        # Add audience-specific style constraints
+        audience = user_profile.get('audience', '')
+
+        audience_constraint = ""
+        if audience == 'technical':
+            audience_constraint = "\n\nAUDIENCE: Technical experts (developers, engineers, data scientists). Use precise terminology, assume domain knowledge, skip basic explanations."
+        elif audience == 'business':
+            audience_constraint = "\n\nAUDIENCE: Business professionals (managers, executives, stakeholders). Focus on ROI, efficiency, and practical outcomes. Avoid overly technical jargon."
+        elif audience == 'general':
+            audience_constraint = "\n\nAUDIENCE: General public (non-specialists, broad audience). Explain concepts clearly, avoid jargon, use relatable examples."
+        elif audience == 'academic':
+            audience_constraint = "\n\nAUDIENCE: Academic (researchers, students, educators). Use formal tone, emphasize evidence and methodology, cite sources when applicable."
+        elif audience == 'creative':
+            audience_constraint = "\n\nAUDIENCE: Creative community (artists, writers, designers). Use evocative language, embrace ambiguity, prioritize inspiration over precision."
+
+        if audience_constraint:
+            logger.debug(f"[prompt_engineer] audience constraint added: {audience}")
+
+        # Combine all context
+        personalization_context = frustration_constraint + audience_constraint
 
         # Format all upstream analysis
         analysis_context = f"""Original prompt: {prompt}
@@ -111,9 +191,9 @@ Intent analysis: {json.dumps(state.get('intent_analysis', {}), indent=2)}
 
 Context analysis: {json.dumps(state.get('context_analysis', {}), indent=2)}
 
-Domain analysis: {json.dumps(state.get('domain_analysis', {}), indent=2)}{style_context}
+Domain analysis: {json.dumps(state.get('domain_analysis', {}), indent=2)}{style_context}{personalization_context}
 
-Rewrite the prompt based on this comprehensive analysis. Match the user's established style and quality bar from their past prompts."""
+Rewrite the prompt based on this comprehensive analysis. Match the user's established style and quality bar from their past prompts. Honor their frustration preferences and audience needs."""
 
         messages = [
             SystemMessage(content=SYSTEM_PROMPT),
@@ -153,11 +233,15 @@ Rewrite the prompt with substantially more detail and specificity."""
         
         latency_ms = int((time.time() - start_time) * 1000)
         logger.info(f"[prompt_engineer] output: {len(improved)} chars, latency={latency_ms}ms")
-        
+
+        # Generate diff between original and improved
+        prompt_diff = generate_diff(prompt, improved)
+
         return {
             "improved_prompt": improved,
             "quality_score": result.get("quality_score", {"specificity": 3, "clarity": 3, "actionability": 3}),
             "changes_made": result.get("changes_made", ["Improved prompt structure"]),
+            "prompt_diff": prompt_diff,
             "was_skipped": False,
             "skip_reason": None,
             "latency_ms": latency_ms,
@@ -170,6 +254,7 @@ Rewrite the prompt with substantially more detail and specificity."""
             "improved_prompt": state["raw_prompt"],
             "quality_score": {"specificity": 1, "clarity": 1, "actionability": 1},
             "changes_made": [f"Error: {str(e)}"],
+            "prompt_diff": [{"type": "keep", "text": state["raw_prompt"]}],
             "was_skipped": False,
             "skip_reason": None,
             "latency_ms": latency_ms,

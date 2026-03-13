@@ -4,10 +4,19 @@
 import type { DiffItem } from '@/lib/api'
 
 interface DiffViewProps {
-  diff: DiffItem[]
+  diff?: DiffItem[]
 }
 
 export default function DiffView({ diff }: DiffViewProps) {
+  // Safe guard for null/undefined/empty diff
+  if (!diff || !Array.isArray(diff) || diff.length === 0) {
+    return (
+      <div className="text-sm text-text-dim italic">
+        No diff available - prompt was generated without modifications
+      </div>
+    )
+  }
+
   return (
     <div className="text-sm leading-relaxed">
       {diff.map((item, index) => {

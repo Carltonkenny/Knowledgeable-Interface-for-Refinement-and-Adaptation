@@ -23,18 +23,22 @@ export default function HistoryCard({ item, onUseAgain }: HistoryCardProps) {
 
       {/* Meta row */}
       <div className="flex items-center justify-between">
-        {/* Score pills */}
-        <div className="flex gap-2">
-          <span className="bg-[var(--kira-dim)] text-kira font-mono text-[10px] px-1.5 py-0.5 rounded">
-            Spec {item.quality_score.specificity}
-          </span>
-          <span className="bg-[var(--kira-dim)] text-kira font-mono text-[10px] px-1.5 py-0.5 rounded">
-            Clar {item.quality_score.clarity}
-          </span>
-          <span className="bg-[var(--kira-dim)] text-kira font-mono text-[10px] px-1.5 py-0.5 rounded">
-            Act {item.quality_score.actionability}
-          </span>
-        </div>
+        {/* Score pills — with null safety guard */}
+        {item.quality_score ? (
+          <div className="flex gap-2">
+            <span className="bg-[var(--kira-dim)] text-kira font-mono text-[10px] px-1.5 py-0.5 rounded">
+              Spec {item.quality_score.specificity ?? 0}
+            </span>
+            <span className="bg-[var(--kira-dim)] text-kira font-mono text-[10px] px-1.5 py-0.5 rounded">
+              Clar {item.quality_score.clarity ?? 0}
+            </span>
+            <span className="bg-[var(--kira-dim)] text-kira font-mono text-[10px] px-1.5 py-0.5 rounded">
+              Act {item.quality_score.actionability ?? 0}
+            </span>
+          </div>
+        ) : (
+          <span className="text-text-dim text-[10px]">No score</span>
+        )}
 
         {/* Actions */}
         <div className="flex gap-3">

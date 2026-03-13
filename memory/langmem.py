@@ -29,24 +29,24 @@ logger = logging.getLogger(__name__)
 
 # ═══ CONFIGURATION ═══════════════════════════
 
-# Use existing Pollinations API key for embeddings
-POLLINATIONS_API_KEY = os.getenv("POLLINATIONS_API_KEY", "")
 SUPABASE_TABLE = "langmem_memories"
 
 # Embedding model configuration
-# Pollinations: all-MiniLM-L6-v2 (384 dimensions)
-# OpenAI fallback: text-embedding-3-small (1536 dimensions)
-EMBEDDING_MODEL = "text-embedding-3-small"  # OpenAI fallback
-EMBEDDING_DIM = 1536  # OpenAI text-embedding-3-small dimension
+# Primary: Google Gemini gemini-embedding-001 (3072 dimensions)
+# Note: Requires HNSW index in Supabase (IVFFlat limited to 2000 dims)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+EMBEDDING_MODEL = "gemini-embedding-001"  # Gemini model
+EMBEDDING_DIM = 3072  # Gemini gemini-embedding-001 dimension
 
 
 # ═══ EMBEDDING GENERATION ════════════════════
 
 def _generate_embedding(text: str) -> Optional[List[float]]:
     """
-    Generate embedding vector for text using Pollinations API or OpenAI fallback.
+    Generate embedding vector for text using Google Gemini API.
 
-    Uses all-MiniLM-L6-v2 model via Pollinations, falls back to OpenAI text-embedding-3-small.
+    Uses Gemini gemini-embedding-001 (3072 dimensions).
+    Requires HNSW index in Supabase (IVFFlat limited to 2000 dims).
 
     Args:
         text: Text to embed
@@ -56,58 +56,29 @@ def _generate_embedding(text: str) -> Optional[List[float]]:
 
     Example:
         embedding = _generate_embedding("write a python function")
-        # Returns: [0.123, -0.456, 0.789, ...] (384 dimensions)
+        # Returns: [0.123, -0.456, 0.789, ...] (3072 dimensions)
     """
-    # Try Pollinations first
-    if POLLINATIONS_API_KEY:
+    # Try Google Gemini first
+    if GEMINI_API_KEY:
         try:
-            # Pollinations embedding API endpoint (OpenAI-compatible)
-            url = "https://gen.pollinations.ai/v1/embeddings"
-
-            headers = {
-                "Authorization": f"Bearer {POLLINATIONS_API_KEY}",
-                "Content-Type": "application/json"
-            }
-
-            payload = {
-                "model": EMBEDDING_MODEL,
-                "input": text[:8000]  # Limit text length for embedding
-            }
-
-            response = requests.post(url, json=payload, headers=headers, timeout=10)
-            if response.status_code == 200:
-                result = response.json()
-
-                # Extract embedding from response
-                # Response format: {"data": [{"embedding": [...], "index": 0}]}
-                if "data" in result and len(result["data"]) > 0:
-                    embedding = result["data"][0].get("embedding", [])
-                    logger.debug(f"[langmem] pollinations embedding: {len(embedding)} dimensions")
-                    return embedding
-
-        except Exception as e:
-            logger.warning(f"[langmem] Pollinations API failed: {e}")
-
-    # Fallback to OpenAI embeddings
-    openai_key = os.getenv("OPENAI_API_KEY")
-    if openai_key:
-        try:
-            import openai
-            client = openai.OpenAI(api_key=openai_key)
+            import google.generativeai as genai
+            genai.configure(api_key=GEMINI_API_KEY)
             
-            response = client.embeddings.create(
-                model="text-embedding-3-small",
-                input=text[:8000]
+            result = genai.embed_content(
+                model="gemini-embedding-001",
+                content=text[:2048]  # Gemini context limit
             )
             
-            embedding = response.data[0].embedding
-            logger.debug(f"[langmem] openai embedding: {len(embedding)} dimensions")
+            embedding = result.get("embedding", [])
+            logger.debug(f"[langmem] gemini embedding: {len(embedding)} dimensions")
             return embedding
-            
+        
+        except ImportError:
+            logger.warning("[langmem] google-generativeai not installed, skipping Gemini")
         except Exception as e:
-            logger.warning(f"[langmem] OpenAI embedding fallback failed: {e}")
+            logger.warning(f"[langmem] Gemini embedding failed: {e}")
 
-    logger.warning("[langmem] All embedding services failed, returning None")
+    logger.warning("[langmem] No embedding API configured, returning None")
     return None
 
 
@@ -346,3 +317,81 @@ def get_style_reference(
     except Exception as e:
         logger.error(f"[langmem] style reference failed: {e}")
         return []
+
+
+# ═══ GET QUALITY TREND (FR-3 SPEC V1) ═════════════════════
+
+def get_quality_trend(user_id: str, last_n: int = 10) -> str:
+    """
+    Analyze quality trend over user's last N sessions.
+
+    RULES.md: Used by profile updater to track prompt_quality_trend.
+    Compares first half vs second half average quality scores.
+
+    Args:
+        user_id: User UUID from JWT (for RLS isolation)
+        last_n: Number of sessions to analyze (default: 10)
+
+    Returns:
+        str: One of:
+            - 'improving': Recent sessions avg > older sessions avg by 0.1+
+            - 'declining': Recent sessions avg < older sessions avg by 0.1+
+            - 'stable': Change < 0.1 threshold (avoids noise)
+            - 'insufficient_data': < 3 sessions to compare
+
+    Example:
+        trend = get_quality_trend("user-uuid", last_n=10)
+        # Returns: 'improving' | 'stable' | 'declining' | 'insufficient_data'
+    """
+    try:
+        db = get_client()
+
+        # Query last N quality scores (ordered by created_at DESC)
+        result = db.table("langmem_memories")\
+            .select("quality_score")\
+            .eq("user_id", user_id)\
+            .order("created_at", desc=True)\
+            .limit(last_n)\
+            .execute()
+
+        memories = result.data if hasattr(result, 'data') else []
+
+        if len(memories) < 3:
+            logger.debug(f"[langmem] quality trend: insufficient data for {user_id[:8]}...")
+            return "insufficient_data"
+
+        # Extract overall scores (handle missing/invalid scores gracefully)
+        scores = []
+        for m in memories:
+            qs = m.get("quality_score", {})
+            if isinstance(qs, dict):
+                score = qs.get("overall", 0)
+                if isinstance(score, (int, float)) and 0 <= score <= 1:
+                    scores.append(score)
+
+        if len(scores) < 3:
+            logger.debug(f"[langmem] quality trend: insufficient valid scores for {user_id[:8]}...")
+            return "insufficient_data"
+
+        # Compare first half (older) vs second half (newer)
+        # Note: scores are already ordered DESC (newest first)
+        mid = len(scores) // 2
+        avg_newer = sum(scores[:mid]) / len(scores[:mid]) if scores[:mid] else 0
+        avg_older = sum(scores[mid:]) / len(scores[mid:]) if scores[mid:] else 0
+
+        # Determine trend with 0.1 threshold (avoids noise)
+        diff = avg_newer - avg_older
+
+        if diff > 0.1:
+            trend = "improving"
+        elif diff < -0.1:
+            trend = "declining"
+        else:
+            trend = "stable"
+
+        logger.info(f"[langmem] quality trend for {user_id[:8]}...: {trend} (newer={avg_newer:.2f}, older={avg_older:.2f})")
+        return trend
+
+    except Exception as e:
+        logger.error(f"[langmem] quality trend failed: {e}")
+        return "stable"  # Graceful fallback

@@ -21,9 +21,11 @@ export function useHistory({ token }: UseHistoryProps) {
     async function loadHistory() {
       try {
         const history = await apiHistory(token)
-        setItems(history)
+        // Ensure history is an array
+        setItems(Array.isArray(history) ? history : [])
       } catch (err) {
         setError('Failed to load history')
+        setItems([]) // Set empty array on error
       } finally {
         setIsLoading(false)
       }
@@ -32,14 +34,14 @@ export function useHistory({ token }: UseHistoryProps) {
     loadHistory()
   }, [token])
 
-  // Group by date
-  const groupedByDate = items.reduce((acc, item) => {
+  // Group by date - safe reduce with empty array fallback
+  const groupedByDate = (items || []).reduce((acc, item) => {
     const date = new Date(item.created_at).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
     })
-    
+
     if (!acc[date]) {
       acc[date] = []
     }
@@ -51,8 +53,8 @@ export function useHistory({ token }: UseHistoryProps) {
   const filteredItems = items.filter((item) => {
     const query = searchQuery.toLowerCase()
     return (
-      item.original_prompt.toLowerCase().includes(query) ||
-      item.improved_prompt.toLowerCase().includes(query)
+      (item.original_prompt && item.original_prompt.toLowerCase().includes(query)) ||
+      (item.improved_prompt && item.improved_prompt.toLowerCase().includes(query))
     )
   })
 

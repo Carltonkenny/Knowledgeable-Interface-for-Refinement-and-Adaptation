@@ -155,13 +155,66 @@ export function useKiraStream({
             })
           },
           onResult: (result: ChatResult) => {
-            // Add output card
+            // Log result received per RULES.md structured logging standards
+            logger.info('[kira] result received', {
+              type: result.type,                    // RULES.md: Structured logging
+              has_prompt: !!result.improved_prompt,
+              diff_length: Array.isArray(result.diff) ? result.diff.length : 0,
+              has_quality: !!result.quality_score,
+              memories_applied: result.memories_applied ?? 0,
+              latency_ms: result.latency_ms ?? 0,
+            })
+
+            // ═══ HANDLE CONVERSATION TYPE (RULES.md: Personality-driven replies) ═══
+            if (result.type === 'conversation' && result.reply) {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: crypto.randomUUID?.() ?? Date.now().toString(),
+                  type: 'kira',
+                  content: result.reply,
+                },
+              ])
+              
+              setStatus((prev) => ({
+                ...prev,
+                state: 'complete',
+                agentsComplete: new Set(),
+                isStreaming: false,
+              }))
+              return  // Early return - don't show output card
+            }
+
+            // ═══ HANDLE FOLLOWUP TYPE (RULES.md: Single-LLM refinement) ═══
+            if (result.type === 'followup_refined' && result.reply) {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: crypto.randomUUID?.() ?? Date.now().toString(),
+                  type: 'kira',
+                  content: result.reply,
+                },
+              ])
+              // Continue to show output card for followup (has improved_prompt)
+            }
+
+            // Normalize result shape from backend (handle missing/null fields)
+            const safeResult: ChatResult = {
+              improved_prompt: result.improved_prompt ?? '',
+              diff: Array.isArray(result.diff) ? result.diff : [],
+              quality_score: result.quality_score ?? null,
+              kira_message: result.kira_message ?? '',
+              memories_applied: result.memories_applied ?? 0,
+              latency_ms: result.latency_ms ?? 0,
+              agents_run: Array.isArray(result.agents_run) ? result.agents_run : [],
+            }
+            // Add output card with safe result
             setMessages((prev) => [
               ...prev,
               {
                 id: crypto.randomUUID?.() ?? Date.now().toString(),
                 type: 'output',
-                result,
+                result: safeResult,
               },
             ])
 

@@ -8,20 +8,25 @@ interface QualityTrendBarProps {
 }
 
 export default function QualityTrendBar({ items }: QualityTrendBarProps) {
-  if (items.length < 5) {
+  // Filter items with valid quality_score
+  const itemsWithScores = items.filter(
+    (item) => item.quality_score && typeof item.quality_score === 'object'
+  )
+
+  if (itemsWithScores.length < 5) {
     return null // Not enough data
   }
 
   // Calculate average specificity trend
-  const last12 = items.slice(0, 12)
+  const last12 = itemsWithScores.slice(0, 12)
   const avgSpecificity =
-    last12.reduce((sum, item) => sum + item.quality_score.specificity, 0) / last12.length
+    last12.reduce((sum, item) => sum + (item.quality_score?.specificity ?? 0), 0) / last12.length
 
   // Simple trend calculation
   const firstHalf = last12.slice(0, 6)
   const secondHalf = last12.slice(6)
-  const firstAvg = firstHalf.reduce((sum, item) => sum + item.quality_score.specificity, 0) / 6
-  const secondAvg = secondHalf.reduce((sum, item) => sum + item.quality_score.specificity, 0) / 6
+  const firstAvg = firstHalf.reduce((sum, item) => sum + (item.quality_score?.specificity ?? 0), 0) / 6
+  const secondAvg = secondHalf.reduce((sum, item) => sum + (item.quality_score?.specificity ?? 0), 0) / 6
   const trend = secondAvg - firstAvg
 
   const trendPercent = Math.round((trend / 5) * 100)
@@ -50,14 +55,14 @@ export default function QualityTrendBar({ items }: QualityTrendBarProps) {
             className={`flex-1 rounded-t transition-all ${
               trend >= 0 ? 'bg-context' : 'bg-intent'
             }`}
-            style={{ height: `${(item.quality_score.specificity / 5) * 100}%` }}
-            title={`Specificity: ${item.quality_score.specificity}/5`}
+            style={{ height: `${((item.quality_score?.specificity ?? 0) / 5) * 100}%` }}
+            title={`Specificity: ${item.quality_score?.specificity ?? 0}/5`}
           />
         ))}
       </div>
 
       <p className="mt-2 text-[10px] font-mono text-text-dim">
-        Best week: {Math.max(...last12.map(i => i.quality_score.specificity)).toFixed(1)}/5 avg
+        Best week: {Math.max(...last12.map(i => i.quality_score?.specificity ?? 0)).toFixed(1)}/5 avg
       </p>
     </div>
   )

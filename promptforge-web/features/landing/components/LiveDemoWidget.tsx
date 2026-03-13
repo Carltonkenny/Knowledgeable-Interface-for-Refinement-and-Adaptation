@@ -183,45 +183,47 @@ export function LiveDemoWidget() {
                 {result.improved_prompt}
               </p>
 
-              {/* Quality scores */}
-              <div className="space-y-2 mb-4">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[10px] text-text-dim w-20">Specificity</span>
-                  <div className="flex-1 h-[3px] bg-border-default rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-kira rounded-full"
-                      style={{ width: `${(result.quality_score.specificity / 5) * 100}%` }}
-                    />
+              {/* Quality scores — with null guard */}
+              {result.quality_score && (
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[10px] text-text-dim w-20">Specificity</span>
+                    <div className="flex-1 h-[3px] bg-border-default rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-kira rounded-full"
+                        style={{ width: `${((result.quality_score.specificity ?? 0) / 5) * 100}%` }}
+                      />
+                    </div>
+                    <span className="font-mono text-[10px] text-text-dim w-8 text-right">
+                      {result.quality_score.specificity ?? 0}/5
+                    </span>
                   </div>
-                  <span className="font-mono text-[10px] text-text-dim w-8 text-right">
-                    {result.quality_score.specificity}/5
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[10px] text-text-dim w-20">Clarity</span>
-                  <div className="flex-1 h-[3px] bg-border-default rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-kira rounded-full"
-                      style={{ width: `${(result.quality_score.clarity / 5) * 100}%` }}
-                    />
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[10px] text-text-dim w-20">Clarity</span>
+                    <div className="flex-1 h-[3px] bg-border-default rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-kira rounded-full"
+                        style={{ width: `${((result.quality_score.clarity ?? 0) / 5) * 100}%` }}
+                      />
+                    </div>
+                    <span className="font-mono text-[10px] text-text-dim w-8 text-right">
+                      {result.quality_score.clarity ?? 0}/5
+                    </span>
                   </div>
-                  <span className="font-mono text-[10px] text-text-dim w-8 text-right">
-                    {result.quality_score.clarity}/5
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[10px] text-text-dim w-20">Actionability</span>
-                  <div className="flex-1 h-[3px] bg-border-default rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-kira rounded-full"
-                      style={{ width: `${(result.quality_score.actionability / 5) * 100}%` }}
-                    />
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[10px] text-text-dim w-20">Actionability</span>
+                    <div className="flex-1 h-[3px] bg-border-default rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-kira rounded-full"
+                        style={{ width: `${((result.quality_score.actionability ?? 0) / 5) * 100}%` }}
+                      />
+                    </div>
+                    <span className="font-mono text-[10px] text-text-dim w-8 text-right">
+                      {result.quality_score.actionability ?? 0}/5
+                    </span>
                   </div>
-                  <span className="font-mono text-[10px] text-text-dim w-8 text-right">
-                    {result.quality_score.actionability}/5
-                  </span>
                 </div>
-              </div>
+              )}
 
               {/* Actions */}
               <div className="flex items-center justify-between pt-4 border-t border-border-default">

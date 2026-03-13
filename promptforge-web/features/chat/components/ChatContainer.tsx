@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { useSessionId } from '../hooks/useSessionId'
 import { useKiraStream } from '../hooks/useKiraStream'
 import { useInputBar } from '../hooks/useInputBar'
+import { useVoiceInput } from '../hooks/useVoiceInput'
 import MessageList from './MessageList'
 import InputBar from './InputBar'
 import EmptyState from './EmptyState'
@@ -62,6 +63,20 @@ export default function ChatContainer({ token, apiUrl, sessionCount = 0 }: ChatC
     },
   })
 
+  // Voice input hook
+  const {
+    isRecording,
+    toggleRecording,
+    error: voiceError,
+    setError: setVoiceError,
+  } = useVoiceInput({
+    onTranscript: (text) => {
+      // Insert transcribed text into input
+      setInput((prev) => prev ? `${prev} ${text}` : text)
+    },
+    token,
+  })
+
   // Handle suggestion click from EmptyState
   const handleSuggestionClick = (text: string) => {
     send(text)
@@ -70,6 +85,11 @@ export default function ChatContainer({ token, apiUrl, sessionCount = 0 }: ChatC
   // Handle clarification chip select
   const handleClarificationSelect = (value: string) => {
     send(value)
+  }
+
+  // Handle voice button
+  const handleVoice = () => {
+    toggleRecording()
   }
 
   // Empty state
@@ -83,10 +103,11 @@ export default function ChatContainer({ token, apiUrl, sessionCount = 0 }: ChatC
             onChange={setInput}
             onSubmit={() => handleSubmit()}
             onAttach={(file) => setAttachment(file)}
-            onVoice={() => {}}
+            onVoice={handleVoice}
             disabled={false}
             personaDotColor={personaDotColor}
             placeholder="Type your prompt..."
+            isRecording={isRecording}
             attachment={attachment}
             onRemoveAttachment={clearAttachment}
           />
@@ -126,11 +147,11 @@ export default function ChatContainer({ token, apiUrl, sessionCount = 0 }: ChatC
           onChange={setInput}
           onSubmit={() => handleSubmit()}
           onAttach={(file) => setAttachment(file)}
-          onVoice={() => {}}
+          onVoice={handleVoice}
           disabled={isStreaming || isRateLimited}
           personaDotColor={personaDotColor}
           placeholder={clarificationPending ? "Answer Kira..." : "Type your prompt..."}
-          isRecording={false}
+          isRecording={isRecording}
           attachment={attachment}
           onRemoveAttachment={clearAttachment}
         />

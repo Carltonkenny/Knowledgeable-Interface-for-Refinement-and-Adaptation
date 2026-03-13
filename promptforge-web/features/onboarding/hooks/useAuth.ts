@@ -29,7 +29,7 @@ export function useAuth() {
    */
   async function signInWithGoogle(): Promise<void> {
     setIsLoading(true)
-    
+
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -83,7 +83,7 @@ export function useAuth() {
       }
 
       // Success — redirect to onboarding
-      router.push(ROUTES.ONBOARDING)
+      router.push('/onboarding')
       return { error: null }
     } catch (error) {
       logger.error('Sign in error', { error })
@@ -131,7 +131,7 @@ export function useAuth() {
       }
 
       // Success — redirect to onboarding
-      router.push(ROUTES.ONBOARDING)
+      router.push('/onboarding')
       return { error: null }
     } catch (error) {
       logger.error('Sign up error', { error })

@@ -4,19 +4,38 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button, Input } from '@/components/ui'
 import { ROUTES } from '@/lib/constants'
 import { useAuth } from '../hooks/useAuth'
+import { getSession, hasCompletedOnboarding } from '@/lib/auth'
 
 export default function SignupForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [isChecking, setIsChecking] = useState(true)
   const router = useRouter()
   const { signInWithGoogle, signUpWithEmail, isLoading } = useAuth()
+
+  // Check if returning user - redirect to app
+  useEffect(() => {
+    checkReturningUser()
+  }, [])
+
+  async function checkReturningUser() {
+    const session = await getSession()
+    if (session) {
+      const onboardingComplete = await hasCompletedOnboarding()
+      if (onboardingComplete) {
+        router.push('/app')
+        return
+      }
+    }
+    setIsChecking(false)
+  }
 
   async function handleGoogleSignIn() {
     try {
@@ -49,11 +68,24 @@ export default function SignupForm() {
     }
 
     const result = await signUpWithEmail(email, password)
-    
+
     if (result.error) {
       setError(result.error)
     }
-    // On success, useAuth redirects to /onboarding
+    // On success, redirect based on onboarding status
+    // (handled by useEffect check or onboarding page)
+  }
+
+  // Show loading while checking returning user
+  if (isChecking) {
+    return (
+      <div className="min-h-screen bg-layer1 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-kira border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-text-dim">Loading...</p>
+        </div>
+      </div>
+    )
   }
 
   return (

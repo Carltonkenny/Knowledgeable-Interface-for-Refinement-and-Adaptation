@@ -28,7 +28,7 @@ export function useProfile(userId: string) {
         .from('user_profiles')
         .select('*')
         .eq('user_id', userId)
-        .single()
+        .maybeSingle()  // Returns null if no row exists (not 406 error)
 
       if (!error && data) {
         setProfile(data)

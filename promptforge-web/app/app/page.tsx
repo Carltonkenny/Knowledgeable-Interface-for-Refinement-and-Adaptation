@@ -5,20 +5,31 @@
 
 import { useState, useEffect } from 'react'
 import { getAccessToken } from '@/lib/supabase'
+import { getSession } from '@/lib/auth'
 import ChatContainer from '@/features/chat/components/ChatContainer'
+import { useRouter } from 'next/navigation'
 
 export default function ChatPage() {
+  const router = useRouter()
   const [token, setToken] = useState<string | null>(null)
   const [sessionCount, setSessionCount] = useState(0)
 
   useEffect(() => {
-    async function loadToken() {
-      const accessToken = await getAccessToken()
-      setToken(accessToken)
+    checkAuth()
+  }, [])
+
+  async function checkAuth() {
+    const session = await getSession()
+    
+    if (!session) {
+      // Not logged in - redirect to login
+      router.push('/auth/login')
+      return
     }
 
-    loadToken()
-  }, [])
+    const accessToken = session.access_token
+    setToken(accessToken)
+  }
 
   if (!token) {
     return (

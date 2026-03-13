@@ -18,3 +18,6 @@ requests==2.32.3
 
 # Form data handling (required for FastAPI File/Form)
 python-multipart==0.0.9
+
+# Google Gemini API (for embeddings)
+google-generativeai>=0.8.0

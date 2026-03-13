@@ -220,10 +220,24 @@ def orchestrator_node(state: Dict[str, Any]) -> Dict[str, Any]:
         ]) if conversation_history else "No previous conversation"
 
         profile_context = f"User's preferred tone: {user_profile.get('preferred_tone', 'not set')}" if user_profile else "No profile available"
-        
-        # Add LangMem context to profile
+
+        # ═══ FR-2: MEMORY CONTENT FOR KIRA (SPEC V1) ═══
+        # Show Kira actual memory content, not just count
         if langmem_context:
             profile_context += f"\nPast memories: {len(langmem_context)} relevant memories found"
+            # Add content preview for better routing decisions (handle edge cases)
+            try:
+                memory_preview = "\n".join([
+                    f"  - {m.get('content', 'N/A')[:60] if m.get('content') else 'N/A'}... (quality: {(m.get('quality_score') or {}).get('overall', 0):.1f})"
+                    for m in langmem_context[:3]  # Show top 3 only
+                ])
+                profile_context += f"\nRecent high-quality sessions:\n{memory_preview}"
+                logger.debug(f"[kira] memory preview added: {len(langmem_context)} memories")
+            except Exception as e:
+                logger.warning(f"[kira] memory preview formatting failed: {e}")
+                # Fallback: just show count
+        else:
+            logger.debug("[kira] no langmem context available")
         
         # Calculate ambiguity score
         ambiguity = calculate_ambiguity_score(message, conversation_history)
@@ -421,6 +435,391 @@ def calculate_ambiguity_score(message: str, history: List[Dict]) -> float:
         score += 0.2
     
     return min(score, 1.0)
+
+
+# ═══ UNIFIED KIRA HANDLER (2026 Modern Approach) ═══
+# Single LLM call with full context for conversation/followup
+# RULES.md Compliance: Type hints, docstrings, error handling, logging
+
+KIRA_UNIFIED_PROMPT = """You are Kira — a sharp, witty, genuinely useful AI prompt engineer.
+
+PERSONALITY:
+- Warm but not sycophantic — never say "great question!" or "certainly!"
+- Direct and confident — opinions, not just options
+- Occasionally playful — well-placed emoji or light humor
+- Expert but not arrogant — explain clearly without talking down
+- Remember context — reference what user said earlier
+- Technical users get technical responses — match their energy
+- Coding/developer context = precise, no-fluff, example-driven
+
+PERSONALITY ADAPTATION (HYBRID APPROACH):
+Before responding, analyze the user's communication style on two axes:
+
+1. Formality (0.0-1.0):
+   - 0.0-0.3: Very casual (contractions, slang, emoji, incomplete sentences)
+   - 0.4-0.6: Balanced (mix of casual and professional)
+   - 0.7-1.0: Formal (complete sentences, proper grammar, professional tone)
+
+2. Technical Depth (0.0-1.0):
+   - 0.0-0.3: General audience (avoids jargon, explains concepts)
+   - 0.4-0.6: Mixed audience (some technical terms, but accessible)
+   - 0.7-1.0: Expert audience (assumes domain knowledge, uses precise terminology)
+
+BLEND WITH USER PROFILE:
+- User's profile tone = 70% weight (stable baseline)
+- Detected message style = 30% weight (dynamic adjustment)
+- Example: Profile "technical" (0.6) + Message "casual" (0.2) = Blended 0.48 (technical-casual)
+
+ADAPT YOUR RESPONSE:
+- If blended formality < 0.4: Use contractions, friendly tone, shorter sentences
+- If blended formality > 0.7: Use complete sentences, professional register
+- If blended technical > 0.7: Use precise terminology, assume expertise
+- If blended technical < 0.4: Explain concepts, avoid jargon
+
+YOUR TASK:
+1. Read the user's message and conversation history
+2. Understand their intent (conversation/followup/new_prompt)
+3. Respond naturally with your personality
+4. If they want a prompt improved, provide the improved version
+
+CONFIDENCE SCORING:
+Before responding, assess your confidence level:
+- 0.8-1.0: High confidence — clear request, familiar domain, specific ask, actionable
+- 0.5-0.8: Medium confidence — some ambiguity, but manageable with context
+- 0.3-0.5: Low confidence — vague request, unfamiliar domain, missing key details
+- <0.3: Very low — cannot proceed without clarification
+
+CONFIDENCE GUIDELINES:
+- Request is specific and actionable → 0.8-1.0
+- Request has context from history → +0.1-0.2
+- Request is vague ("write something", "help me with AI") → 0.3-0.5
+- Request lacks domain/context AND is vague → 0.2-0.4
+- Request is extremely vague (<10 chars, no context) → 0.1-0.3
+
+BEHAVIOR BASED ON CONFIDENCE:
+- If confidence < 0.5: Set "clarification_needed": true
+- If confidence 0.5-0.7: Add one clarifying question in response
+- If confidence > 0.7: Proceed directly without questions
+
+RESPONSE FORMAT (JSON):
+{
+  "intent": "conversation|followup|new_prompt",
+  "response": "Your personality-driven reply (2-4 sentences)",
+  "improved_prompt": "Full improved prompt (if followup/new_prompt)",
+  "changes_made": ["Specific changes and why"],
+  "confidence": 0.0-1.0,
+  "confidence_reason": "Brief explanation of confidence level",
+  "clarification_needed": true/false,
+  "personality_adaptation": {
+    "detected_formality": 0.0-1.0,
+    "detected_technical": 0.0-1.0,
+    "blended_formality": 0.0-1.0,
+    "blended_technical": 0.0-1.0,
+    "adaptation_notes": "Brief explanation of how you adapted"
+  },
+  "metadata": {
+    "user_energy": "casual|direct|serious",
+    "topics_mentioned": ["topic1", "topic2"],
+    "follows_up_on": "previous_topic_id or null"
+  }
+}
+
+EXAMPLES:
+
+User: "hi"
+→ {
+  "intent": "conversation",
+  "response": "Hey! I'm Kira — I turn messy prompts into precise ones. What are you working on?",
+  "improved_prompt": null,
+  "changes_made": [],
+  "confidence": 0.85,
+  "confidence_reason": "Simple greeting, clear intent",
+  "clarification_needed": false,
+  "personality_adaptation": {
+    "detected_formality": 0.2,
+    "detected_technical": 0.0,
+    "blended_formality": 0.35,
+    "blended_technical": 0.3,
+    "adaptation_notes": "User very casual, adapting to friendly casual tone"
+  },
+  "metadata": {"user_energy": "casual", "topics_mentioned": [], "follows_up_on": null}
+}
+
+User: "hey can u help me write some code pls" (casual, non-technical)
+→ {
+  "intent": "new_prompt",
+  "response": "Sure thing! I'll help you craft a precise prompt for your code. What's it supposed to do?",
+  "improved_prompt": null,
+  "changes_made": [],
+  "confidence": 0.75,
+  "confidence_reason": "Clear request but needs more specifics",
+  "clarification_needed": true,
+  "personality_adaptation": {
+    "detected_formality": 0.15,
+    "detected_technical": 0.3,
+    "blended_formality": 0.32,
+    "blended_technical": 0.45,
+    "adaptation_notes": "Very casual user, using contractions and friendly tone"
+  },
+  "metadata": {"user_energy": "casual", "topics_mentioned": ["code"], "follows_up_on": null}
+}
+
+User: "Could you please assist me in crafting a comprehensive API documentation prompt?" (formal)
+→ {
+  "intent": "new_prompt",
+  "response": "Certainly. I shall help you construct a detailed prompt for API documentation. What specific aspects require coverage?",
+  "improved_prompt": "[Full engineered prompt]",
+  "changes_made": ["Added role specification", "Included output structure"],
+  "confidence": 0.92,
+  "confidence_reason": "Specific, well-formed request",
+  "clarification_needed": false,
+  "personality_adaptation": {
+    "detected_formality": 0.85,
+    "detected_technical": 0.7,
+    "blended_formality": 0.78,
+    "blended_technical": 0.75,
+    "adaptation_notes": "User formal and technical, matching professional register"
+  },
+  "metadata": {"user_energy": "serious", "topics_mentioned": ["API", "documentation"], "follows_up_on": null}
+}
+
+User: "optimize this async function for better throughput" (technical, direct)
+→ {
+  "intent": "followup",
+  "response": "Got it — I'll optimize for throughput with async/await patterns and concurrency controls.",
+  "improved_prompt": "[Full optimized prompt]",
+  "changes_made": ["Added performance constraints", "Specified concurrency model"],
+  "confidence": 0.88,
+  "confidence_reason": "Clear technical request with specific goal",
+  "clarification_needed": false,
+  "personality_adaptation": {
+    "detected_formality": 0.5,
+    "detected_technical": 0.9,
+    "blended_formality": 0.55,
+    "blended_technical": 0.85,
+    "adaptation_notes": "Technical expert, using precise terminology, direct style"
+  },
+  "metadata": {"user_energy": "direct", "topics_mentioned": ["async", "performance"], "follows_up_on": "prompt_123"}
+}
+"""
+
+
+def build_kira_context(
+    message: str,
+    history: list,
+    user_profile: dict
+) -> str:
+    """
+    Build rich context string for unified Kira call.
+    
+    RULES.md Compliance:
+    - Type hints mandatory
+    - Docstrings complete (purpose, args, returns, examples)
+    - Error handling comprehensive
+    - Logging contextual
+    
+    Args:
+        message: Current user message
+        history: Last 4 conversation turns
+        user_profile: User's profile from Supabase
+        
+    Returns:
+        Formatted context string for LLM
+        
+    Example:
+        context = build_kira_context(
+            message="make it async",
+            history=[...],
+            user_profile={"primary_use": "coding", ...}
+        )
+    """
+    try:
+        # Extract last improved prompt
+        last_improved = None
+        for turn in reversed(history):
+            if turn.get('improved_prompt'):
+                last_improved = turn['improved_prompt'][:500]
+                break
+        
+        # Build context parts
+        context_parts = [
+            f"User's message: {message}",
+            f"User's primary use: {user_profile.get('primary_use', 'general')}",
+            f"User's audience: {user_profile.get('audience', 'general')}",
+            f"User's preferred tone: {user_profile.get('preferred_tone', 'direct')}",
+            f"\nLast {min(4, len(history))} conversation turns:",
+        ]
+        
+        # Add last 4 turns
+        for turn in history[-4:]:
+            role = turn.get('role', 'unknown').upper()
+            content = turn.get('message', turn.get('improved_prompt', ''))[:200]
+            context_parts.append(f"{role}: {content}")
+        
+        # Add last improved prompt if available
+        if last_improved:
+            context_parts.append(f"\nLast improved prompt:\n{last_improved}")
+        
+        context = "\n".join(context_parts)
+        
+        logger.debug(f"[build_kira_context] built context with {len(history)} turns")
+        return context
+        
+    except Exception as e:
+        logger.error(f"[build_kira_context] failed: {e}")
+        # Fallback to simple context
+        return f"User's message: {message}\nHistory: {len(history) if history else 0} turns"
+
+
+def kira_unified_handler(
+    message: str,
+    history: list,
+    user_profile: dict
+) -> dict:
+    """
+    Unified intent detection + response with full context.
+    ONE LLM call instead of two (classify + respond).
+    
+    RULES.md Compliance:
+    - Type hints mandatory
+    - Docstrings complete (purpose, args, returns, examples)
+    - Error handling comprehensive (fallback to existing handlers)
+    - Logging contextual (intent, latency, context)
+    
+    Args:
+        message: User's message
+        history: Last 4 conversation turns
+        user_profile: User's profile from Supabase
+        
+    Returns:
+        Dict with intent, response, improved_prompt, metadata
+        
+    Example:
+        result = kira_unified_handler(
+            message="make it async",
+            history=[...],
+            user_profile={"primary_use": "coding", ...}
+        )
+        # Returns: {
+        #   "intent": "followup",
+        #   "response": "Got it — making it async...",
+        #   "improved_prompt": "[async version]",
+        #   "metadata": {...}
+        # }
+    """
+    start_time = time.time()
+    
+    try:
+        llm = get_fast_llm()  # Fast model for latency
+        
+        # Build rich context
+        context = build_kira_context(message, history, user_profile)
+        
+        # Single LLM call with unified prompt
+        response = llm.invoke([
+            SystemMessage(content=KIRA_UNIFIED_PROMPT),
+            HumanMessage(content=context)
+        ])
+        
+        # Parse JSON response
+        result = parse_json_response(response.content, "kira_unified")
+        
+        # Validate response structure
+        if not result.get("intent") or not result.get("response"):
+            logger.warning(f"[kira_unified] invalid response structure → fallback")
+            return fallback_unified_response(message, history, user_profile)
+        
+        # Log success with latency
+        latency_ms = int((time.time() - start_time) * 1000)
+        logger.info(f"[kira_unified] intent={result['intent']} latency={latency_ms}ms")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"[kira_unified] failed: {e}")
+        # Fallback to existing handlers
+        return fallback_unified_response(message, history, user_profile)
+
+
+def fallback_unified_response(
+    message: str,
+    history: list,
+    user_profile: dict
+) -> dict:
+    """
+    Fallback when unified handler fails.
+    Uses existing handle_conversation() and handle_followup().
+
+    RULES.md: Graceful degradation, never expose errors to user.
+
+    Args:
+        message: User's message
+        history: Last 4 conversation turns
+        user_profile: User's profile
+
+    Returns:
+        Dict with intent, response, improved_prompt, confidence
+    """
+    try:
+        # Try to detect intent from message
+        if len(message.strip()) < 10:
+            intent = "conversation"
+        elif any(word in message.lower() for word in ["make", "change", "add", "remove", "more", "less"]):
+            intent = "followup"
+        else:
+            intent = "new_prompt"
+
+        if intent == "conversation":
+            reply = handle_conversation(message, history)
+            return {
+                "intent": "conversation",
+                "response": reply,
+                "improved_prompt": None,
+                "changes_made": [],
+                "confidence": 0.5,  # Fallback = medium confidence
+                "confidence_reason": "Using fallback handler",
+                "clarification_needed": False,
+                "metadata": {"fallback": True}
+            }
+        elif intent == "followup":
+            result = handle_followup(message, history)
+            if result:
+                return {
+                    "intent": "followup",
+                    "response": "Updated! Here's your refined prompt ✨",
+                    "improved_prompt": result.get("improved_prompt", ""),
+                    "changes_made": result.get("changes_made", []),
+                    "confidence": 0.5,  # Fallback = medium confidence
+                    "confidence_reason": "Using fallback handler",
+                    "clarification_needed": False,
+                    "metadata": {"fallback": True}
+                }
+
+        # Default to new_prompt
+        return {
+            "intent": "new_prompt",
+            "response": "Let me craft something precise for you.",
+            "improved_prompt": None,
+            "changes_made": [],
+            "confidence": 0.5,  # Fallback = medium confidence
+            "confidence_reason": "Using fallback handler",
+            "clarification_needed": False,
+            "metadata": {"fallback": True}
+        }
+
+    except Exception as e:
+        logger.error(f"[fallback_unified_response] failed: {e}")
+        # Ultimate fallback
+        return {
+            "intent": "conversation",
+            "response": "Hey! I'm Kira — I turn rough prompts into precise, powerful ones. What would you like to improve today? 🚀",
+            "improved_prompt": None,
+            "changes_made": [],
+            "confidence": 0.5,  # Fallback = medium confidence
+            "confidence_reason": "Using ultimate fallback",
+            "clarification_needed": False,
+            "metadata": {"fallback": True, "ultimate": True}
+        }
 
 
 # ═══ EXISTING CONVERSATIONAL HANDLERS ═══
