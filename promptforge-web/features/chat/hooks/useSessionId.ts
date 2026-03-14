@@ -15,17 +15,17 @@ const SESSION_STORAGE_KEY = 'pf_session_id'
 export function useSessionId() {
   const sessionIdRef = useRef<string | null>(null)
 
-  // Get or create session ID (only once per tab)
+  // Get or create session ID (persistent across tabs/sessions)
   if (!sessionIdRef.current) {
-    // Try to get from sessionStorage
-    const stored = sessionStorage.getItem(SESSION_STORAGE_KEY)
-    
+    // Try to get from localStorage (persistent)
+    const stored = localStorage.getItem(SESSION_STORAGE_KEY)
+
     if (stored) {
       sessionIdRef.current = stored
     } else {
       // Generate new UUID
       sessionIdRef.current = crypto.randomUUID?.() ?? generateUUID()
-      sessionStorage.setItem(SESSION_STORAGE_KEY, sessionIdRef.current)
+      localStorage.setItem(SESSION_STORAGE_KEY, sessionIdRef.current)
     }
   }
 

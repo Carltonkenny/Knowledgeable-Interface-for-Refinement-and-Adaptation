@@ -14,6 +14,7 @@ export interface ChatMessage {
   isError?: boolean
   isStreaming?: boolean
   retryable?: boolean
+  sessionId?: string
 }
 
 // Chat-specific processing status

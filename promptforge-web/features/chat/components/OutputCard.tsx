@@ -8,11 +8,12 @@ import { Chip } from '@/components/ui'
 import DiffView from './DiffView'
 import QualityScores from './QualityScores'
 import type { ChatResult } from '@/lib/api'
+import { useImplicitFeedback } from '../hooks/useImplicitFeedback'
 
 interface OutputCardProps {
+  promptId: string
+  sessionId: string
   result: ChatResult
-  onCopy: () => void
-  isCopied: boolean
 }
 
 // Helper function for safe diff counting (DRY principle)
@@ -21,8 +22,22 @@ const countDiffType = (diff: ChatResult['diff'], type: 'add' | 'remove'): number
   return diff.filter((d) => d?.type === type).length
 }
 
-export default function OutputCard({ result, onCopy, isCopied }: OutputCardProps) {
+export default function OutputCard({ promptId, sessionId, result }: OutputCardProps) {
   const [showDiff, setShowDiff] = useState(false)
+  const [isCopied, setIsCopied] = useState(false)
+
+  const { trackCopy } = useImplicitFeedback(
+    sessionId,
+    promptId,
+    result.improved_prompt
+  )
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(result.improved_prompt)
+    setIsCopied(true)
+    trackCopy()
+    setTimeout(() => setIsCopied(false), 2000)
+  }
 
   // Count additions/removals for annotation chips using safe helper
   const additions = countDiffType(result.diff, 'add')
@@ -84,7 +99,7 @@ export default function OutputCard({ result, onCopy, isCopied }: OutputCardProps
           {/* Actions */}
           <div className="flex gap-2 mt-4 pt-4 border-t border-border-subtle">
             <button
-              onClick={onCopy}
+              onClick={handleCopy}
               className="text-xs text-text-dim hover:text-text-bright font-mono"
             >
               {isCopied ? 'Copied!' : 'Copy'}

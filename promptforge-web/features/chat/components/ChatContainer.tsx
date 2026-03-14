@@ -72,7 +72,7 @@ export default function ChatContainer({ token, apiUrl, sessionCount = 0 }: ChatC
   } = useVoiceInput({
     onTranscript: (text) => {
       // Insert transcribed text into input
-      setInput((prev) => prev ? `${prev} ${text}` : text)
+      setInput(input ? `${input} ${text}` : text)
     },
     token,
   })

@@ -34,7 +34,7 @@ from database import (
     get_history, save_conversation, get_conversation_history, get_client,
     get_conversation_count, update_session_activity, get_last_activity
 )
-from agents.autonomous import classify_message, handle_conversation, handle_followup
+from agents.autonomous import classify_message, handle_conversation, handle_followup, kira_unified_handler, kira_unified_handler_stream
 from utils import get_cached_result, set_cached_result
 from auth import User, get_current_user
 from memory import write_to_langmem, update_user_profile, should_trigger_update
@@ -85,13 +85,14 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# CORS locked to frontend domain (per RULES.md - no wildcard!)
-frontend_url = os.getenv("FRONTEND_URL", "http://localhost:9000")
-logger.info(f"[api] CORS allowed for: {frontend_url}")
+# CORS locked to frontend domains (per RULES.md - no wildcard!)
+# Allow multiple origins: localhost + Koyeb production
+frontend_urls = os.getenv("FRONTEND_URLS", "http://localhost:3000,http://localhost:9000").split(",")
+logger.info(f"[api] CORS allowed for: {frontend_urls}")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[frontend_url],
+    allow_origins=frontend_urls,  # Multiple origins supported
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -497,121 +498,148 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
     Streaming version of /chat.
     Sends Server-Sent Events (SSE) as processing progresses.
     Requires JWT authentication.
+    
+    UPDATED: Uses kira_unified_handler for confidence + personality adaptation.
     """
     async def generate():
         try:
             logger.info(f"[api] /chat/stream user_id={user.user_id} session={req.session_id}")
-            
+
             # Step 1 — load history
             yield _sse("status", {"message": "Loading conversation history..."})
             history = get_conversation_history(req.session_id, limit=6)
+            
+            # Load user profile for personality adaptation
+            from database import get_user_profile
+            user_profile = get_user_profile(user.user_id) or {}
 
-            # Step 2 — classify
+            # Step 2 — unified handler (confidence + personality)
+            # Yield status update (no delay - avoid adding latency)
             yield _sse("status", {"message": "Understanding your message..."})
-            classification = classify_message(req.message, history)
-            yield _sse("classification", {"type": classification})
+            
+            # Run handler in thread pool and get intent classification
+            import asyncio
+            from agents.autonomous import kira_unified_handler
+            
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,  # Use default executor
+                lambda: kira_unified_handler(
+                    message=req.message,
+                    history=history,
+                    user_profile=user_profile
+                )
+            )
+            
+            # Extract data from result
+            intent = result["intent"]
+            reply = result["response"]
+            confidence = result.get("confidence", 0.5)
+            clarification_needed = result.get("clarification_needed", False)
+            memories_applied = result.get("memories_applied", 0)
+            latency_ms = result.get("latency_ms", 0)
+            
+            logger.info(f"[api] unified handler complete: intent={intent}, memories={memories_applied}, latency={latency_ms}ms")
 
-            # Step 3 — route
-
-            if classification == "CONVERSATION":
-                yield _sse("status", {"message": "Crafting reply..."})
-                reply = handle_conversation(req.message, history)
+            # For CONVERSATION/FOLLOWUP, stream the reply text character-by-character for UX
+            # (LLM already completed, we're just animating the text for better UX)
+            if intent in ["CONVERSATION", "FOLLOWUP"]:
+                # Stream the existing reply text character by character
+                for i, char in enumerate(reply):
+                    yield _sse("kira_message", {"message": char, "complete": False})
+                    # Small delay for typing effect (every 10 chars = ~1ms for natural feel)
+                    if i % 10 == 0:
+                        await asyncio.sleep(0.01)
+            
+            # Handle based on intent
+            if intent == "CONVERSATION":
                 save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="conversation", user_id=user.user_id)
                 save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="conversation", user_id=user.user_id)
-                # Send as Kira message for streaming display
-                yield _sse("kira_message", {"message": reply, "complete": True})
-                yield _sse("result", {"type": "conversation", "reply": reply, "improved_prompt": None})
+                yield _sse("kira_message", {"message": "", "complete": True})  # Signal completion
+                yield _sse("result", {
+                    "type": "conversation",
+                    "reply": reply,
+                    "improved_prompt": None,
+                    "memories_applied": memories_applied,
+                    "latency_ms": latency_ms
+                })
                 yield _sse("done", {"message": "Complete"})
                 return
 
-            elif classification == "FOLLOWUP":
-                yield _sse("status", {"message": "Refining your prompt..."})
-                result = handle_followup(req.message, history)
+            elif intent == "FOLLOWUP":
+                improved = result.get("improved_prompt", "")
+                save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="followup", user_id=user.user_id)
+                save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="followup_refined", improved_prompt=improved, user_id=user.user_id)
+                yield _sse("kira_message", {"message": "", "complete": True})  # Signal completion
+                yield _sse("result", {
+                    "type": "followup_refined",
+                    "reply": reply,
+                    "improved_prompt": improved,
+                    "memories_applied": memories_applied,
+                    "latency_ms": latency_ms
+                })
+                yield _sse("done", {"message": "Complete"})
+                return
 
-                if result:
-                    improved = result.get("improved_prompt", "")
-                    reply = "Updated! Here's your refined prompt ✨\n\nWant any more tweaks?"
-                    save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="followup", user_id=user.user_id)
-                    save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="followup_refined", improved_prompt=improved, user_id=user.user_id)
-                    # Send as Kira message for streaming display
-                    yield _sse("kira_message", {"message": reply, "complete": True})
-                    yield _sse("result", {"type": "followup_refined", "reply": reply, "improved_prompt": improved})
-                    yield _sse("done", {"message": "Complete"})
-                    return
-                else:
-                    classification = "NEW_PROMPT"
-
-            if classification == "NEW_PROMPT":
-                # Check cache first — instant if hit
-                # Note: cache key is just the message, attachments are extra context
-                cached = get_cached_result(req.message)
-                if cached:
-                    yield _sse("status", {"message": "Found cached result — instant!"})
-                    final_state = cached
-                else:
-                    yield _sse("status", {"message": "Analyzing intent..."})
-                    await asyncio.sleep(0)  # yield control so SSE flushes
-
-                    yield _sse("status", {"message": "Extracting context..."})
-                    await asyncio.sleep(0)
-
-                    yield _sse("status", {"message": "Identifying domain..."})
-                    await asyncio.sleep(0)
-
-                    yield _sse("status", {"message": "Engineering your prompt..."})
-                    # Run swarm in thread so async loop stays free
-                    # Pass attachment parameters for multimodal support
-                    loop = asyncio.get_event_loop()
-                    final_state = await loop.run_in_executor(
-                        None, 
-                        _run_swarm, 
-                        req.message,
-                        req.input_modality or "text",
-                        req.file_base64,
-                        req.file_type
-                    )
-
-                # ═══ CHECK IF CLARIFICATION NEEDED ═══
-                if final_state.get("pending_clarification"):
-                    clarification_key = final_state.get("clarification_key", "topic")
-                    user_facing_message = final_state.get("user_facing_message", "I need more information.")
-                    
-                    # SAVE THE FLAG
-                    save_clarification_flag(
-                        session_id=req.session_id,
-                        user_id=user.user_id,
-                        pending=True,
-                        clarification_key=clarification_key
-                    )
-                    
-                    save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="new_prompt", user_id=user.user_id)
-                    save_conversation(session_id=req.session_id, role="assistant", message=user_facing_message, message_type="clarification_question", user_id=user.user_id)
-                    
-                    yield _sse("status", {"message": "Clarification needed"})
-                    yield _sse("result", {"type": "clarification_requested", "reply": user_facing_message, "clarification_key": clarification_key})
-                    yield _sse("done", {"message": "Complete"})
-                    return
-
-                improved = final_state.get("improved_prompt", "")
-                breakdown = {
-                    "intent":  final_state.get("intent_analysis", {}),
-                    "context": final_state.get("context_analysis", {}),
-                    "domain":  final_state.get("domain_analysis", {}),
-                }
-                reply = "Here's your supercharged prompt\n\nWant me to refine it further or try a different angle?"
-
+            # Fall through to NEW_PROMPT
+            if clarification_needed:
+                clarification_key = "topic"
+                user_facing_message = reply
+                
                 save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="new_prompt", user_id=user.user_id)
-                save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="prompt_improved", improved_prompt=improved, user_id=user.user_id)
-                save_history(raw_prompt=req.message, improved_prompt=improved, session_id=req.session_id, user_id=user.user_id)
-                save_request(raw_prompt=req.message, improved_prompt=improved, session_id=req.session_id, user_id=user.user_id)
+                save_conversation(session_id=req.session_id, role="assistant", message=user_facing_message, message_type="clarification_question", user_id=user.user_id)
+                
+                yield _sse("kira_message", {"message": user_facing_message, "complete": True})
+                yield _sse("result", {"type": "clarification_requested", "reply": user_facing_message})
+                yield _sse("done", {"message": "Complete"})
+                return
 
-                yield _sse("result", {"type": "prompt_improved", "reply": reply, "improved_prompt": improved, "breakdown": breakdown})
+            # Fall through to NEW_PROMPT (swarm execution)
+            yield _sse("status", {"message": "Analyzing intent..."})
+            await asyncio.sleep(0.2)  # Simulate analysis
 
+            yield _sse("status", {"message": "Extracting context..."})
+            await asyncio.sleep(0.2)  # Simulate extraction
+
+            yield _sse("status", {"message": "Identifying domain..."})
+            await asyncio.sleep(0.2)  # Simulate domain detection
+
+            yield _sse("status", {"message": "Engineering your prompt..."})
+
+            # Run swarm in thread so async loop stays free
+            loop = asyncio.get_event_loop()
+            final_state = await loop.run_in_executor(
+                None,
+                _run_swarm,
+                req.message,
+                req.input_modality or "text",
+                req.file_base64,
+                req.file_type
+            )
+
+            # Send result
+            improved = final_state.get("improved_prompt", "")
+            yield _sse("kira_message", {"message": reply, "complete": True})
+            yield _sse("result", {
+                "type": "new_prompt",
+                "reply": reply,
+                "improved_prompt": improved,
+                "diff": final_state.get("prompt_diff", []),  # Empty for unified handler (no before/after)
+                "quality_score": final_state.get("quality_score", {  # Default scores if not available
+                    "specificity": 3,
+                    "clarity": 3,
+                    "actionability": 3
+                }),
+                "memories_applied": final_state.get("memories_applied", 0),
+                "latency_ms": final_state.get("latency_ms", 0),
+                "agents_run": final_state.get("agents_run", [])
+            })
             yield _sse("done", {"message": "Complete"})
 
         except Exception as e:
-            logger.exception("[api] /chat/stream error")
-            yield _sse("error", {"message": str(e)})
+            logger.error(f"[api] /chat/stream error: {e}", exc_info=True)
+            yield _sse("error", {"message": "Something went wrong"})
+            yield _sse("done", {"message": "Complete"})
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 

@@ -52,11 +52,9 @@ export default function MessageList({ messages, isStreaming }: MessageListProps)
             return message.result ? (
               <OutputCard
                 key={message.id}
+                promptId={message.id}
+                sessionId={message.sessionId || ''}
                 result={message.result}
-                onCopy={() => {
-                  navigator.clipboard.writeText(message.result!.improved_prompt)
-                }}
-                isCopied={false}
               />
             ) : null
 
