@@ -8,19 +8,39 @@ import { useRouter } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase'
 import { ROUTES } from '@/lib/constants'
 import HistoryList from '@/features/history/components/HistoryList'
+import HistorySearchBar from '@/features/history/components/HistorySearchBar'
+import HistoryAnalyticsDashboard from '@/features/history/components/HistoryAnalyticsDashboard'
 import { useHistory } from '@/features/history/hooks/useHistory'
+import { useHistoryAnalytics } from '@/features/history/hooks/useHistoryAnalytics'
 
 export default function HistoryPage() {
   const [token, setToken] = useState<string | null>(null)
+  const [days, setDays] = useState(30)
   const router = useRouter()
-  
+
   const {
     items,
-    isLoading,
+    isLoading: isLoadingHistory,
+    isSearching,
     groupedByDate,
     searchQuery,
     setSearchQuery,
+    useRag,
+    setUseRag,
+    domains,
+    setDomains,
+    minQuality,
+    setMinQuality,
+    dateFrom,
+    setDateFrom,
+    dateTo,
+    setDateTo,
   } = useHistory({ token: token! })
+
+  const {
+    analytics,
+    isLoading: isLoadingAnalytics
+  } = useHistoryAnalytics(token, days)
 
   useEffect(() => {
     async function loadToken() {
@@ -52,15 +72,44 @@ export default function HistoryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-bg">
-      <HistoryList
-        items={items}
-        groupedByDate={groupedByDate}
-        isLoading={isLoading}
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        onUseAgain={handleUseAgain}
-      />
+    <div className="min-h-screen bg-bg p-6 md:p-8">
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-3xl font-bold font-mono text-text mb-8 tracking-tight">
+          Memory Palace
+        </h1>
+        
+        <HistoryAnalyticsDashboard 
+          analytics={analytics} 
+          isLoading={isLoadingAnalytics} 
+        />
+        
+        <HistorySearchBar 
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          isSearching={isSearching}
+          useRag={useRag}
+          setUseRag={setUseRag}
+          days={days}
+          setDays={setDays}
+          domains={domains}
+          setDomains={setDomains}
+          minQuality={minQuality}
+          setMinQuality={setMinQuality}
+          dateFrom={dateFrom}
+          setDateFrom={setDateFrom}
+          dateTo={dateTo}
+          setDateTo={setDateTo}
+        />
+        
+        <HistoryList
+          items={items}
+          groupedByDate={groupedByDate}
+          isLoading={isLoadingHistory}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          onUseAgain={handleUseAgain}
+        />
+      </div>
     </div>
   )
 }

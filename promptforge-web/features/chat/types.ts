@@ -5,6 +5,14 @@
 import type { ChatMessage as BaseChatMessage, ProcessingStatus as BaseProcessingStatus } from '@/lib/types'
 import type { ChatResult } from '@/lib/api'
 
+export interface ChatSession {
+  id: string
+  user_id: string
+  title: string
+  created_at: string
+  last_activity: string
+}
+
 // Chat-specific message extensions
 export interface ChatMessage {
   id: string

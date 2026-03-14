@@ -8,9 +8,9 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { parseStream } from '@/lib/stream'
 import { mapError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
+import { apiConversation, type ChatResult } from '@/lib/api'
 import type { ChatMessage } from '../types'
 import type { ProcessingStatus } from '../types'
-import type { ChatResult } from '@/lib/api'
 
 interface UseKiraStreamProps {
   sessionId: string
@@ -76,6 +76,58 @@ export function useKiraStream({
 
     return () => clearInterval(interval)
   }, [isRateLimited])
+
+  /**
+   * ═══ HISTORY RESTORATION (Phase 1.5) ═══
+   * Fetches existing messages when sessionId changes.
+   */
+  useEffect(() => {
+    if (!sessionId || !token) return
+    
+    const loadHistory = async () => {
+      try {
+        const history = await apiConversation(token, sessionId)
+        const mappedMessages: ChatMessage[] = history.map((turn, idx) => {
+          if (turn.role === 'user') {
+            return {
+              id: `hist-u-${idx}`,
+              type: 'user',
+              content: turn.message,
+            }
+          }
+          
+          if (turn.message_type === 'output') {
+            return {
+              id: `hist-o-${idx}`,
+              type: 'output',
+              content: turn.message,
+              result: {
+                improved_prompt: turn.improved_prompt || '',
+                diff: [], // We don't store diffs in DB yet, but we show the result
+                quality_score: null,
+                kira_message: turn.message,
+                memories_applied: 0,
+                latency_ms: 0,
+                agents_run: [],
+              },
+              sessionId
+            }
+          }
+
+          return {
+            id: `hist-k-${idx}`,
+            type: 'kira',
+            content: turn.message,
+          }
+        })
+        setMessages(mappedMessages)
+      } catch (err) {
+        logger.error('Failed to load conversation history', { err, sessionId })
+      }
+    }
+
+    loadHistory()
+  }, [sessionId, token])
 
   /**
    * Send message to backend via SSE

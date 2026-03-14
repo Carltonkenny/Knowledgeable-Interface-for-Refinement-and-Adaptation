@@ -1,6 +1,7 @@
 // features/history/components/HistoryCard.tsx
 // Single prompt history entry
 
+import { History as HistoryIcon } from 'lucide-react'
 import type { HistoryItem } from '@/lib/api'
 
 interface HistoryCardProps {
@@ -13,7 +14,7 @@ export default function HistoryCard({ item, onUseAgain }: HistoryCardProps) {
     <div className="p-4 rounded-xl border border-border-default hover:border-border-strong bg-layer2 transition-colors">
       {/* Original prompt */}
       <p className="text-text-dim text-xs italic mb-2 line-clamp-1">
-        {item.original_prompt}
+        {item.raw_prompt}
       </p>
 
       {/* Improved prompt */}
@@ -42,6 +43,22 @@ export default function HistoryCard({ item, onUseAgain }: HistoryCardProps) {
 
         {/* Actions */}
         <div className="flex gap-3">
+          {item.version_id && (
+             <button
+              onClick={(e) => {
+                e.stopPropagation()
+                // Emitting custom event or using a prop for parent to handle
+                const event = new CustomEvent('open-version-history', { 
+                  detail: { versionId: item.version_id, vNumber: item.version_number } 
+                })
+                window.dispatchEvent(event)
+              }}
+              className="text-xs text-kira hover:text-kira-bright flex items-center gap-1 font-medium"
+            >
+              <HistoryIcon size={12} />
+              History
+            </button>
+          )}
           <button
             onClick={() => {
               navigator.clipboard.writeText(item.improved_prompt)
@@ -51,7 +68,7 @@ export default function HistoryCard({ item, onUseAgain }: HistoryCardProps) {
             Copy
           </button>
           <button
-            onClick={() => onUseAgain(item.original_prompt)}
+            onClick={() => onUseAgain(item.raw_prompt)}
             className="text-xs text-kira hover:underline font-medium"
           >
             Use again →

@@ -6,14 +6,14 @@
 # Tables used:
 #   requests        → Stores raw_prompt → improved_prompt pairs (for /refine and /chat)
 #   agent_logs      → Stores each swarm agent's output, linked to request_id
-#   prompt_history  → Historical prompts for /history endpoint retrieval
+#   requests        → Historical prompts and swarm metadata (Primary source for history)
 #   conversations   → Full chat turns with message_type (conversation/new_prompt/followup)
 #
 # Functions:
 #   save_request()           → Insert to requests, returns request_id for agent_logs
 #   save_agent_logs()        → Bulk insert agent outputs (intent, context, domain)
-#   save_history()           → Insert to prompt_history (both /refine and /chat call this)
-#   get_history()            → Retrieve from prompt_history, optional session_id filter
+#   save_request()           → Insert to requests table (both /refine and /chat call this)
+#   get_history()            → Retrieve from requests table, optional session_id filter
 #   save_conversation()      → Insert single chat turn (user or assistant)
 #   get_conversation_history → Retrieve last N turns, reversed so oldest is first
 #
@@ -51,36 +51,79 @@ def get_client() -> Client:
     return create_client(url, key)
 
 
-def save_request(raw_prompt: str, improved_prompt: str, session_id: str = None, user_id: str = None) -> str | None:
+def save_request(
+    raw_prompt: str,
+    improved_prompt: str,
+    session_id: str = None,
+    user_id: str = None,
+    quality_score: dict = None,
+    domain_analysis: dict = None,
+    agents_used: list = None,
+    agents_skipped: list = None,
+    prompt_diff: list = None,
+    change_summary: str = "Automatic refinement"
+) -> Optional[str]:
     """
-    Saves request to requests table.
-    Returns request_id for agent_logs to reference.
-    Returns None if save fails — caller handles gracefully.
+    Saves to requests table with Phase 3 Auto-Versioning.
     
-    Args:
-        raw_prompt: User's original prompt
-        improved_prompt: Engineered prompt from swarm
-        session_id: Conversation session identifier
-        user_id: User UUID from JWT (for RLS)
+    Logic:
+    - If session_id exists, find latest version in that session.
+    - If found, increment version_number and link to same version_id.
+    - If new session, start version 1 with new version_id.
     """
     try:
         db = get_client()
         request_id = str(uuid.uuid4())
+        
+        version_id = str(uuid.uuid4())
+        version_number = 1
+        parent_version_id = None
+        
+        # ═══ Phase 3: Auto-Versioning Logic ═══
+        if session_id and user_id:
+            logger.debug(f"[db] checking for previous versions in session {session_id[:8]}...")
+            latest = db.table("requests")\
+                .select("id, version_id, version_number")\
+                .eq("session_id", session_id)\
+                .eq("user_id", user_id)\
+                .order("version_number", desc=True)\
+                .limit(1)\
+                .execute()
+            
+            if latest.data:
+                # Group with existing version group
+                version_id = latest.data[0]["version_id"]
+                version_number = latest.data[0]["version_number"] + 1
+                parent_version_id = latest.data[0]["id"]
+                
+                # Mark previous as not production
+                db.table("requests")\
+                    .update({"is_production": False})\
+                    .eq("id", parent_version_id)\
+                    .execute()
 
         insert_data = {
             "id": request_id,
+            "user_id": user_id,
             "raw_prompt": raw_prompt,
             "improved_prompt": improved_prompt,
-            "session_id": session_id or "default"
+            "session_id": session_id or "00000000-0000-0000-0000-000000000000",
+            "quality_score": quality_score,
+            "domain_analysis": domain_analysis,
+            "agents_used": agents_used,
+            "agents_skipped": agents_skipped,
+            "prompt_diff": prompt_diff,
+            # Version Control Columns
+            "version_id": version_id,
+            "version_number": version_number,
+            "parent_version_id": parent_version_id,
+            "change_summary": change_summary,
+            "is_production": True
         }
-        
-        # Add user_id if provided (for RLS)
-        if user_id:
-            insert_data["user_id"] = user_id
 
         db.table("requests").insert(insert_data).execute()
 
-        logger.info(f"[db] saved request {request_id[:8]}... user_id={user_id[:8] if user_id else 'None'}")
+        logger.info(f"[db] saved request {request_id[:8]}... (v{version_number}) version_id={version_id[:8]}...")
         return request_id
 
     except Exception as e:
@@ -112,67 +155,36 @@ def save_agent_logs(request_id: str, agent_outputs: dict) -> None:
         logger.error(f"[db] save_agent_logs failed: {e}")
 
 
-def save_history(raw_prompt: str, improved_prompt: str, session_id: str = None, user_id: str = None) -> None:
-    """
-    Saves to prompt_history for future memory/chat features.
-    
-    Args:
-        raw_prompt: User's original prompt
-        improved_prompt: Engineered prompt from swarm
-        session_id: Conversation session identifier
-        user_id: User UUID from JWT (for RLS)
-    """
-    try:
-        db = get_client()
-
-        insert_data = {
-            "session_id": session_id or "default",
-            "raw_prompt": raw_prompt,
-            "improved_prompt": improved_prompt
-        }
-        
-        if user_id:
-            insert_data["user_id"] = user_id
-
-        db.table("prompt_history").insert(insert_data).execute()
-
-        logger.info(f"[db] saved to prompt_history for session '{session_id}' user_id={user_id[:8] if user_id else 'None'}")
-
-    except Exception as e:
-        logger.error(f"[db] save_history failed: {e}")
 
 
 def get_history(session_id: str = None, limit: int = 10, user_id: str = None) -> list:
     """
-    Retrieves prompt history ordered by most recent first.
-    Optionally filtered by session_id and user_id.
-    
-    Args:
-        session_id: Filter by session (optional)
-        limit: Max results (default 10)
-        user_id: Filter by user (for RLS)
+    Retrieves history from 'requests' table (Phase 2 standard).
+    Ordered by most recent first.
     """
     try:
         db = get_client()
 
-        query = db.table("prompt_history")\
+        query = db.table("requests")\
             .select("*")\
             .order("created_at", desc=True)\
             .limit(limit)
 
         if user_id:
             query = query.eq("user_id", user_id)
-        elif session_id:
+        
+        if session_id:
             query = query.eq("session_id", session_id)
 
         result = query.execute()
-        logger.info(f"[db] fetched {len(result.data)} history rows")
+        logger.info(f"[db] fetched {len(result.data)} history rows from requests")
         return result.data
 
     except Exception as e:
         logger.error(f"[db] get_history failed: {e}")
         return []
-    
+
+
 def save_conversation(
     session_id: str,
     role: str,
@@ -250,6 +262,169 @@ def get_conversation_history(session_id: str, limit: int = 6) -> list:
     except Exception as e:
         logger.error(f"[db] get_conversation_history failed: {e}")
         return []
+
+
+
+# ═══ Chat Session Functions (Phase 1) ════════════════
+
+def create_chat_session(user_id: str, session_id: str, title: str = "New Chat") -> Optional[dict]:
+    """
+    Inserts a new session into chat_sessions.
+    
+    Parameters
+    ----------
+    user_id : str
+        User UUID from JWT.
+    session_id : str
+        UUID for the new session.
+    title : str, optional
+        Initial title for the chat, by default "New Chat".
+        
+    Returns
+    -------
+    Optional[dict]
+        The created session object if successful, None otherwise.
+    """
+    try:
+        db = get_client()
+        now = datetime.now(timezone.utc).isoformat()
+        result = db.table("chat_sessions").insert({
+            "id": session_id,
+            "user_id": user_id,
+            "title": title,
+            "created_at": now,
+            "last_activity": now
+        }).execute()
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(f"[db] create_chat_session failed: {e}")
+        return None
+
+def get_chat_sessions(user_id: str, limit: int = 20) -> list:
+    """
+    Fetches user's active (non-deleted) sessions for the Sidebar.
+
+    Parameters
+    ----------
+    user_id : str
+        User UUID from JWT.
+    limit : int, optional
+        Maximum number of sessions to return, by default 20.
+
+    Returns
+    -------
+    list
+        List of session dicts found in chat_sessions.
+    """
+    try:
+        db = get_client()
+        logger.info(f"[db] fetching sessions for user_id={user_id[:8] if user_id else 'None'}...")
+        
+        # Build query - use is_ for null check
+        query = db.table("chat_sessions")\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .is_("deleted_at", None)  # Use None instead of "null"
+        
+        result = query.order("is_pinned", desc=True)\
+            .order("last_activity", desc=True)\
+            .limit(limit)\
+            .execute()
+        
+        logger.info(f"[db] fetched {len(result.data) if result.data else 0} sessions")
+        return result.data or []
+    except Exception as e:
+        logger.error(f"[db] get_chat_sessions failed: {e}", exc_info=True)
+        raise  # Re-raise so API endpoint sees the error
+
+def get_deleted_sessions(user_id: str, limit: int = 20) -> list:
+    """
+    Fetches user's soft-deleted sessions for the Recycle Bin.
+    """
+    try:
+        db = get_client()
+        result = db.table("chat_sessions")\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .not_.is_("deleted_at", "null")\
+            .order("deleted_at", desc=True)\
+            .limit(limit)\
+            .execute()
+        return result.data or []
+    except Exception as e:
+        logger.error(f"[db] get_deleted_sessions failed: {e}")
+        return []
+
+def delete_chat_session(session_id: str, user_id: str) -> bool:
+    """
+    Soft-deletes a session by setting deleted_at.
+    """
+    try:
+        db = get_client()
+        now = datetime.now(timezone.utc).isoformat()
+        
+        logger.info(f"[db] soft-deleting session {session_id[:8]}... for user {user_id[:8]}...")
+        
+        result = db.table("chat_sessions")\
+            .update({"deleted_at": now})\
+            .eq("id", session_id)\
+            .eq("user_id", user_id)\
+            .execute()
+        
+        # Check if any rows were actually updated
+        if not result.data or len(result.data) == 0:
+            logger.warning(f"[db] no session found to delete: {session_id[:8]}...")
+            return False
+            
+        logger.info(f"[db] session {session_id[:8]}... soft-deleted successfully")
+        return True
+    except Exception as e:
+        logger.error(f"[db] delete_chat_session failed: {e}", exc_info=True)
+        return False
+
+def restore_chat_session(session_id: str, user_id: str) -> bool:
+    """
+    Restores a soft-deleted session.
+    """
+    try:
+        db = get_client()
+        db.table("chat_sessions")\
+            .update({"deleted_at": None})\
+            .eq("id", session_id)\
+            .eq("user_id", user_id)\
+            .execute()
+        return True
+    except Exception as e:
+        logger.error(f"[db] restore_chat_session failed: {e}")
+        return False
+
+def purge_chat_session(session_id: str, user_id: str) -> bool:
+    """
+    Permanently deletes a session and its history.
+    """
+    try:
+        db = get_client()
+        db.table("chat_sessions").delete().eq("id", session_id).eq("user_id", user_id).execute()
+        return True
+    except Exception as e:
+        logger.error(f"[db] purge_chat_session failed: {e}")
+        return False
+
+def update_chat_session(session_id: str, user_id: str, updates: dict) -> Optional[dict]:
+    """
+    Updates session metadata (title, is_pinned, is_favorite).
+    """
+    try:
+        db = get_client()
+        result = db.table("chat_sessions")\
+            .update(updates)\
+            .eq("id", session_id)\
+            .eq("user_id", user_id)\
+            .execute()
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(f"[db] update_chat_session failed: {e}")
+        return None
 
 
 # ═══ User Profile Functions ══════════════════════
@@ -453,15 +628,15 @@ def update_session_activity(user_id: str, session_id: str) -> bool:
         now = datetime.now(timezone.utc).isoformat()
 
         # Try to update existing session
-        result = db.table("user_sessions").update({
+        result = db.table("chat_sessions").update({
             "last_activity": now
-        }).eq("user_id", user_id).eq("session_id", session_id).execute()
+        }).eq("user_id", user_id).eq("id", session_id).execute()
 
         # If no rows updated, insert new session
         if not result.data or len(result.data) == 0:
-            db.table("user_sessions").insert({
+            db.table("chat_sessions").insert({
                 "user_id": user_id,
-                "session_id": session_id,
+                "id": session_id,
                 "last_activity": now
             }).execute()
 
@@ -491,8 +666,8 @@ def get_last_activity(user_id: str, session_id: str) -> Optional[datetime]:
     """
     try:
         db = get_client()
-        result = db.table("user_sessions").select("last_activity").eq(
-            "user_id", user_id).eq("session_id", session_id).execute()
+        result = db.table("chat_sessions").select("last_activity").eq(
+            "user_id", user_id).eq("id", session_id).execute()
 
         if result.data and len(result.data) > 0:
             last_activity_str = result.data[0].get("last_activity")

@@ -4,7 +4,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { apiHistory } from '@/lib/api'
+import { apiHistory, apiHistorySearch } from '@/lib/api'
 import type { HistoryItem } from '@/lib/api'
 
 interface UseHistoryProps {
@@ -14,25 +14,59 @@ interface UseHistoryProps {
 export function useHistory({ token }: UseHistoryProps) {
   const [items, setItems] = useState<HistoryItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isSearching, setIsSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [useRag, setUseRag] = useState(true)
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [domains, setDomains] = useState<string[]>([])
+  const [minQuality, setMinQuality] = useState(0)
+  const [dateFrom, setDateFrom] = useState<string | undefined>()
+  const [dateTo, setDateTo] = useState<string | undefined>()
 
+  // Debounce the search query
   useEffect(() => {
-    async function loadHistory() {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
+  // Load history or search results
+  useEffect(() => {
+    if (!token) return
+
+    async function loadData() {
       try {
-        const history = await apiHistory(token)
-        // Ensure history is an array
-        setItems(Array.isArray(history) ? history : [])
+        if (debouncedQuery.trim() || domains.length > 0 || minQuality > 0 || dateFrom || dateTo) {
+          setIsSearching(true)
+          const results = await apiHistorySearch(token, {
+            query: debouncedQuery,
+            use_rag: useRag,
+            domains: domains.length > 0 ? domains : undefined,
+            min_quality: minQuality,
+            date_from: dateFrom,
+            date_to: dateTo,
+            limit: 20
+          })
+          setItems(Array.isArray(results) ? results : [])
+        } else {
+          // If no filters, load normal history
+          if (items.length === 0) setIsLoading(true)
+          const history = await apiHistory(token)
+          setItems(Array.isArray(history) ? history : [])
+        }
       } catch (err) {
         setError('Failed to load history')
-        setItems([]) // Set empty array on error
+        setItems([])
       } finally {
         setIsLoading(false)
+        setIsSearching(false)
       }
     }
 
-    loadHistory()
-  }, [token])
+    loadData()
+  }, [token, debouncedQuery, useRag, domains, minQuality, dateFrom, dateTo])
 
   // Group by date - safe reduce with empty array fallback
   const groupedByDate = (items || []).reduce((acc, item) => {
@@ -49,22 +83,23 @@ export function useHistory({ token }: UseHistoryProps) {
     return acc
   }, {} as Record<string, HistoryItem[]>)
 
-  // Client-side search
-  const filteredItems = items.filter((item) => {
-    const query = searchQuery.toLowerCase()
-    return (
-      (item.original_prompt && item.original_prompt.toLowerCase().includes(query)) ||
-      (item.improved_prompt && item.improved_prompt.toLowerCase().includes(query))
-    )
-  })
-
   return {
     items,
     isLoading,
+    isSearching,
     error,
     groupedByDate,
     searchQuery,
     setSearchQuery,
-    filteredItems,
+    useRag,
+    setUseRag,
+    domains,
+    setDomains,
+    minQuality,
+    setMinQuality,
+    dateFrom,
+    setDateFrom,
+    dateTo,
+    setDateTo,
   }
 }

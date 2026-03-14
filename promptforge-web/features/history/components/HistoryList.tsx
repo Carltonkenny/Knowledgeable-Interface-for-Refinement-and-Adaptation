@@ -1,7 +1,7 @@
 // features/history/components/HistoryList.tsx
 // All sessions, grouped by date
 
-import { Input } from '@/components/ui'
+
 import HistoryCard from './HistoryCard'
 import type { HistoryItem } from '@/lib/api'
 
@@ -44,15 +44,7 @@ export default function HistoryList({
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
-      {/* Search */}
-      <div className="mb-6">
-        <Input
-          type="text"
-          placeholder="Search your prompts..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-      </div>
+
 
       {/* Grouped by date */}
       {Object.entries(groupedByDate).map(([date, dateItems]) => (

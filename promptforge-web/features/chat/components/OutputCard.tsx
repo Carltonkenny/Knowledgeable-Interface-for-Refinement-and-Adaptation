@@ -5,6 +5,8 @@
 
 import { useState } from 'react'
 import { Chip } from '@/components/ui'
+import { History as HistoryIcon } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import DiffView from './DiffView'
 import QualityScores from './QualityScores'
 import type { ChatResult } from '@/lib/api'
@@ -96,14 +98,29 @@ export default function OutputCard({ promptId, sessionId, result }: OutputCardPr
           {/* Quality scores */}
           {result.quality_score && <QualityScores scores={result.quality_score} />}
 
-          {/* Actions */}
-          <div className="flex gap-2 mt-4 pt-4 border-t border-border-subtle">
+          <div className="flex gap-4 mt-4 pt-4 border-t border-border-subtle">
             <button
               onClick={handleCopy}
-              className="text-xs text-text-dim hover:text-text-bright font-mono"
+              className="text-xs text-text-dim hover:text-text-bright font-mono flex items-center gap-1.5"
             >
+              <div className={cn("w-1.5 h-1.5 rounded-full", isCopied ? "bg-green-400" : "bg-text-dim")} />
               {isCopied ? 'Copied!' : 'Copy'}
             </button>
+
+            {result.version_id && (
+              <button
+                onClick={() => {
+                  const event = new CustomEvent('open-version-history', { 
+                    detail: { versionId: result.version_id, vNumber: result.version_number } 
+                  })
+                  window.dispatchEvent(event)
+                }}
+                className="text-xs text-kira hover:text-kira-bright font-mono flex items-center gap-1.5"
+              >
+                <HistoryIcon size={14} />
+                History
+              </button>
+            )}
           </div>
         </div>
       </div>

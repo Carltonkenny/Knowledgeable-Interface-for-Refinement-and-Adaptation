@@ -45,3 +45,6 @@ Thumbs.db
 
 # Local environment (optional - comment out to include .env in build)
 # .env
+
+# Frontend (Not needed for backend Docker)
+promptforge-web/

@@ -18,10 +18,15 @@ interface ChatContainerProps {
   token: string
   apiUrl: string
   sessionCount?: number
+  sessionId: string
 }
 
-export default function ChatContainer({ token, apiUrl, sessionCount = 0 }: ChatContainerProps) {
-  const sessionId = useSessionId()
+export default function ChatContainer({ 
+  token, 
+  apiUrl, 
+  sessionCount = 0,
+  sessionId 
+}: ChatContainerProps) {
 
   // Determine persona dot color
   let personaDotColor: 'cold' | 'warm' | 'tuned' = 'cold'

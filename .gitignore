@@ -85,3 +85,10 @@ htmlcov/
 # Docker
 # ─────────────────────────────────────────────
 docker-compose.override.yml
+
+# ─────────────────────────────────────────────
+# Node / Next.js Exclusions
+# ─────────────────────────────────────────────
+*.tsbuildinfo
+$null
+promptforge-web/$null

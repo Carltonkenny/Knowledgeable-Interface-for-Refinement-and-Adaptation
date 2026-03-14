@@ -212,3 +212,31 @@ def format_history(history: list, max_turns: int = 4) -> str:
         f"{t['role'].upper()}: {t['message'][:200]}"
         for t in history[-max_turns:]
     ])
+
+
+def calculate_overall_quality(quality_score: dict) -> float:
+    """
+    Calculates the overall quality score from specificity, clarity, and actionability.
+    Standardized helper used by search and analytics to ensure consistency.
+    
+    Args:
+        quality_score: Dict containing 'specificity', 'clarity', 'actionability' (1-5)
+                       and optionally an 'overall' field.
+                       
+    Returns:
+        float: Calculated or retrieved overall score (0-5).
+    """
+    if not quality_score:
+        return 0.0
+        
+    if 'overall' in quality_score:
+        return float(quality_score['overall'])
+        
+    # Dynamic fallback calculation
+    metrics = ['specificity', 'clarity', 'actionability']
+    scores = [quality_score.get(m, 0) for m in metrics]
+    
+    if not any(scores):
+        return 0.0
+        
+    return round(sum(scores) / len(scores), 1)

@@ -42,7 +42,8 @@ Always respond with ONLY this JSON:
   "quality_score": {
     "specificity": 1-5,
     "clarity": 1-5,
-    "actionability": 1-5
+    "actionability": 1-5,
+    "overall": 1-5
   },
   "changes_made": ["exactly what you changed and why"]
 }"""
@@ -237,9 +238,14 @@ Rewrite the prompt with substantially more detail and specificity."""
         # Generate diff between original and improved
         prompt_diff = generate_diff(prompt, improved)
 
+        # Calculate overall score if missing or 0
+        qs = result.get("quality_score", {"specificity": 3, "clarity": 3, "actionability": 3})
+        if not qs.get("overall"):
+            qs["overall"] = round((qs.get("specificity", 3) + qs.get("clarity", 3) + qs.get("actionability", 3)) / 3, 1)
+
         return {
             "improved_prompt": improved,
-            "quality_score": result.get("quality_score", {"specificity": 3, "clarity": 3, "actionability": 3}),
+            "quality_score": qs,
             "changes_made": result.get("changes_made", ["Improved prompt structure"]),
             "prompt_diff": prompt_diff,
             "was_skipped": False,

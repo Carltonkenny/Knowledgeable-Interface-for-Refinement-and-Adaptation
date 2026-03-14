@@ -8,6 +8,8 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSession } from '@/lib/supabase'
 import { ROUTES } from '@/lib/constants'
+import ChatSidebar from '@/features/chat/components/ChatSidebar'
+import VersionHistoryOverlay from '@/features/history/components/VersionHistoryOverlay'
 
 interface AppLayoutProps {
   children: React.ReactNode
@@ -15,24 +17,26 @@ interface AppLayoutProps {
 
 export default function AppLayout({ children }: AppLayoutProps) {
   const [loading, setLoading] = useState(true)
+  const [token, setToken] = useState<string | null>(null)
   const router = useRouter()
 
   useEffect(() => {
     async function checkSession() {
-      const session = await getSession()
+      const { data: { session } } = await (await import('@/lib/supabase')).getSupabaseClient().auth.getSession()
       
       if (!session) {
         router.push(ROUTES.LOGIN)
         return
       }
 
+      setToken(session.access_token)
       setLoading(false)
     }
 
     checkSession()
   }, [router])
 
-  if (loading) {
+  if (loading || !token) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bg">
         <div className="w-12 h-12 rounded-lg border border-kira bg-[var(--kira-dim)] flex items-center justify-center animate-pulse">
@@ -46,39 +50,54 @@ export default function AppLayout({ children }: AppLayoutProps) {
     <div className="min-h-screen flex flex-col bg-bg">
       {/* Top nav */}
       <nav className="border-b border-border-subtle bg-bg/90 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-          {/* Logo */}
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg border border-kira bg-[var(--kira-dim)] flex items-center justify-center">
-              <span className="text-kira font-bold font-mono">⬡</span>
+        <div className="mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            {/* Logo */}
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg border border-kira bg-[var(--kira-dim)] flex items-center justify-center">
+                <span className="text-kira font-bold font-mono">⬡</span>
+              </div>
+              <span className="font-bold text-text-bright tracking-tight">PromptForge</span>
             </div>
-            <span className="font-bold text-text-bright">PromptForge</span>
+
+            {/* Nav links */}
+            <div className="hidden md:flex items-center gap-1">
+              <a href="/app" className="px-3 py-1.5 rounded-md text-sm text-text-bright bg-layer2">
+                Chat
+              </a>
+              <a href="/app/history" className="px-3 py-1.5 rounded-md text-sm text-text-dim hover:text-text-bright transition-colors">
+                History
+              </a>
+              <a href="/app/profile" className="px-3 py-1.5 rounded-md text-sm text-text-dim hover:text-text-bright transition-colors">
+                Profile
+              </a>
+            </div>
           </div>
 
-          {/* Nav links */}
-          <div className="flex items-center gap-1">
-            <a href="/app" className="px-3 py-1.5 rounded-md text-sm text-text-bright bg-layer2">
-              Chat
-            </a>
-            <a href="/app/history" className="px-3 py-1.5 rounded-md text-sm text-text-dim hover:text-text-bright">
-              History
-            </a>
-            <a href="/app/profile" className="px-3 py-1.5 rounded-md text-sm text-text-dim hover:text-text-bright">
-              Profile
-            </a>
-          </div>
-
-          {/* Avatar */}
-          <div className="w-8 h-8 rounded-full bg-kira flex items-center justify-center text-white text-sm font-bold">
-            U
+          <div className="flex items-center gap-4">
+            <div className="px-2 py-1 rounded border border-border-subtle bg-layer1 text-[10px] text-text-dim font-mono uppercase tracking-widest hidden sm:block">
+              Ver 2.0.0-rc1
+            </div>
+            {/* Avatar */}
+            <div className="w-8 h-8 rounded-full bg-kira flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-kira/20 cursor-pointer hover:scale-105 transition-transform">
+              U
+            </div>
           </div>
         </div>
       </nav>
 
-      {/* Content */}
-      <main className="flex-1">
-        {children}
-      </main>
+      <div className="flex-1 flex overflow-hidden">
+        {/* Sidebar */}
+        <ChatSidebar token={token} />
+
+        {/* Content */}
+        <main className="flex-1 relative overflow-y-auto custom-scrollbar">
+          {children}
+        </main>
+      </div>
+
+      {/* Version Control Overlay */}
+      <VersionHistoryOverlay token={token} />
     </div>
   )
 }
