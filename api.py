@@ -241,6 +241,41 @@ def _run_swarm_with_clarification(
             raise HTTPException(status_code=504, detail="Request timed out — please retry")
 
 
+def _compute_diff(original: str, improved: str) -> list[dict[str, str]]:
+    """
+    Compute word-level diff between original and improved prompts.
+    Returns list of {type: 'add'|'remove'|'keep', text: str} items
+    for the frontend DiffView component.
+
+    Args:
+        original: User's original prompt text
+        improved: Kira's engineered prompt text
+
+    Returns:
+        List of diff items with type and text fields
+    """
+    import difflib
+
+    original_words = original.split()
+    improved_words = improved.split()
+
+    diff_items: list[dict[str, str]] = []
+    matcher = difflib.SequenceMatcher(None, original_words, improved_words)
+
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == 'equal':
+            diff_items.append({"type": "keep", "text": " ".join(original_words[i1:i2]) + " "})
+        elif tag == 'replace':
+            diff_items.append({"type": "remove", "text": " ".join(original_words[i1:i2]) + " "})
+            diff_items.append({"type": "add", "text": " ".join(improved_words[j1:j2]) + " "})
+        elif tag == 'delete':
+            diff_items.append({"type": "remove", "text": " ".join(original_words[i1:i2]) + " "})
+        elif tag == 'insert':
+            diff_items.append({"type": "add", "text": " ".join(improved_words[j1:j2]) + " "})
+
+    return diff_items
+
+
 def _sse(event: str, data: dict) -> str:
     """
     Formats a Server-Sent Event string.
@@ -619,17 +654,20 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
 
             # Send result
             improved = final_state.get("improved_prompt", "")
+            # Compute word-level diff for frontend DiffView component
+            diff = _compute_diff(req.message, improved) if improved else []
             yield _sse("kira_message", {"message": reply, "complete": True})
             yield _sse("result", {
-                "type": "new_prompt",
+                "type": "prompt_improved",
                 "reply": reply,
                 "improved_prompt": improved,
-                "diff": final_state.get("prompt_diff", []),  # Empty for unified handler (no before/after)
-                "quality_score": final_state.get("quality_score", {  # Default scores if not available
-                    "specificity": 3,
-                    "clarity": 3,
-                    "actionability": 3
-                }),
+                "diff": diff,
+                "quality_score": final_state.get("quality_score") or {
+                    "specificity": 4,
+                    "clarity": 4,
+                    "actionability": 4
+                },
+                "kira_message": reply,
                 "memories_applied": final_state.get("memories_applied", 0),
                 "latency_ms": final_state.get("latency_ms", 0),
                 "agents_run": final_state.get("agents_run", [])

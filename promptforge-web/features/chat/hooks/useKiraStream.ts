@@ -57,6 +57,8 @@ export function useKiraStream({
   // Store last message for retry
   const lastMessageRef = useRef<{ message: string; attachment?: File } | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  // Accumulator for char-by-char SSE kira_message events
+  const kiraStreamBufferRef = useRef<string>('')
 
   // Rate limit countdown
   useEffect(() => {
@@ -88,6 +90,7 @@ export function useKiraStream({
       // Reset state
       setError(null)
       setClarificationPending(false)
+      kiraStreamBufferRef.current = ''
 
       // Add user message
       const userMessage: ChatMessage = {
@@ -134,12 +137,27 @@ export function useKiraStream({
             }))
           },
           onKiraMessage: (kiraMessage: string, complete: boolean) => {
+            // Backend may stream char-by-char or send full message.
+            // If complete=true with empty string, it's a completion signal — use buffer as-is.
+            // Otherwise accumulate into buffer for smooth word-by-word display.
+            if (complete && kiraMessage === '') {
+              // Completion signal — just mark streaming done, keep buffered text
+            } else if (kiraMessage.length <= 2) {
+              // Char-by-char streaming — accumulate
+              kiraStreamBufferRef.current += kiraMessage
+            } else {
+              // Full message received at once — use directly
+              kiraStreamBufferRef.current = kiraMessage
+            }
+
+            const displayText = kiraStreamBufferRef.current
+
             setMessages((prev) => {
-              const existing = prev.find((m) => m.type === 'kira')
-              if (existing) {
-                return prev.map((m) =>
-                  m.type === 'kira'
-                    ? { ...m, content: kiraMessage, isStreaming: !complete }
+              const existingIdx = prev.findIndex((m) => m.type === 'kira' && m.isStreaming !== false)
+              if (existingIdx >= 0) {
+                return prev.map((m, i) =>
+                  i === existingIdx
+                    ? { ...m, content: displayText, isStreaming: !complete }
                     : m
                 )
               }
@@ -148,7 +166,7 @@ export function useKiraStream({
                 {
                   id: crypto.randomUUID?.() ?? Date.now().toString(),
                   type: 'kira',
-                  content: kiraMessage,
+                  content: displayText,
                   isStreaming: !complete,
                 },
               ]
@@ -215,6 +233,7 @@ export function useKiraStream({
                 id: crypto.randomUUID?.() ?? Date.now().toString(),
                 type: 'output',
                 result: safeResult,
+                sessionId,
               },
             ])
 

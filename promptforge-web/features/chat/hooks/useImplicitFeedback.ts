@@ -18,6 +18,7 @@
  */
 
 import { useCallback } from 'react';
+import { ENV } from '@/lib/env';
 
 interface FeedbackPayload {
   session_id: string;
@@ -78,7 +79,7 @@ export function useImplicitFeedback(
    */
   const sendFeedback = useCallback(async (payload: FeedbackPayload) => {
     try {
-      const response = await fetch('http://localhost:8000/feedback', {
+      const response = await fetch(`${ENV.API_URL}/feedback`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
