@@ -652,11 +652,27 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
                 req.file_type
             )
 
+            # Find previous engineered prompt from history for accurate diffing
+            # history is ordered oldest first, so we search backwards
+            previous_prompt = ""
+            for turn in reversed(history):
+                if turn.get("improved_prompt"):
+                    previous_prompt = turn["improved_prompt"]
+                    break
+
             # Send result
             improved = final_state.get("improved_prompt", "")
-            # Compute word-level diff for frontend DiffView component
-            diff = _compute_diff(req.message, improved) if improved else []
-            yield _sse("kira_message", {"message": reply, "complete": True})
+            # Compute word-level diff against previous *engineered* prompt (not user instruction)
+            diff = _compute_diff(previous_prompt, improved) if previous_prompt and improved else []
+            
+            # Stream the generated reply text character by character for organic UX
+            for i, char in enumerate(reply):
+                yield _sse("kira_message", {"message": char, "complete": False})
+                if i % 10 == 0:
+                    await asyncio.sleep(0.01)
+                    
+            yield _sse("kira_message", {"message": "", "complete": True})  # Signal completion
+            
             yield _sse("result", {
                 "type": "prompt_improved",
                 "reply": reply,
