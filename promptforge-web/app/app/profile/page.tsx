@@ -12,6 +12,7 @@ import DomainNiches from '@/features/profile/components/DomainNiches'
 import LangMemPreview from '@/features/profile/components/LangMemPreview'
 import QualityTrend from '@/features/profile/components/QualityTrend'
 import UsageStats from '@/features/profile/components/UsageStats'
+import DataExport from '@/features/profile/components/DataExport'
 import DangerZone from '@/features/profile/components/DangerZone'
 
 export default function ProfilePage() {
@@ -94,20 +95,26 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Right Column (Analytics & Danger) */}
+        {/* Right Column (Analytics, Export & Danger) */}
         <div className="lg:col-span-2 space-y-6">
-          <UsageStats 
-            stats={profile.stats} 
-            isLoading={profile.isInitializing} 
+          <UsageStats
+            stats={profile.stats}
+            isLoading={profile.isInitializing}
           />
-          <QualityTrend 
-            trend={profile.trend} 
-            isLoading={profile.isInitializing} 
+          <QualityTrend
+            trend={profile.trend}
+            isLoading={profile.isInitializing}
           />
-          
+
+          {/* Data Export (GDPR right - accessible) */}
+          <DataExport
+            onExport={profile.exportData}
+            isAuthorizing={profile.isInitializing}
+          />
+
+          {/* Danger Zone (delete only - strict warnings) */}
           <div className="pt-6 border-t border-border-subtle/50 mt-6">
-            <DangerZone 
-              onExport={profile.exportData}
+            <DangerZone
               onDelete={handleDeleteAccount}
               isAuthorizing={profile.isInitializing}
             />

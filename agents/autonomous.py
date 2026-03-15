@@ -731,11 +731,20 @@ def kira_unified_handler(
         
         # Log success with latency
         latency_ms = int((time.time() - start_time) * 1000)
+
+        # Query LangMem for user's relevant memories (RULES.md: Memory system integration)
+        from memory.langmem import query_langmem
+        
+        langmem_context = query_langmem(
+            user_id=user_profile.get("user_id", ""),
+            query=message,
+            top_k=5
+        )
         
         # Add memories_applied count
         result["memories_applied"] = len(langmem_context) if langmem_context else 0
         result["latency_ms"] = latency_ms
-        
+
         logger.info(f"[kira_unified] intent={result['intent']} latency={latency_ms}ms memories={result['memories_applied']}")
 
         return result

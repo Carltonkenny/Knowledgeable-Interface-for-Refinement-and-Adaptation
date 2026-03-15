@@ -1,41 +1,17 @@
 'use client'
 
 import { useState } from 'react'
-import { AlertTriangle, Download, Trash2, Check, X, Loader2 } from 'lucide-react'
-import type { ExportData } from '@/lib/api'
+import { AlertTriangle, Trash2, Check, X, Loader2 } from 'lucide-react'
 
 interface DangerZoneProps {
-  onExport: () => Promise<ExportData | null>
   onDelete: () => Promise<boolean>
   isAuthorizing: boolean
 }
 
-export default function DangerZone({ onExport, onDelete, isAuthorizing }: DangerZoneProps) {
-  const [isExporting, setIsExporting] = useState(false)
+export default function DangerZone({ onDelete, isAuthorizing }: DangerZoneProps) {
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
   const [deleteConfirmationText, setDeleteConfirmationText] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
-
-  const handleExport = async () => {
-    setIsExporting(true)
-    try {
-      const data = await onExport()
-      if (data) {
-        // Create downloadable JSON file
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `promptforge_export_${new Date().toISOString().split('T')[0]}.json`
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(url)
-      }
-    } finally {
-      setIsExporting(false)
-    }
-  }
 
   const handleDelete = async () => {
     if (deleteConfirmationText !== 'DELETE') return
@@ -43,7 +19,7 @@ export default function DangerZone({ onExport, onDelete, isAuthorizing }: Danger
     try {
       const success = await onDelete()
       if (success) {
-        // Let the parent layout handle the redirect or logout
+        // Parent component handles redirect/logout
       }
     } finally {
       setIsDeleting(false)
@@ -56,76 +32,112 @@ export default function DangerZone({ onExport, onDelete, isAuthorizing }: Danger
         <AlertTriangle size={18} className="text-intent" />
         <h3 className="font-semibold text-intent">Danger Zone</h3>
       </div>
-      
-      <div className="p-5 flex flex-col gap-5">
-        
-        {/* Export Data */}
-        <div className="flex items-center justify-between pb-5 border-b border-border-subtle">
-          <div>
-            <h4 className="text-sm font-medium text-text-bright mb-1">Export Data</h4>
-            <p className="text-xs text-text-dim max-w-sm">
-              Download a master JSON file containing all your requests, chat history, domain niches, and profile data to comply with GDPR portability rights.
-            </p>
-          </div>
-          <button
-            onClick={handleExport}
-            disabled={isAuthorizing || isExporting}
-            className="flex items-center gap-2 px-4 py-2 bg-layer1 border border-border-subtle hover:border-primary/50 text-text-muted hover:text-primary transition-colors rounded-lg text-sm font-medium disabled:opacity-50"
-          >
-            {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-            {isExporting ? 'Packaging...' : 'Export JSON'}
-          </button>
-        </div>
 
+      <div className="p-5">
         {/* Delete Account */}
         <div className="flex items-start justify-between">
           <div>
-            <h4 className="text-sm font-medium text-text-bright mb-1">Delete Account</h4>
+            <h4 className="text-sm font-medium text-text-bright mb-1">
+              Delete Account
+            </h4>
             <p className="text-xs text-text-dim max-w-sm mb-3">
-              Permanently destroy your LangMem context graph, historical prompts, domain tracking, and digital identity. This action cannot be undone.
+              Permanently destroy your LangMem context graph, historical prompts, 
+              domain tracking, and digital identity. This action <strong className="text-intent">CANNOT be undone</strong>.
             </p>
-            
+
+            {/* What will be deleted */}
+            <div className="mb-4 p-3 bg-layer1 border border-intent/20 rounded-lg">
+              <p className="text-[10px] font-mono text-intent mb-2">WILL BE PERMANENTLY DELETED:</p>
+              <div className="flex flex-wrap gap-1.5">
+                <span className="px-2 py-0.5 bg-intent/10 rounded text-[10px] text-intent border border-intent/20">
+                  All Prompts
+                </span>
+                <span className="px-2 py-0.5 bg-intent/10 rounded text-[10px] text-intent border border-intent/20">
+                  Chat History
+                </span>
+                <span className="px-2 py-0.5 bg-intent/10 rounded text-[10px] text-intent border border-intent/20">
+                  LangMem Context
+                </span>
+                <span className="px-2 py-0.5 bg-intent/10 rounded text-[10px] text-intent border border-intent/20">
+                  Domain Stats
+                </span>
+                <span className="px-2 py-0.5 bg-intent/10 rounded text-[10px] text-intent border border-intent/20">
+                  Profile Data
+                </span>
+              </div>
+            </div>
+
+            {/* Confirmation step 2: Type DELETE */}
             {isConfirmingDelete && (
-              <div className="bg-layer1 border border-intent/30 p-3 rounded-lg flex items-center gap-3 w-fit animate-fade-in">
-                <input
-                  type="text"
-                  placeholder="Type DELETE"
-                  value={deleteConfirmationText}
-                  onChange={(e) => setDeleteConfirmationText(e.target.value)}
-                  className="bg-layer2 border border-border-subtle text-text-bright text-xs rounded px-2 py-1.5 focus:outline-none focus:border-intent/50 w-28 uppercase"
-                  autoFocus
-                />
-                <button
-                  onClick={handleDelete}
-                  disabled={deleteConfirmationText !== 'DELETE' || isDeleting || isAuthorizing}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-intent/20 hover:bg-intent text-white transition-colors rounded text-xs font-semibold disabled:opacity-50"
-                >
-               {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-               Confirm
-                </button>
-                <button
-                  onClick={() => {
-                    setIsConfirmingDelete(false)
-                    setDeleteConfirmationText('')
-                  }}
-                  disabled={isDeleting}
-                  className="p-1 hover:bg-layer3 rounded text-text-dim transition-colors"
-                >
-                  <X size={16} />
-                </button>
+              <div className="bg-layer1 border border-intent/30 p-3 rounded-lg flex flex-col gap-3 w-fit animate-fade-in">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={14} className="text-intent" />
+                  <span className="text-xs font-semibold text-intent">
+                    Type DELETE to confirm
+                  </span>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Type DELETE"
+                    value={deleteConfirmationText}
+                    onChange={(e) => setDeleteConfirmationText(e.target.value.toUpperCase())}
+                    className="bg-layer2 border border-border-subtle text-text-bright text-xs rounded px-2 py-1.5 focus:outline-none focus:border-intent/50 w-32 uppercase tracking-wider"
+                    autoFocus
+                  />
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleteConfirmationText !== 'DELETE' || isDeleting || isAuthorizing}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-intent hover:bg-intent/90 text-white transition-colors rounded text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isDeleting ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        Deleting...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 size={14} />
+                        Confirm
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsConfirmingDelete(false)
+                      setDeleteConfirmationText('')
+                    }}
+                    disabled={isDeleting}
+                    className="p-1.5 hover:bg-layer3 rounded text-text-dim transition-colors"
+                    title="Cancel"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
               </div>
             )}
           </div>
-          
+
+          {/* Step 1: Click to reveal confirmation */}
           {!isConfirmingDelete && (
             <button
               onClick={() => setIsConfirmingDelete(true)}
               disabled={isAuthorizing}
-              className="px-4 py-2 bg-intent/10 hover:bg-intent/20 text-intent border border-intent/20 transition-colors rounded-lg text-sm font-semibold"
+              className="px-4 py-2.5 bg-intent/10 hover:bg-intent/20 text-intent border border-intent/20 transition-colors rounded-lg text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
-               Delete Everything
+              <Trash2 size={16} />
+              Delete Everything
             </button>
           )}
+        </div>
+
+        {/* Final warning */}
+        <div className="mt-4 pt-4 border-t border-intent/20">
+          <p className="text-[10px] text-text-dim flex items-center gap-2">
+            <AlertTriangle size={12} className="text-intent" />
+            Once deleted, there is no way to recover your data. Consider exporting first.
+          </p>
         </div>
       </div>
     </div>

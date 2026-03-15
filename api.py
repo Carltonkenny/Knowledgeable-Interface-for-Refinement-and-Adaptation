@@ -33,7 +33,8 @@ from database import (
     save_request, save_agent_logs,
     get_history, save_conversation, get_conversation_history, get_client,
     get_conversation_count, update_session_activity, get_last_activity,
-    update_chat_session, restore_chat_session, purge_chat_session, get_deleted_sessions
+    update_chat_session, restore_chat_session, purge_chat_session, get_deleted_sessions,
+    get_chat_sessions, create_chat_session, delete_chat_session
 )
 from agents.autonomous import classify_message, handle_conversation, handle_followup, kira_unified_handler, kira_unified_handler_stream
 from utils import get_cached_result, set_cached_result, calculate_overall_quality
@@ -574,21 +575,22 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
 
             # Step 1 — load history
             yield _sse("status", {"message": "Loading conversation history..."})
-            history = get_conversation_history(req.session_id, limit=6)
             
-            # Load user profile for personality adaptation
+            import asyncio
+            loop = asyncio.get_event_loop()
+            
+            # Run blocking DB calls in executor
+            history = await loop.run_in_executor(None, lambda: get_conversation_history(req.session_id, limit=6))
+            
             from database import get_user_profile
-            user_profile = get_user_profile(user.user_id) or {}
+            user_profile = await loop.run_in_executor(None, lambda: get_user_profile(user.user_id) or {})
 
             # Step 2 — unified handler (confidence + personality)
             # Yield status update (no delay - avoid adding latency)
             yield _sse("status", {"message": "Understanding your message..."})
             
-            # Run handler in thread pool and get intent classification
-            import asyncio
             from agents.autonomous import kira_unified_handler
             
-            loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
                 None,  # Use default executor
                 lambda: kira_unified_handler(
@@ -772,6 +774,92 @@ def conversation(
     logger.info(f"[api] /conversation user_id={user.user_id} session={session_id}")
     data = get_conversation_history(session_id=session_id, limit=limit)
     return {"count": len(data), "conversation": data}
+
+
+# ── MISSING: Session Management ────────────────
+
+class CreateSessionRequest(BaseModel):
+    title: Optional[str] = "New Chat"
+
+@app.get("/sessions", response_model=list)
+def list_sessions(limit: int = 20, user: User = Depends(get_current_user)):
+    """List active sessions for the Sidebar."""
+    try:
+        data = get_chat_sessions(user_id=user.user_id, limit=limit)
+        return data
+    except Exception as e:
+        logger.exception("[api] /sessions error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/sessions/deleted", response_model=list)
+def list_deleted_sessions(limit: int = 20, user: User = Depends(get_current_user)):
+    """List soft-deleted sessions for the Recycle Bin."""
+    try:
+        data = get_deleted_sessions(user_id=user.user_id, limit=limit)
+        return data
+    except Exception as e:
+        logger.exception("[api] /sessions/deleted error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/sessions", response_model=dict)
+def create_session(
+    session_id: Optional[str] = Query(None, description="UUID for the new session"),
+    req: CreateSessionRequest = None,
+    user: User = Depends(get_current_user)
+):
+    """Create a new chat session."""
+    import uuid
+    actual_id = session_id if session_id else str(uuid.uuid4())
+    title = req.title if req else "New Chat"
+    try:
+        res = create_chat_session(user_id=user.user_id, session_id=actual_id, title=title)
+        if not res:
+            raise HTTPException(status_code=500, detail="Failed to create session")
+        return res
+    except Exception as e:
+        logger.exception("[api] /sessions creating error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/sessions/{session_id}", response_model=dict)
+def update_session(
+    session_id: str,
+    req: UpdateSessionRequest,
+    user: User = Depends(get_current_user)
+):
+    """Update session metadata (title, is_pinned, is_favorite)."""
+    try:
+        updates = req.dict(exclude_unset=True)
+        res = update_chat_session(session_id=session_id, user_id=user.user_id, updates=updates)
+        if not res:
+            raise HTTPException(status_code=404, detail="Session not found or update failed")
+        return res
+    except Exception as e:
+        logger.exception(f"[api] /sessions/{session_id} update error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/sessions/{session_id}", response_model=dict)
+def delete_session(session_id: str, user: User = Depends(get_current_user)):
+    """Soft-delete a session."""
+    try:
+        res = delete_chat_session(session_id=session_id, user_id=user.user_id)
+        if not res:
+            raise HTTPException(status_code=400, detail="Failed to delete session")
+        return {"status": "success"}
+    except Exception as e:
+        logger.exception(f"[api] /sessions/{session_id} delete error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/sessions/{session_id}/restore", response_model=dict)
+def restore_session(session_id: str, user: User = Depends(get_current_user)):
+    """Restore soft-deleted session."""
+    res = restore_chat_session(session_id=session_id, user_id=user.user_id)
+    return {"status": "success" if res else "failed"}
+
+@app.delete("/sessions/{session_id}/purge", response_model=dict)
+def purge_session(session_id: str, user: User = Depends(get_current_user)):
+    """Permanently delete session."""
+    res = purge_chat_session(session_id=session_id, user_id=user.user_id)
+    return {"status": "success" if res else "failed"}
 
 
 # ═══ NEW: History Search & Analytics (Phase 2) ═══════════════
