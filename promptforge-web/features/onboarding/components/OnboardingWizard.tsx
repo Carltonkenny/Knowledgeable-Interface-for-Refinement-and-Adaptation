@@ -5,6 +5,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { motion, AnimatePresence } from 'framer-motion'
 
 interface OnboardingWizardProps {
   token: string
@@ -88,9 +89,15 @@ export default function OnboardingWizard({ token, apiUrl, onComplete }: Onboardi
         </div>
 
         {/* Step Content */}
-        <div className="bg-layer2 rounded-2xl border border-border-subtle p-8">
-          {step === 'use' && (
-            <>
+        <div className="bg-[var(--surface-card)] rounded-2xl border border-border-default shadow-card p-8">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key="use"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              transition={{ duration: 0.2 }}
+            >
               <h2 className="text-2xl font-bold text-text-bright mb-2">
                 What will you use PromptForge for?
               </h2>
@@ -98,27 +105,35 @@ export default function OnboardingWizard({ token, apiUrl, onComplete }: Onboardi
                 This helps Kira tailor her prompt engineering to your domain.
               </p>
               <div className="grid grid-cols-2 gap-3">
-                {USE_CASES.map((useCase) => (
-                  <button
+                {USE_CASES.map((useCase, i) => (
+                  <motion.button
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2, delay: i * 0.08 }}
                     key={useCase.value}
                     onClick={() => setProfile({ ...profile, primary_use: useCase.value })}
                     className={`p-4 rounded-xl border text-left transition-all ${
                       profile.primary_use === useCase.value
-                        ? 'border-kira bg-kira/10'
-                        : 'border-border-subtle hover:border-border-default'
+                        ? 'border-kira bg-kira/10 shadow-glow'
+                        : 'border-border-default bg-[var(--surface-card)] hover:bg-[var(--surface-hover)] hover:border-border-focus'
                     }`}
                   >
                     <span className="text-2xl mb-2 block">{useCase.icon}</span>
                     <span className="font-medium text-text-bright block">{useCase.label}</span>
                     <span className="text-xs text-text-dim">{useCase.desc}</span>
-                  </button>
+                  </motion.button>
                 ))}
               </div>
-            </>
-          )}
+            </motion.div>
 
           {step === 'audience' && (
-            <>
+            <motion.div
+              key="audience"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              transition={{ duration: 0.2 }}
+            >
               <h2 className="text-2xl font-bold text-text-bright mb-2">
                 Who is your primary audience?
               </h2>
@@ -126,26 +141,35 @@ export default function OnboardingWizard({ token, apiUrl, onComplete }: Onboardi
                 Kira will optimize prompts for your target readers.
               </p>
               <div className="space-y-3">
-                {AUDIENCE_OPTIONS.map((option) => (
-                  <button
+                {AUDIENCE_OPTIONS.map((option, i) => (
+                  <motion.button
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2, delay: i * 0.08 }}
                     key={option.value}
                     onClick={() => setProfile({ ...profile, audience: option.value })}
                     className={`w-full p-4 rounded-xl border text-left transition-all ${
                       profile.audience === option.value
-                        ? 'border-kira bg-kira/10'
-                        : 'border-border-subtle hover:border-border-default'
+                        ? 'border-kira bg-kira/10 shadow-glow'
+                        : 'border-border-default bg-[var(--surface-card)] hover:bg-[var(--surface-hover)] hover:border-border-focus'
                     }`}
                   >
                     <span className="font-medium text-text-bright block">{option.label}</span>
                     <span className="text-xs text-text-dim">{option.desc}</span>
-                  </button>
+                  </motion.button>
                 ))}
               </div>
-            </>
+            </motion.div>
           )}
 
           {step === 'frustration' && (
-            <>
+            <motion.div
+              key="frustration"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              transition={{ duration: 0.2 }}
+            >
               <h2 className="text-2xl font-bold text-text-bright mb-2">
                 What frustrates you about AI?
               </h2>
@@ -153,23 +177,31 @@ export default function OnboardingWizard({ token, apiUrl, onComplete }: Onboardi
                 Tell us what goes wrong so Kira can fix it.
               </p>
               <div className="space-y-3 mb-6">
-                {FRUSTRATIONS.map((frustration) => (
-                  <button
+                {FRUSTRATIONS.map((frustration, i) => (
+                  <motion.button
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2, delay: i * 0.08 }}
                     key={frustration.value}
                     onClick={() => setProfile({ ...profile, ai_frustration: frustration.value })}
                     className={`w-full p-4 rounded-xl border text-left transition-all ${
                       profile.ai_frustration === frustration.value
-                        ? 'border-kira bg-kira/10'
-                        : 'border-border-subtle hover:border-border-default'
+                        ? 'border-kira bg-kira/10 shadow-glow'
+                        : 'border-border-default bg-[var(--surface-card)] hover:bg-[var(--surface-hover)] hover:border-border-focus'
                     }`}
                   >
                     <span className="font-medium text-text-bright block">{frustration.label}</span>
                     <span className="text-xs text-text-dim">{frustration.desc}</span>
-                  </button>
+                  </motion.button>
                 ))}
               </div>
               
-              <div className="mt-4">
+              <motion.div 
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2, delay: 0.5 }}
+                className="mt-4"
+              >
                 <label className="text-sm text-text-dim block mb-2">
                   Anything specific you'd like to add? (optional)
                 </label>
@@ -178,11 +210,12 @@ export default function OnboardingWizard({ token, apiUrl, onComplete }: Onboardi
                   onChange={(e) => setProfile({ ...profile, frustration_detail: e.target.value })}
                   placeholder="E.g., 'AI always uses too much jargon' or 'I want more concrete examples'"
                   rows={3}
-                  className="w-full bg-layer1 border border-border-subtle rounded-lg p-3 text-text-default text-sm placeholder:text-text-dim focus:border-kira focus:ring-1 focus:ring-kira outline-none"
+                  className="w-full bg-[var(--bg)] border border-border-default rounded-lg p-3 text-text-default text-sm placeholder:text-text-dim focus:shadow-glow focus:border-border-focus outline-none"
                 />
-              </div>
-            </>
+              </motion.div>
+            </motion.div>
           )}
+          </AnimatePresence>
 
           {/* Navigation */}
           <div className="flex justify-between mt-8 pt-6 border-t border-border-subtle">

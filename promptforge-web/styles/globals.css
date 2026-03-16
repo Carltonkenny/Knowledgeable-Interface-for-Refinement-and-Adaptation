@@ -4,17 +4,14 @@
 
 :root {
   /* ── SURFACES ── */
-  --bg:      #070809;
-  --layer-1: #0d0f12;
-  --layer-2: #131519;
-  --layer-3: #181b21;
-  --layer-4: #1c2028;
+  --bg:      #0a0a0f;
+  --surface-card: #111118;
+  --surface-hover: #1a1a24;
 
   /* ── BORDERS ── */
-  --border-subtle:  #141720;
-  --border-default: #1c1f26;
-  --border-strong:  #252830;
-  --border-bright:  #2d3340;
+  --border-subtle:  rgba(255, 255, 255, 0.04);
+  --border-default: rgba(255, 255, 255, 0.08);
+  --border-focus:   rgba(255, 255, 255, 0.15);
 
   /* ── TEXT ── */
   --text-bright:  #f8fafc;
@@ -24,35 +21,22 @@
 
   /* ── BRAND — KIRA (indigo) ── */
   --kira:      #6366f1;
-  --kira-dim:  rgba(99,102,241,0.15);
-  --kira-glow: rgba(99,102,241,0.08);
-  --kira-glow-strong: rgba(99,102,241,0.25);
 
   /* ── AGENT COLORS ── */
   --intent:     #f43f5e;
-  --intent-dim: rgba(244,63,94,0.12);
   --context:    #10b981;
-  --context-dim: rgba(16,185,129,0.12);
   --domain:     #f59e0b;
-  --domain-dim: rgba(245,158,11,0.12);
   --engineer:   #8b5cf6;
-  --engineer-dim: rgba(139,92,246,0.12);
   --profile:    #38bdf8;
-  --profile-dim: rgba(56,189,248,0.12);
   --memory:     #ec4899;
-  --memory-dim: rgba(236,72,153,0.12);
   --mcp:        #fb923c;
-  --mcp-dim:    rgba(251,146,60,0.12);
   --teal:       #14b8a6;
-  --teal-dim:   rgba(20,184,166,0.10);
   --success:    #22c55e;
-  --success-dim: rgba(34,197,94,0.10);
   --coming:     #f59e0b;
-  --coming-dim: rgba(245,158,11,0.12);
 
   /* ── TYPOGRAPHY ── */
   --font-mono:    'JetBrains Mono', monospace;
-  --font-display: 'Satoshi', sans-serif;
+  --font-display: 'Geist', sans-serif;
 
   /* ── PERSONA DOTS ── */
   --dot-cold:  #475569;

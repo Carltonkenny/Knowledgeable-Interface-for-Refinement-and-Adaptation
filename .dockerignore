@@ -48,3 +48,7 @@ Thumbs.db
 
 # Frontend (Not needed for backend Docker)
 promptforge-web/
+
+# Codebase Cleanup Directories
+scripts/
+tests/adhoc/

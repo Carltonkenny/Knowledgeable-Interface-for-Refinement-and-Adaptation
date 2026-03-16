@@ -31,6 +31,7 @@ export interface ChatResult {
   // For conversation/followup responses (RULES.md: Type-safe response shape)
   type?: string
   reply?: string
+  suggestions?: string[]
 }
 
 export interface DiffItem {
@@ -162,6 +163,20 @@ async function authHeaders(token?: string): Promise<HeadersInit> {
   }
 }
 
+/**
+ * Handle HTTP response errors - throws RateLimitError for 429, ApiError for others
+ */
+async function handleResponseError(res: Response): Promise<never> {
+  const errorText = await res.text()
+  if (res.status === 429) {
+    // Try to parse retry-after header
+    const retryAfter = res.headers.get('Retry-After')
+    const retryAfterSeconds = retryAfter ? parseInt(retryAfter, 10) : undefined
+    throw new RateLimitError(res.status, errorText || 'Rate limit exceeded', retryAfterSeconds)
+  }
+  throw new ApiError(res.status, errorText)
+}
+
 // ── Endpoints ──────────────────────────────────────────────────────────────
 
 export async function apiHealth(): Promise<boolean> {
@@ -190,7 +205,7 @@ export async function apiChat(
     headers: await authHeaders(token),
     body: JSON.stringify(req),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   return res.json()
 }
 
@@ -202,7 +217,7 @@ export async function apiHistory(
     ? `${API_BASE}/history?session_id=${sessionId}`
     : `${API_BASE}/history`
   const res = await fetch(url, { headers: await authHeaders(token) })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   const data = await res.json()
   // Backend returns {count, history} - extract the history array
   return data.history || data || []
@@ -217,7 +232,7 @@ export async function apiHistorySearch(
     headers: await authHeaders(token),
     body: JSON.stringify(req),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   const data = await res.json()
   return data.results || []
 }
@@ -229,7 +244,7 @@ export async function apiHistoryAnalytics(
   const res = await fetch(`${API_BASE}/history/analytics?days=${days}`, {
     headers: await authHeaders(token),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   return res.json()
 }
 
@@ -240,7 +255,7 @@ export async function apiHistorySessions(
   const res = await fetch(`${API_BASE}/history/sessions?limit=${limit}`, {
     headers: await authHeaders(token),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   const data = await res.json()
   return data.sessions || []
 }
@@ -272,7 +287,7 @@ export async function apiCreateVersion(
     headers: await authHeaders(token),
     body: JSON.stringify(req),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   return res.json()
 }
 
@@ -283,7 +298,7 @@ export async function apiGetVersionHistory(
   const res = await fetch(`${API_BASE}/history/version/${versionId}`, {
     headers: await authHeaders(token),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   return res.json()
 }
 
@@ -299,7 +314,7 @@ export async function apiRollbackVersion(
       headers: await authHeaders(token),
     }
   )
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   return res.json()
 }
 
@@ -315,7 +330,7 @@ export async function apiCompareVersions(
       headers: await authHeaders(token),
     }
   )
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   return res.json()
 }
 
@@ -331,7 +346,7 @@ export async function apiConversation(
     `${API_BASE}/conversation?session_id=${sessionId}`,
     { headers: await authHeaders(token) }
   )
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   const data = await res.json()
   // Backend returns {count, conversation}
   return data.conversation || []
@@ -352,7 +367,7 @@ export async function apiTranscribe(
     headers: { 'Authorization': `Bearer ${token}` },
     body: form,
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   return res.json()
 }
 
@@ -369,7 +384,7 @@ export async function apiSaveProfile(
     headers: await authHeaders(token),
     body: JSON.stringify(profile),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
 }
 
 export async function apiRefine(
@@ -385,7 +400,7 @@ export async function apiRefine(
     headers: await authHeaders(token),
     body: JSON.stringify({ prompt }),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   return res.json()
 }
 
@@ -394,7 +409,7 @@ export async function apiListSessions(token: string): Promise<ChatSession[]> {
   const res = await fetch(`${API_BASE}/sessions`, {
     headers: await authHeaders(token),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   return res.json()
 }
 
@@ -404,7 +419,7 @@ export async function apiCreateSession(token: string): Promise<ChatSession> {
     method: 'POST',
     headers: await authHeaders(token),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   return res.json()
 }
 
@@ -414,7 +429,7 @@ export async function apiDeleteSession(token: string, sessionId: string): Promis
     method: 'DELETE',
     headers: await authHeaders(token),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
 }
 
 export async function apiPatchSession(
@@ -428,7 +443,7 @@ export async function apiPatchSession(
     headers: await authHeaders(token),
     body: JSON.stringify(updates),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   return res.json()
 }
 
@@ -438,7 +453,7 @@ export async function apiRestoreSession(token: string, sessionId: string): Promi
     method: 'POST',
     headers: await authHeaders(token),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
 }
 
 export async function apiPurgeSession(token: string, sessionId: string): Promise<void> {
@@ -447,7 +462,7 @@ export async function apiPurgeSession(token: string, sessionId: string): Promise
     method: 'DELETE',
     headers: await authHeaders(token),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
 }
 
 export async function apiListDeletedSessions(token: string): Promise<ChatSession[]> {
@@ -455,7 +470,7 @@ export async function apiListDeletedSessions(token: string): Promise<ChatSession
   const res = await fetch(`${API_BASE}/sessions/deleted`, {
     headers: await authHeaders(token),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   return res.json()
 }
 
@@ -476,7 +491,7 @@ export async function apiDemoChat(
       demo: true,
     }),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   return res.json()
 }
 
@@ -489,7 +504,7 @@ export async function apiUpdateUsername(token: string, username: string): Promis
     headers: await authHeaders(token),
     body: JSON.stringify({ username }),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   return res.json()
 }
 
@@ -498,7 +513,7 @@ export async function apiGetDomains(token: string): Promise<{ domains: DomainSta
   const res = await fetch(`${API_BASE}/user/domains`, {
     headers: await authHeaders(token),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   return res.json()
 }
 
@@ -507,7 +522,7 @@ export async function apiGetMemories(token: string): Promise<{ memories: MemoryP
   const res = await fetch(`${API_BASE}/user/memories`, {
     headers: await authHeaders(token),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   return res.json()
 }
 
@@ -516,7 +531,7 @@ export async function apiGetQualityTrend(token: string): Promise<{ trend: Qualit
   const res = await fetch(`${API_BASE}/user/quality-trend`, {
     headers: await authHeaders(token),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   return res.json()
 }
 
@@ -525,7 +540,7 @@ export async function apiGetStats(token: string): Promise<UsageStats> {
   const res = await fetch(`${API_BASE}/user/stats`, {
     headers: await authHeaders(token),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   return res.json()
 }
 
@@ -535,7 +550,7 @@ export async function apiDeleteAccount(token: string): Promise<{ status: string,
     method: 'DELETE',
     headers: await authHeaders(token),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   return res.json()
 }
 
@@ -544,7 +559,7 @@ export async function apiExportData(token: string): Promise<ExportData> {
   const res = await fetch(`${API_BASE}/user/export-data`, {
     headers: await authHeaders(token),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) await handleResponseError(res)
   return res.json()
 }
 
@@ -554,5 +569,12 @@ export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message)
     this.name = 'ApiError'
+  }
+}
+
+export class RateLimitError extends ApiError {
+  constructor(public status: number, message: string, public retryAfter?: number) {
+    super(status, message)
+    this.name = 'RateLimitError'
   }
 }

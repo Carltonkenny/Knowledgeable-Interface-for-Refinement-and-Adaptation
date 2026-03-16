@@ -112,10 +112,10 @@ def prompt_engineer_agent(state: AgentState) -> Dict[str, Any]:
     ]):
         logger.warning("[prompt_engineer] all swarm results empty - returning fallback")
         latency_ms = int((time.time() - start_time) * 1000)
-        
+
         # Generate diff showing no changes
         prompt_diff = generate_diff(prompt, f"[Analysis failed] Original: {prompt}")
-        
+
         return {
             "improved_prompt": f"[Analysis failed] Original: {prompt}",
             "quality_score": {"specificity": 1, "clarity": 1, "actionability": 1},
@@ -124,6 +124,7 @@ def prompt_engineer_agent(state: AgentState) -> Dict[str, Any]:
             "was_skipped": False,
             "skip_reason": None,
             "latency_ms": latency_ms,
+            "agent_latencies": {"prompt_engineer": latency_ms},
         }
 
     # ═══ PREPARE CONTEXT FOR LLM ═══
@@ -243,6 +244,25 @@ Rewrite the prompt with substantially more detail and specificity."""
         if not qs.get("overall"):
             qs["overall"] = round((qs.get("specificity", 3) + qs.get("clarity", 3) + qs.get("actionability", 3)) / 3, 1)
 
+        # ═══ BUG FIX 1: Aggregate latencies from all upstream agents ═══
+        # Collect individual agent latencies into agent_latencies dict
+        agent_latencies = {
+            "prompt_engineer": latency_ms,
+        }
+        
+        # Add upstream agent latencies if they ran
+        if state.get("intent_analysis") and state["intent_analysis"].get("latency_ms"):
+            agent_latencies["intent"] = state["intent_analysis"]["latency_ms"]
+        if state.get("context_analysis") and state["context_analysis"].get("latency_ms"):
+            agent_latencies["context"] = state["context_analysis"]["latency_ms"]
+        if state.get("domain_analysis") and state["domain_analysis"].get("latency_ms"):
+            agent_latencies["domain"] = state["domain_analysis"]["latency_ms"]
+        
+        # Calculate total latency (sum of all agent latencies)
+        total_latency_ms = sum(agent_latencies.values())
+        
+        logger.info(f"[prompt_engineer] agent_latencies={agent_latencies}, total={total_latency_ms}ms")
+
         return {
             "improved_prompt": improved,
             "quality_score": qs,
@@ -250,20 +270,22 @@ Rewrite the prompt with substantially more detail and specificity."""
             "prompt_diff": prompt_diff,
             "was_skipped": False,
             "skip_reason": None,
-            "latency_ms": latency_ms,
+            "latency_ms": total_latency_ms,
+            "agent_latencies": agent_latencies,
         }
         
     except Exception as e:
         logger.error(f"[prompt_engineer] failed: {e}", exc_info=True)
         latency_ms = int((time.time() - start_time) * 1000)
         return {
-            "improved_prompt": state["raw_prompt"],
+            "improved_prompt": state.get("raw_prompt", state.get("message", "")),
             "quality_score": {"specificity": 1, "clarity": 1, "actionability": 1},
             "changes_made": [f"Error: {str(e)}"],
-            "prompt_diff": [{"type": "keep", "text": state["raw_prompt"]}],
+            "prompt_diff": [{"type": "keep", "text": state.get("raw_prompt", state.get("message", ""))}],
             "was_skipped": False,
             "skip_reason": None,
             "latency_ms": latency_ms,
+            "agent_latencies": {"prompt_engineer": latency_ms},
         }
 
 

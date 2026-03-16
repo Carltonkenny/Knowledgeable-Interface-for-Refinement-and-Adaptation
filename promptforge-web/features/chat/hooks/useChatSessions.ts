@@ -28,14 +28,26 @@ export function useChatSessions(token: string) {
 
   // Fetch all active sessions
   const fetchSessions = useCallback(async () => {
-    if (!token) return
+    if (!token) {
+      logger.warn('Cannot fetch sessions - no auth token', { hasToken: false })
+      return
+    }
     setIsLoading(true)
     try {
       const data = await apiListSessions(token)
       setSessions(data)
       setError(null)
-    } catch (err) {
-      logger.error('Failed to fetch chat sessions', { err })
+      logger.debug('Sessions fetched successfully', { count: data.length })
+    } catch (err: any) {
+      // RULES.md: Error logging must include full context for debugging
+      logger.error('Failed to fetch chat sessions', {
+        error_type: err instanceof Error ? err.name : (typeof err === 'string' ? 'string' : 'unknown'),
+        error_message: err instanceof Error ? err.message : (typeof err === 'string' ? err : String(err)),
+        error_status: err?.status || err?.statusCode || 'no status code',
+        has_token: !!token,
+        token_preview: token ? `${token.substring(0, 20)}...` : 'none',
+        session_count: sessions.length,
+      })
       setError('Could not load chat history')
     } finally {
       setIsLoading(false)
@@ -44,13 +56,24 @@ export function useChatSessions(token: string) {
 
   // Fetch deleted sessions (Recycle Bin)
   const fetchDeletedSessions = useCallback(async () => {
-    if (!token) return
+    if (!token) {
+      logger.warn('Cannot fetch deleted sessions - no auth token', { hasToken: false })
+      return
+    }
     setIsRecycleBinLoading(true)
     try {
       const data = await apiListDeletedSessions(token)
       setDeletedSessions(data)
-    } catch (err) {
-      logger.error('Failed to fetch deleted sessions', { err })
+      logger.debug('Deleted sessions fetched successfully', { count: data.length })
+    } catch (err: any) {
+      // RULES.md: Error logging must include full context for debugging
+      logger.error('Failed to fetch deleted sessions', {
+        error_type: err instanceof Error ? err.name : (typeof err === 'string' ? 'string' : 'unknown'),
+        error_message: err instanceof Error ? err.message : (typeof err === 'string' ? err : String(err)),
+        error_status: err?.status || err?.statusCode || 'no status code',
+        has_token: !!token,
+        token_preview: token ? `${token.substring(0, 20)}...` : 'none',
+      })
     } finally {
       setIsRecycleBinLoading(false)
     }
@@ -59,7 +82,7 @@ export function useChatSessions(token: string) {
   useEffect(() => {
     fetchSessions()
     fetchDeletedSessions() // Pre-fetch for seamless Recycle Bin
-  }, [fetchSessions, fetchDeletedSessions])
+  }, [token])
 
   // Create new session
   const createNewChat = async () => {

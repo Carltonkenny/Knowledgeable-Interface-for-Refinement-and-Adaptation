@@ -137,31 +137,16 @@ def query_langmem(
             logger.warning("[langmem] embedding generation failed, returning empty")
             return []
 
-        # Step 2: Use pgvector SQL operator for similarity search
-        # <=> returns cosine distance (0 = identical, 1 = opposite)
-        # 1 - <=> returns cosine similarity (1 = identical, 0 = opposite)
-        
-        # Convert embedding to string format for SQL
-        embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
-
-        # Execute raw SQL with pgvector similarity operator
+        # Step 2: Use SAFE parameterized RPC function with pgvector
+        # RULES.md Security: No raw SQL execution — uses predefined RPC function
+        # search_langmem_memories is parameterized, preventing SQL injection
         result = db.rpc(
-            "exec_sql",
+            "search_langmem_memories",
             {
-                "sql": f"""
-                    SELECT 
-                        id,
-                        content,
-                        improved_content,
-                        domain,
-                        quality_score,
-                        created_at,
-                        (1 - (embedding <=> '{embedding_str}'::vector)) AS similarity_score
-                    FROM {SUPABASE_TABLE}
-                    WHERE user_id = '{user_id}'
-                    ORDER BY embedding <=> '{embedding_str}'::vector
-                    LIMIT {top_k}
-                """
+                "query_embedding": query_embedding,  # ← Passed as parameter (safe)
+                "match_threshold": 0.5,  # Cosine similarity threshold
+                "match_count": top_k,
+                "user_id_filter": user_id  # ← RLS enforced
             }
         ).execute()
 
@@ -169,7 +154,7 @@ def query_langmem(
             logger.debug(f"[langmem] no memories found for user {user_id[:8]}...")
             return []
 
-        # Format results
+        # Format results (RPC returns 'similarity' not 'similarity_score')
         memories = [
             {
                 "id": row.get("id"),
@@ -178,7 +163,7 @@ def query_langmem(
                 "domain": row.get("domain", "general"),
                 "quality_score": row.get("quality_score", {}),
                 "created_at": row.get("created_at"),
-                "similarity_score": float(row.get("similarity_score", 0))
+                "similarity_score": float(row.get("similarity", 0))  # RPC returns 'similarity'
             }
             for row in result.data
         ]

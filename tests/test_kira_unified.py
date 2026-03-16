@@ -12,11 +12,10 @@
 import pytest
 import time
 from unittest import mock
-from agents.autonomous import (
-    build_kira_context,
+from agents.handlers.unified import (
     kira_unified_handler,
+    build_kira_context,
     fallback_unified_response,
-    KIRA_UNIFIED_PROMPT,
 )
 
 
@@ -80,7 +79,7 @@ class TestBuildKiraContext:
 class TestKiraUnifiedHandler:
     """Test unified handler with full context."""
     
-    @mock.patch('agents.autonomous.get_fast_llm')
+    @mock.patch('config.get_fast_llm')
     def test_conversation_intent(self, mock_llm):
         """Test conversation detection and response."""
         # Mock LLM response
@@ -104,7 +103,7 @@ class TestKiraUnifiedHandler:
         assert result["response"] is not None
         assert len(result["response"]) < 200  # 2-4 sentences
     
-    @mock.patch('agents.autonomous.get_fast_llm')
+    @mock.patch('config.get_fast_llm')
     def test_followup_intent(self, mock_llm):
         """Test followup detection with context."""
         # Mock LLM response
@@ -133,7 +132,7 @@ class TestKiraUnifiedHandler:
         assert result["improved_prompt"] is not None
         assert "async" in result["improved_prompt"].lower()
     
-    @mock.patch('agents.autonomous.get_fast_llm')
+    @mock.patch('config.get_fast_llm')
     def test_context_awareness(self, mock_llm):
         """Test that handler remembers user preferences."""
         # Mock LLM response with coding reference
@@ -160,7 +159,7 @@ class TestKiraUnifiedHandler:
         assert result["intent"] == "conversation"
         assert result["response"] is not None
     
-    @mock.patch('agents.autonomous.get_fast_llm')
+    @mock.patch('config.get_fast_llm')
     def test_invalid_response_fallback(self, mock_llm):
         """Test fallback when LLM returns invalid response."""
         # Mock LLM to return invalid JSON
@@ -179,7 +178,7 @@ class TestKiraUnifiedHandler:
         assert result["response"] is not None
         assert result["metadata"].get("fallback") == True
     
-    @mock.patch('agents.autonomous.get_fast_llm')
+    @mock.patch('config.get_fast_llm')
     def test_latency_logging(self, mock_llm):
         """Test that latency is logged."""
         # Mock LLM response
@@ -261,7 +260,7 @@ class TestFallbackUnifiedResponse:
 class TestKiraUnifiedPerformance:
     """Test latency targets."""
     
-    @mock.patch('agents.autonomous.get_fast_llm')
+    @mock.patch('config.get_fast_llm')
     def test_conversation_latency(self, mock_llm):
         """Test conversation response time < 500ms."""
         # Mock LLM response
@@ -281,7 +280,7 @@ class TestKiraUnifiedPerformance:
         
         assert latency_ms < 500, f"Conversation latency {latency_ms}ms > 500ms"
     
-    @mock.patch('agents.autonomous.get_fast_llm')
+    @mock.patch('config.get_fast_llm')
     def test_followup_latency(self, mock_llm):
         """Test followup response time < 500ms."""
         # Mock LLM response

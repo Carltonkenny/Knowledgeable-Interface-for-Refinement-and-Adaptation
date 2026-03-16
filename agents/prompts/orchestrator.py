@@ -6,6 +6,7 @@ CONTAINS:
     1. KIRA_ORCHESTRATOR_SYSTEM — Full personality + routing logic
     2. ORCHESTRATOR_FEW_SHOT_EXAMPLES — 8 detailed examples
     3. ORCHESTRATOR_RESPONSE_SCHEMA — JSON schema validation
+    4. build_orchestrator_prompt() — Dynamic prompt builder with user context
 
 RULES.md Compliance:
     - Type hints on all exports
@@ -14,7 +15,10 @@ RULES.md Compliance:
     - No inline logic — prompts only
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ═══ ORCHESTRATOR SYSTEM PROMPT ══════════════════════════════════════════════
@@ -271,3 +275,49 @@ ORCHESTRATOR_RESPONSE_SCHEMA: Dict[str, Any] = {
         "ambiguity_score"
     ]
 }
+
+
+# ═══ BUILD ORCHESTRATOR PROMPT ═══════════════════════════════════════════════
+
+def build_orchestrator_prompt(
+    user_profile: Optional[Dict[str, Any]] = None,
+    langmem_memories: Optional[List[Dict[str, Any]]] = None,
+    session_count: int = 0,
+    recent_quality_trend: Optional[List[float]] = None,
+) -> str:
+    """
+    Build dynamic orchestrator prompt with user context injected.
+
+    Context block comes FIRST — model reads top to bottom, so user context
+    needs to be loaded before Kira's personality and routing rules.
+
+    Args:
+        user_profile: Dict from user_profiles table
+        langmem_memories: List of memories from LangMem semantic search
+        session_count: Total sessions this user has had
+        recent_quality_trend: Optional list of last 5 quality scores
+
+    Returns:
+        Complete system prompt with context block prepended
+
+    Example:
+        >>> prompt = build_orchestrator_prompt(profile, memories, 23, [2.1, 2.8, 3.2])
+        >>> # Returns: context_block + "\\n\\n" + KIRA_ORCHESTRATOR_SYSTEM
+    """
+    try:
+        from agents.context.builder import build_context_block
+
+        context_block = build_context_block(
+            user_profile=user_profile or {},
+            langmem_memories=langmem_memories or [],
+            session_count=session_count,
+            recent_quality_trend=recent_quality_trend,
+        )
+
+        logger.debug(f"[orchestrator] built dynamic prompt with {len(context_block)} chars")
+        return context_block + "\n\n" + KIRA_ORCHESTRATOR_SYSTEM
+
+    except Exception as e:
+        logger.warning(f"[orchestrator] build_context_block failed, using base prompt: {e}")
+        # Fallback to base personality prompt without user context
+        return KIRA_ORCHESTRATOR_SYSTEM

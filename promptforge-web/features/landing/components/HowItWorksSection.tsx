@@ -5,6 +5,7 @@
 'use client'
 
 import { Chip } from '@/components/ui'
+import { motion } from 'framer-motion'
 
 const steps = [
   {
@@ -49,27 +50,48 @@ export function HowItWorksSection() {
     <section id="how-it-works" className="py-16 px-12 border-t border-border-subtle">
       <div className="max-w-4xl mx-auto">
         {/* Eyebrow */}
-        <p className="font-mono text-kira tracking-[3px] uppercase text-[10px] mb-4 reveal">
+        <motion.p 
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="font-mono text-kira tracking-[3px] uppercase text-[10px] mb-4"
+        >
           // 03  How it works
-        </p>
+        </motion.p>
 
         {/* Title */}
-        <h2 className="text-[28px] font-bold tracking-tight text-text-bright mb-4 reveal reveal-delay-1">
+        <motion.h2 
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.1 }}
+          className="text-[28px] font-bold tracking-tight text-text-bright mb-4"
+        >
           Five steps. Four seconds.
-        </h2>
+        </motion.h2>
 
         {/* Sub */}
-        <p className="text-[13px] text-text-dim mb-10 reveal reveal-delay-2">
+        <motion.p 
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.2 }}
+          className="text-[13px] text-text-dim mb-10"
+        >
           Honest about latency. Transparent about depth.
-        </p>
+        </motion.p>
 
         {/* Steps */}
         <div className="space-y-0">
           {steps.map((step, index) => (
-            <div
+            <motion.div
               key={step.num}
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-50px" }}
+              transition={{ duration: 0.5, delay: index * 0.1 }}
               className={`
-                flex items-start gap-6 py-6 reveal reveal-delay-${(index % 4) + 1}
+                flex items-start gap-6 py-6
                 ${index < steps.length - 1 ? 'border-b border-border-subtle' : ''}
               `}
             >
@@ -113,7 +135,7 @@ export function HowItWorksSection() {
                   </p>
                 )}
               </div>
-            </div>
+            </motion.div>
           ))}
         </div>
       </div>

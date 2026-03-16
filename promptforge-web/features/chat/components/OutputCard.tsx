@@ -4,6 +4,7 @@
 'use client'
 
 import { useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Chip } from '@/components/ui'
 import { History as HistoryIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -46,7 +47,13 @@ export default function OutputCard({ promptId, sessionId, result }: OutputCardPr
   const removals = countDiffType(result.diff, 'remove')
 
   return (
-    <div className="mb-6">
+    <motion.div 
+      layoutId={`output-card-${promptId}`}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+      className="mb-6"
+    >
       {/* Gradient border wrapper */}
       <div className="rounded-[11px] p-px bg-gradient-to-br from-kira/60 via-engineer/40 to-memory/30">
         <div className="bg-layer1 rounded-[10px] p-4">
@@ -89,14 +96,47 @@ export default function OutputCard({ promptId, sessionId, result }: OutputCardPr
           </button>
 
           {/* Diff view */}
-          {showDiff && (
-            <div className="mb-4 p-3 bg-layer2 rounded-lg border border-border-subtle">
-              <DiffView diff={result.diff} />
-            </div>
-          )}
+          <AnimatePresence initial={false}>
+            {showDiff && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2, ease: "easeInOut" }}
+                className="mb-4 overflow-hidden"
+              >
+                <div className="p-3 bg-[var(--surface-hover)] rounded-lg border border-border-subtle">
+                  <DiffView diff={result.diff} />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Quality scores */}
           {result.quality_score && <QualityScores scores={result.quality_score} />}
+
+          {/* Suggestions/Alternative Paths */}
+          {result.suggestions && result.suggestions.length > 0 && (
+            <div className="mt-4 mb-3 border-t border-border-subtle pt-4">
+              <span className="text-[10px] uppercase tracking-wider font-mono text-text-dim block mb-2">
+                Alternative paths
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {result.suggestions.map((suggestion, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      const event = new CustomEvent('send-chat-message', { detail: { message: suggestion } })
+                      window.dispatchEvent(event)
+                    }}
+                    className="text-xs bg-layer2 hover:bg-layer3 border border-border-subtle hover:border-kira/40 text-text-bright px-3 py-1.5 rounded-full transition-all duration-200"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="flex gap-4 mt-4 pt-4 border-t border-border-subtle">
             <button
@@ -124,6 +164,6 @@ export default function OutputCard({ promptId, sessionId, result }: OutputCardPr
           </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   )
 }

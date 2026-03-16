@@ -77,37 +77,51 @@ def kira_unified_handler(
     
     try:
         llm = get_fast_llm()  # Fast model for latency
-        
+
         # Build rich context
         context = build_kira_context(message, history, user_profile)
-        
+
         # Score input quality
         quality = score_input_quality(message, len(history) > 0)
-        
+
+        # Query LangMem for user's relevant memories (RULES.md: Memory system integration)
+        from memory.langmem import query_langmem
+        langmem_context = []  # Default to empty if user_id not available
+        user_id = user_profile.get("user_id")
+        if user_id:
+            langmem_context = query_langmem(
+                user_id=user_id,
+                query=message,
+                top_k=5
+            )
+        else:
+            logger.debug("[kira_unified] user_id not in profile, skipping LangMem query")
+
         # Get Kira system prompt with personality
         system_prompt = _get_kira_unified_prompt()
-        
+
         # Single LLM call with unified prompt
         response = llm.invoke([
             SystemMessage(content=system_prompt),
             HumanMessage(content=context)
         ])
-        
+
         # Parse JSON response
         result = parse_json_response(response.content, "kira_unified")
-        
+
         # Validate response structure
         if not result.get("intent") or not result.get("response"):
             logger.warning(f"[kira_unified] invalid response structure → fallback")
             return fallback_unified_response(message, history, user_profile)
-        
+
         # Log success with latency
         latency_ms = int((time.time() - start_time) * 1000)
         result["latency_ms"] = latency_ms
         result["input_quality"] = quality.score
-        
-        logger.info(f"[kira_unified] intent={result['intent']} latency={latency_ms}ms")
-        
+        result["memories_applied"] = len(langmem_context) if langmem_context else 0
+
+        logger.info(f"[kira_unified] intent={result['intent']} latency={latency_ms}ms memories={result['memories_applied']}")
+
         return result
         
     except Exception as e:

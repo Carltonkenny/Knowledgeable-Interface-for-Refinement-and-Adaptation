@@ -1,10 +1,10 @@
 # agents/context/adapters.py
 """
-Personality Adaptation Logic.
+User Personality Analysis Utilities.
 
 CONTAINS:
     1. PersonalityAdaptation dataclass — Type-safe adaptation result
-    2. analyze_user_style() — Detect formality and technical depth
+    2. analyze_user_style() — Detect user's formality and technical depth
     3. blend_with_profile() — Blend message style with profile baseline
     4. get_adaptation_guidance() — Get response guidance based on blend
 
@@ -13,6 +13,11 @@ RULES.md Compliance:
     - Docstrings complete
     - Pure functions (testable)
     - Configuration over hardcoding
+
+RENAMED (v2.0):
+    - This module analyzes USER'S personality (input analysis)
+    - See orchestration/personality.py for adapting KIRA'S personality (output adaptation)
+    - Different functions, different purposes — do not merge
 """
 
 from typing import Dict, Any
@@ -32,17 +37,20 @@ class PersonalityAdaptation:
 def analyze_user_style(message: str) -> Dict[str, float]:
     """
     Analyze user's communication style from message.
-    
+
     Analyzes two axes:
     1. Formality (0.0-1.0): casual ↔ formal
     2. Technical depth (0.0-1.0): general ↔ expert
-    
+
+    This is INPUT ANALYSIS — analyzes WHO the user is.
+    See orchestration/personality.adapt_kira_personality() for OUTPUT ADAPTATION.
+
     Args:
         message: User's message to analyze
-        
+
     Returns:
         Dict with formality and technical scores (0.0-1.0)
-        
+
     Example:
         >>> analyze_user_style("hey can u help me with some code pls")
         {'formality': 0.15, 'technical': 0.3}

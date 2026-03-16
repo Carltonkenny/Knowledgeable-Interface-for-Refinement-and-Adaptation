@@ -13,13 +13,6 @@ export function HeroSection() {
     <section
       id="hero"
       className="relative min-h-screen flex flex-col items-center justify-center pt-20 px-6"
-      style={{
-        background: `
-          radial-gradient(ellipse 70% 50% at 15% 0%, rgba(99,102,241,0.10) 0%, transparent 60%),
-          radial-gradient(ellipse 50% 40% at 85% 100%, rgba(139,92,246,0.07) 0%, transparent 60%),
-          radial-gradient(ellipse 30% 30% at 5% 60%, rgba(236,72,153,0.04) 0%, transparent 50%)
-        `,
-      }}
     >
       {/* Eyebrow */}
       <p className="font-mono text-kira tracking-[3px] uppercase text-[10px] mb-6">

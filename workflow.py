@@ -22,7 +22,7 @@ from typing import List, Optional
 from langgraph.graph import StateGraph, END
 from langgraph.types import Send
 from state import AgentState
-from agents.autonomous import orchestrator_node as kira_orchestrator
+from agents.orchestrator import orchestrator_node as kira_orchestrator
 from agents.intent import intent_agent
 from agents.context import context_agent
 from agents.domain import domain_agent

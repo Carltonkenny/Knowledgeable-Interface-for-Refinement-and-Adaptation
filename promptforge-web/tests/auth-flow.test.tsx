@@ -44,8 +44,9 @@ describe('TermsAndConditions', () => {
       )
 
       expect(screen.getByText('Welcome to PromptForge')).toBeInTheDocument()
-      expect(screen.getByText('Terms of Service')).toBeInTheDocument()
-      expect(screen.getByText('Privacy Policy')).toBeInTheDocument()
+      // Use getAllByText since "Terms of Service" appears in heading and checkbox label
+      expect(screen.getAllByText('Terms of Service')).toHaveLength(2)
+      expect(screen.getAllByText('Privacy Policy')).toHaveLength(2)
     })
 
     it('renders all three checkboxes', () => {
@@ -57,8 +58,9 @@ describe('TermsAndConditions', () => {
       )
 
       expect(screen.getByText(/I am 18 years of age or older/i)).toBeInTheDocument()
-      expect(screen.getByText(/I have read and accept the Terms of Service/i)).toBeInTheDocument()
-      expect(screen.getByText(/I have read and accept the Privacy Policy/i)).toBeInTheDocument()
+      // Text is split across elements, use role instead
+      expect(screen.getByRole('checkbox', { name: /Terms of Service/i })).toBeInTheDocument()
+      expect(screen.getByRole('checkbox', { name: /Privacy Policy/i })).toBeInTheDocument()
     })
 
     it('renders Accept button disabled initially', () => {
@@ -83,8 +85,8 @@ describe('TermsAndConditions', () => {
         />
       )
 
-      // Check all boxes
-      const checkboxes = screen.getAllByType('checkbox')
+      // Check all boxes - use getAllByRole instead of getAllByType
+      const checkboxes = screen.getAllByRole('checkbox')
       checkboxes.forEach(cb => fireEvent.click(cb))
 
       // Wait for button to enable
@@ -103,8 +105,8 @@ describe('TermsAndConditions', () => {
         />
       )
 
-      // Check all boxes
-      const checkboxes = screen.getAllByType('checkbox')
+      // Check all boxes - use getAllByRole instead of getAllByType
+      const checkboxes = screen.getAllByRole('checkbox')
       checkboxes.forEach(cb => fireEvent.click(cb))
 
       // Click accept
@@ -141,7 +143,8 @@ describe('TermsAndConditions', () => {
         />
       )
 
-      const checkboxes = screen.getAllByType('checkbox')
+      // Use getAllByRole instead of getAllByType
+      const checkboxes = screen.getAllByRole('checkbox')
 
       // Check only first box
       fireEvent.click(checkboxes[0])
@@ -280,7 +283,9 @@ describe('OnboardingWizard', () => {
       fireEvent.click(screen.getByText('Continue →'))
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText(/Anything specific/i)).toBeInTheDocument()
+        // Look for the textarea by its label instead of placeholder
+        expect(screen.getByText(/Anything specific you'd like to add/i)).toBeInTheDocument()
+        expect(screen.getByRole('textbox')).toBeInTheDocument()
       })
     })
 

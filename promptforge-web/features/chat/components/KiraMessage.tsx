@@ -4,6 +4,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { motion } from 'framer-motion'
 
 interface KiraMessageProps {
   message: string
@@ -60,10 +61,15 @@ export default function KiraMessage({
   }
 
   return (
-    <div className={`flex gap-3 mb-4 ${isError ? 'border border-intent/20 bg-intent/5 rounded-xl p-4' : ''}`}>
+    <motion.div 
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.3, ease: 'easeOut' }}
+      className={`flex gap-3 mb-4 ${isError ? 'border border-intent/20 bg-intent/5 rounded-xl p-4' : ''}`}
+    >
       {/* Kira Avatar */}
-      <div className="w-7 h-7 rounded-lg border border-kira bg-[var(--kira-dim)] flex items-center justify-center flex-shrink-0">
-        <span className="text-kira font-bold font-mono text-sm">K</span>
+      <div className="w-8 h-8 rounded-lg border border-kira/30 bg-kira/10 flex items-center justify-center flex-shrink-0 shadow-card">
+        <span className="text-kira font-bold font-mono text-sm leading-none">K</span>
       </div>
 
       {/* Message */}
@@ -85,6 +91,6 @@ export default function KiraMessage({
           </button>
         )}
       </div>
-    </div>
+    </motion.div>
   )
 }

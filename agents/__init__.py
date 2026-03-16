@@ -22,7 +22,7 @@ ARCHITECTURE:
     │  ├── orchestration/  — Routing + decision logic             │
     │  │   ├── router.py          — decide_route()                │
     │  │   ├── confidence.py      — calculate_confidence()        │
-    │  │   └── personality.py     — adapt_personality()           │
+    │  │   └── personality.py     — adapt_kira_personality()      │
     │  └── utils/          — Shared utilities                     │
     └─────────────────────────────────────────────────────────────┘
 
@@ -111,7 +111,7 @@ from agents.orchestration.confidence import (
 )
 
 from agents.orchestration.personality import (
-    adapt_personality,
+    adapt_kira_personality,
     check_forbidden_phrases,
     PersonalityAdaptation,
 )
@@ -171,6 +171,6 @@ __all__ = [
     "calculate_confidence",
     "ConfidenceScore",
     "get_confidence_guidance",
-    "adapt_personality",
+    "adapt_kira_personality",
     "check_forbidden_phrases",
 ]

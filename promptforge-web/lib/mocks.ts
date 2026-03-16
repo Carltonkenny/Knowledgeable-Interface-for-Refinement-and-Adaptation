@@ -30,17 +30,19 @@ export const MOCK_CHAT_RESULT: ChatResult = {
 export const MOCK_HISTORY: HistoryItem[] = [
   {
     id: 'mock-hist-1',
-    original_prompt: 'help me write an email to my client',
+    raw_prompt: 'help me write an email to my client',
     improved_prompt: MOCK_CHAT_RESULT.improved_prompt,
     quality_score: MOCK_CHAT_RESULT.quality_score,
+    domain_analysis: null,
     created_at: new Date().toISOString(),
     session_id: 'mock-session-1',
   },
   {
     id: 'mock-hist-2',
-    original_prompt: 'write a linkedin post',
+    raw_prompt: 'write a linkedin post',
     improved_prompt: 'Write a LinkedIn post for a B2B SaaS audience about [topic]. Tone: direct and insight-driven. Format: one hook line, 3 key points, one CTA. Under 200 words.',
     quality_score: { specificity: 5, clarity: 4, actionability: 5 },
+    domain_analysis: null,
     created_at: new Date(Date.now() - 86400000).toISOString(),
     session_id: 'mock-session-1',
   },

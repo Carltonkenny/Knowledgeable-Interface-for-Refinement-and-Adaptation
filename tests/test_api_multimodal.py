@@ -97,7 +97,7 @@ class TestRunSwarmWithAttachments:
 
     def test_run_swarm_without_attachments(self):
         """Test swarm runs without attachments."""
-        from api import _run_swarm
+        from service import _run_swarm
         
         result = _run_swarm(
             prompt="Test prompt",
@@ -109,7 +109,7 @@ class TestRunSwarmWithAttachments:
 
     def test_run_swarm_with_file_attachment(self):
         """Test swarm accepts file attachment parameters."""
-        from api import _run_swarm
+        from service import _run_swarm
         
         # Should not raise exception
         result = _run_swarm(
@@ -123,7 +123,7 @@ class TestRunSwarmWithAttachments:
 
     def test_run_swarm_initializes_attachments(self):
         """Test swarm initializes attachments in state."""
-        from api import _run_swarm
+        from service import _run_swarm
         from state import AgentState
         
         # Mock to capture initial state

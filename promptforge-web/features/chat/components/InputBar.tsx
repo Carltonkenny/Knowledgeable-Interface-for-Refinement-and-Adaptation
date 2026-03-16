@@ -6,6 +6,7 @@
 import { useRef, KeyboardEvent } from 'react'
 import { Chip } from '@/components/ui'
 import AttachmentPill from './AttachmentPill'
+import { Paperclip, Mic, ArrowRight } from 'lucide-react'
 
 interface InputBarProps {
   value: string
@@ -68,7 +69,7 @@ export default function InputBar({
   }
 
   return (
-    <div className="border border-border-strong bg-layer2 rounded-xl p-3">
+    <div className="border border-border-default bg-[var(--surface-hover)] rounded-xl p-3 transition-shadow duration-200 ease-in-out focus-within:shadow-glow focus-within:border-border-focus">
       {/* Attachment pill */}
       {attachment && onRemoveAttachment && (
         <div className="mb-2">
@@ -107,10 +108,10 @@ export default function InputBar({
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled}
-            className="text-text-dim hover:text-text-bright disabled:opacity-50"
+            className="text-text-dim hover:text-text-bright hover:scale-110 transition-all duration-150 ease-in-out disabled:opacity-50"
             title="Attach file"
           >
-            📎
+            <Paperclip size={18} />
           </button>
           <input
             ref={fileInputRef}
@@ -124,21 +125,21 @@ export default function InputBar({
           <button
             onClick={onVoice}
             disabled={disabled}
-            className={`text-text-dim hover:text-text-bright disabled:opacity-50 ${
-              isRecording ? 'text-intent border-intent animate-pulse' : ''
+            className={`text-text-dim hover:text-text-bright hover:scale-110 transition-all duration-150 ease-in-out disabled:opacity-50 ${
+              isRecording ? 'text-intent animate-pulse' : ''
             }`}
             title="Voice input"
           >
-            🎤
+            <Mic size={18} />
           </button>
 
           {/* Send */}
           <button
             onClick={onSubmit}
             disabled={disabled || !value.trim()}
-            className="bg-kira border-kira text-white rounded-lg px-3 py-1.5 text-sm font-medium hover:shadow-kira-strong disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="bg-kira border border-transparent text-white rounded-lg px-3 py-1.5 flex items-center justify-center hover:shadow-glow hover:border-border-focus disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ease-in-out"
           >
-            →
+            <ArrowRight size={18} />
           </button>
         </div>
       </div>

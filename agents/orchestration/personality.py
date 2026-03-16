@@ -1,16 +1,21 @@
 # agents/orchestration/personality.py
 """
-Personality Adaptation Logic.
+Kira Personality Adaptation Logic.
 
 CONTAINS:
     1. PersonalityAdaptation dataclass — Type-safe adaptation result
-    2. adapt_personality() — Main personality adaptation
+    2. adapt_kira_personality() — Adapt Kira's response personality to user
     3. check_forbidden_phrases() — Validate response doesn't contain forbidden phrases
 
 RULES.md Compliance:
     - Type hints mandatory
     - Docstrings complete
     - Pure functions (testable)
+
+RENAMED (v2.0):
+    - adapt_personality() → adapt_kira_personality()
+    Reason: Distinguish from analyze_user_personality() in context/adapters.py
+    This function adapts KIRA'S output, not analyzes user's input.
 """
 
 from typing import Dict, Any, List
@@ -29,28 +34,46 @@ class PersonalityAdaptation:
     forbidden_phrases_detected: List[str]
 
 
-def adapt_personality(
+def adapt_kira_personality(
     message: str,
     user_profile: Dict[str, Any],
     response_text: str
 ) -> PersonalityAdaptation:
     """
-    Adapt Kira's personality to user style.
-    
+    Adapt Kira's personality/response style to user.
+
+    This function adjusts HOW KIRA RESPONDS based on:
+    - User's communication style (formality, technical depth)
+    - User's profile baseline (preferred tone, domains)
+    - Generated response text (for forbidden phrase checking)
+
+    RULES.md:
+    - Kira is direct, warm, slightly opinionated
+    - Never says: "Certainly", "Great question", etc.
+    - Adapts expression based on user style
+
     Args:
         message: User's message
         user_profile: User profile from Supabase
-        response_text: Generated response text
-        
+        response_text: Generated response text to validate
+
     Returns:
-        PersonalityAdaptation dataclass
-        
-    Adaptation Logic:
-        - Detect user formality (0.0-1.0)
-        - Detect user technical depth (0.0-1.0)
-        - Blend with profile (70% profile, 30% message)
-        - Generate adaptation guidance
-        - Check for forbidden phrases
+        PersonalityAdaptation dataclass with:
+        - detected_user_style: formality/technical scores
+        - blended_style: 70% profile + 30% message blend
+        - adaptation_guidance: How Kira should express response
+        - forbidden_phrases_detected: Any violations found
+
+    Example:
+        >>> result = adapt_kira_personality(
+        ...     message="hey can u help me with some code",
+        ...     user_profile={"preferred_tone": "direct", "dominant_domains": ["coding"]},
+        ...     response_text="Sure! I'd be happy to help."
+        ... )
+        >>> result.adaptation_guidance
+        "Use contractions, friendly tone; Use precise terminology"
+        >>> result.forbidden_phrases_detected
+        ["I'd be happy to"]
     """
     # Detect user style
     detected = _detect_user_style(message)
@@ -168,5 +191,19 @@ def check_forbidden_phrases(text: str) -> List[str]:
     for phrase in FORBIDDEN_PHRASES:
         if phrase.lower() in text_lower:
             found.append(phrase)
-    
+
     return found
+
+
+# ═══ BACKWARD COMPATIBILITY ═══════════════════════════════════
+
+# Deprecated: Use adapt_kira_personality() instead
+# Removed in: v2.1.0
+# Reason: Rename to distinguish from analyze_user_personality() in context/adapters.py
+adapt_personality = adapt_kira_personality
+"""
+Backward compatibility alias — deprecated.
+
+Use adapt_kira_personality() instead.
+This alias will be removed in v2.1.0.
+"""

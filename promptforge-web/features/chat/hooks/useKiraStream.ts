@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { parseStream } from '@/lib/stream'
 import { mapError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
-import { apiConversation, type ChatResult } from '@/lib/api'
+import { apiConversation, type ChatResult, ApiError } from '@/lib/api'
 import type { ChatMessage } from '../types'
 import type { ProcessingStatus } from '../types'
 
@@ -83,7 +83,12 @@ export function useKiraStream({
    */
   useEffect(() => {
     if (!sessionId || !token) return
-    
+
+    let retryTimeout: NodeJS.Timeout | null = null
+    let retryCount = 0
+    const MAX_RETRIES = 3
+    const BASE_DELAY = 5000 // 5 seconds base delay for 429
+
     const loadHistory = async () => {
       try {
         const history = await apiConversation(token, sessionId)
@@ -95,7 +100,7 @@ export function useKiraStream({
               content: turn.message,
             }
           }
-          
+
           if (turn.message_type === 'output') {
             return {
               id: `hist-o-${idx}`,
@@ -121,12 +126,43 @@ export function useKiraStream({
           }
         })
         setMessages(mappedMessages)
+        retryCount = 0 // Reset retry count on success
       } catch (err) {
-        logger.error('Failed to load conversation history', { err, sessionId })
+        // Handle 429 Rate Limit with exponential backoff
+        if (err instanceof ApiError && err.status === 429) {
+          retryCount++
+          if (retryCount <= MAX_RETRIES) {
+            const delay = BASE_DELAY * Math.pow(2, retryCount - 1) // Exponential backoff: 5s, 10s, 20s
+            logger.warn(`Rate limited while loading history, retry ${retryCount}/${MAX_RETRIES} in ${delay}ms`, {
+              sessionId,
+              retryCount,
+              delay,
+            })
+            setIsRateLimited(true)
+            setRateLimitSecondsLeft(Math.floor(delay / 1000))
+            setError('Rate limit hit. Waiting before retry...')
+            
+            retryTimeout = setTimeout(() => {
+              loadHistory()
+            }, delay)
+            return
+          } else {
+            logger.error('Max retries exceeded for rate limited history load', { sessionId, retryCount })
+            setError('Rate limit exceeded. Please try again later.')
+            setIsRateLimited(true)
+          }
+        } else {
+          logger.error('Failed to load conversation history', { err, sessionId })
+        }
       }
     }
 
     loadHistory()
+
+    // Cleanup timeout on unmount or sessionId change
+    return () => {
+      if (retryTimeout) clearTimeout(retryTimeout)
+    }
   }, [sessionId, token])
 
   /**
@@ -273,6 +309,7 @@ export function useKiraStream({
               improved_prompt: result.improved_prompt ?? '',
               diff: Array.isArray(result.diff) ? result.diff : [],
               quality_score: result.quality_score ?? null,
+              suggestions: Array.isArray((result as any).suggestions) ? (result as any).suggestions : [],
               kira_message: result.kira_message ?? '',
               memories_applied: result.memories_applied ?? 0,
               latency_ms: result.latency_ms ?? 0,
@@ -329,9 +366,17 @@ export function useKiraStream({
         logger.error('Stream failed', { err })
         setError('Something went wrong. Your prompt is safe — try again.')
         setIsStreaming(false)
+      } finally {
+        // ALWAYS reset streaming state (fixes Enter button stopping after one message)
+        setIsStreaming(false)
+        setStatus((prev) => ({
+          ...prev,
+          state: prev.state === 'complete' ? 'complete' : 'idle',
+          isStreaming: false,
+        }))
       }
     },
-    [sessionId, token, apiUrl, isStreaming, isRateLimited]
+    [sessionId, token, apiUrl, isRateLimited]  // Removed isStreaming from deps (causes re-creation)
   )
 
   /**

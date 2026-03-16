@@ -104,12 +104,19 @@ export async function parseStream(
     if (done) break
 
     buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() ?? ''
+    const blocks = buffer.split('\n\n')
+    buffer = blocks.pop() ?? ''
 
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue
-      const raw = line.slice(6).trim()
+    for (const block of blocks) {
+      const lines = block.split('\n')
+      let dataStr = ''
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          dataStr += line.slice(6)
+        }
+      }
+      
+      const raw = dataStr.trim()
       if (!raw || raw === '[DONE]') continue
 
       try {

@@ -66,22 +66,44 @@ def save_request(
     """
     Saves to requests table with Phase 3 Auto-Versioning.
     
+    RULES.md: Auto-creates session if not exists (prevents FK violations).
+
     Logic:
     - If session_id exists, find latest version in that session.
     - If found, increment version_number and link to same version_id.
     - If new session, start version 1 with new version_id.
+    - Auto-creates chat_session if session_id provided but not found.
     """
     try:
         db = get_client()
         request_id = str(uuid.uuid4())
-        
+
         version_id = str(uuid.uuid4())
         version_number = 1
         parent_version_id = None
-        
+
         # ═══ Phase 3: Auto-Versioning Logic ═══
         if session_id and user_id:
             logger.debug(f"[db] checking for previous versions in session {session_id[:8]}...")
+            
+            # RULES.md: Auto-create session if not exists (prevents FK constraint violations)
+            session_check = db.table("chat_sessions")\
+                .select("id")\
+                .eq("id", session_id)\
+                .eq("user_id", user_id)\
+                .execute()
+            
+            if not session_check.data:
+                # Session doesn't exist - auto-create it
+                logger.info(f"[db] session {session_id[:8]}... not found, auto-creating")
+                db.table("chat_sessions").insert({
+                    "id": session_id,
+                    "user_id": user_id,
+                    "title": "Auto-created session",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "last_activity": datetime.now(timezone.utc).isoformat()
+                }).execute()
+            
             latest = db.table("requests")\
                 .select("id, version_id, version_number")\
                 .eq("session_id", session_id)\
@@ -89,13 +111,13 @@ def save_request(
                 .order("version_number", desc=True)\
                 .limit(1)\
                 .execute()
-            
+
             if latest.data:
                 # Group with existing version group
                 version_id = latest.data[0]["version_id"]
                 version_number = latest.data[0]["version_number"] + 1
                 parent_version_id = latest.data[0]["id"]
-                
+
                 # Mark previous as not production
                 db.table("requests")\
                     .update({"is_production": False})\

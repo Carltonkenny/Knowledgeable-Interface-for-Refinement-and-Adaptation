@@ -1,25 +1,45 @@
 // features/landing/components/MoatSection.tsx
 // Profile accumulation bars (the moat)
 // Server component
+'use client'
+
+import { motion } from 'framer-motion'
 
 export function MoatSection() {
   return (
     <section className="py-16 px-12 border-t border-border-subtle">
       <div className="max-w-4xl mx-auto">
         {/* Eyebrow */}
-        <p className="font-mono text-kira tracking-[3px] uppercase text-[10px] mb-4 reveal">
+        <motion.p 
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="font-mono text-kira tracking-[3px] uppercase text-[10px] mb-4"
+        >
           // 04  The moat
-        </p>
+        </motion.p>
 
         {/* Title */}
-        <h2 className="text-[28px] font-bold tracking-tight text-text-bright mb-4 reveal reveal-delay-1">
+        <motion.h2 
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.1 }}
+          className="text-[28px] font-bold tracking-tight text-text-bright mb-4"
+        >
           The longer you use it,
           <br />
           the more it costs to leave.
-        </h2>
+        </motion.h2>
 
         {/* Card */}
-        <div className="border border-border-default rounded-xl bg-layer1 p-6 reveal reveal-delay-2">
+        <motion.div 
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-50px" }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          className="border border-border-default rounded-xl bg-[var(--surface-card)] p-6 shadow-card"
+        >
           {/* Progress rows */}
           <div className="space-y-4">
             {/* Domain confidence */}
@@ -74,7 +94,7 @@ export function MoatSection() {
               Switching away means starting over.
             </span>
           </p>
-        </div>
+        </motion.div>
       </div>
     </section>
   )

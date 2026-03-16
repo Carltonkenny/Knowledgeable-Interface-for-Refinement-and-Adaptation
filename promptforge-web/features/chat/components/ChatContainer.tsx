@@ -3,7 +3,7 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSessionId } from '../hooks/useSessionId'
 import { useKiraStream } from '../hooks/useKiraStream'
 import { useInputBar } from '../hooks/useInputBar'
@@ -53,6 +53,18 @@ export default function ChatContainer({
     token,
     apiUrl,
   })
+
+  // Listen for suggestion clicks from OutputCards
+  useEffect(() => {
+    const handleSendMessage = (e: Event) => {
+      const customEvent = e as CustomEvent<{ message: string }>
+      if (customEvent.detail?.message) {
+        send(customEvent.detail.message)
+      }
+    }
+    window.addEventListener('send-chat-message', handleSendMessage)
+    return () => window.removeEventListener('send-chat-message', handleSendMessage)
+  }, [send])
 
   // Input bar hook
   const {

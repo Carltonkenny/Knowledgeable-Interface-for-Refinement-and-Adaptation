@@ -1,17 +1,23 @@
 # agents/context/scorer.py
 """
-Input Quality Scoring.
+Input Quality Scoring + Domain Signal Detection.
 
 CONTAINS:
     1. QualityScore dataclass — Type-safe score representation
     2. QualityThresholds — Configurable thresholds
     3. score_input_quality() — Pre-routing quality assessment
+    4. detect_domain_signals() — Lightweight domain hint detection
 
 RULES.md Compliance:
     - Type hints mandatory
     - Docstrings complete
     - Pure functions (testable)
     - Configuration over hardcoding
+
+DESIGN PRINCIPLE:
+    score_input_quality() scores STRUCTURAL quality only.
+    detect_domain_signals() detects DOMAIN hints separately.
+    Domain Agent does the REAL classification (LLM-based).
 """
 
 from typing import List, Optional
@@ -190,13 +196,13 @@ def _calculate_score(
 def _get_recommendation(score: int) -> str:
     """
     Get pipeline recommendation from score.
-    
+
     Args:
         score: Quality score 1-3
-        
+
     Returns:
         Recommendation string
-        
+
     Example:
         >>> _get_recommendation(1)
         'light'
@@ -204,3 +210,90 @@ def _get_recommendation(score: int) -> str:
         'full'
     """
     return {1: "light", 2: "standard", 3: "full"}[score]
+
+
+# ═══ DOMAIN SIGNAL DETECTION (SEPARATE FROM SCORING) ═════════════════════════
+
+def detect_domain_signals(message: str) -> List[str]:
+    """
+    Detect domain hints from message — lightweight pre-check for routing.
+
+    This is NOT the real domain classification — that's Domain Agent's job.
+    This is a fast keyword-based hint for routing optimization.
+
+    RULES.md:
+    - Pure function (testable, no side effects)
+    - Configuration over hardcoding
+    - Fast path for routing decisions
+
+    Use cases:
+    - Skip Domain Agent if keyword confidence is already high
+    - Pre-route to domain-specific prompt templates
+    - Early personalization before full analysis
+
+    Args:
+        message: User's message
+
+    Returns:
+        List of domain hints: ["coding", "marketing", etc.] or []
+
+    Example:
+        >>> detect_domain_signals("write a FastAPI endpoint")
+        ['coding']
+        >>> detect_domain_signals("create an email sequence")
+        ['marketing']
+        >>> detect_domain_signals("hello")
+        []
+    """
+    signals = []
+    message_lower = message.lower()
+
+    # Coding/tech signals
+    coding_keywords = [
+        "python", "javascript", "typescript", "java", "rust", "go",
+        "fastapi", "flask", "django", "react", "vue", "angular",
+        "api", "endpoint", "function", "method", "class", "interface",
+        "database", "sql", "nosql", "mongodb", "postgresql", "mysql",
+        "code", "script", "program", "debug", "deploy", "docker",
+        "async", "await", "promise", "callback", "middleware", "router"
+    ]
+    if any(kw in message_lower for kw in coding_keywords):
+        signals.append("coding")
+
+    # Marketing/writing signals
+    marketing_keywords = [
+        "email", "newsletter", "outreach", "copy", "blog", "post",
+        "sequence", "campaign", "audience", "readers", "subscribers",
+        "cold email", "linkedin", "twitter", "social media",
+        "pitch", "proposal", "presentation", "sales", "conversion"
+    ]
+    if any(kw in message_lower for kw in marketing_keywords):
+        signals.append("marketing")
+
+    # Data/analysis signals
+    data_keywords = [
+        "analyze", "data", "chart", "graph", "visualization",
+        "statistics", "metrics", "dashboard", "report", "insights",
+        "machine learning", "ml", "prediction", "model", "training"
+    ]
+    if any(kw in message_lower for kw in data_keywords):
+        signals.append("data")
+
+    # Creative signals
+    creative_keywords = [
+        "story", "poem", "script", "creative", "fiction",
+        "character", "scene", "narrative", "dialogue", "plot",
+        "novel", "short story", "screenplay", "verse"
+    ]
+    if any(kw in message_lower for kw in creative_keywords):
+        signals.append("creative")
+
+    # Academic/research signals
+    academic_keywords = [
+        "research", "paper", "thesis", "essay", "citation",
+        "literature review", "methodology", "hypothesis", "study"
+    ]
+    if any(kw in message_lower for kw in academic_keywords):
+        signals.append("academic")
+
+    return signals
