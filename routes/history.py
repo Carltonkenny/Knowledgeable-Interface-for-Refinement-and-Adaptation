@@ -342,7 +342,7 @@ async def get_version_history(
             .select("*")\
             .eq("version_id", version_id)\
             .eq("user_id", user.user_id)\
-            .order("version_number", asc=True)\
+            .order("version_number", desc=False)\
             .execute()
 
         return {
@@ -416,7 +416,7 @@ async def compare_versions(
             .eq("version_id", version_id)\
             .eq("user_id", user.user_id)\
             .in_("version_number", [v1, v2])\
-            .order("version_number", asc=True)\
+            .order("version_number", desc=False)\
             .execute()
 
         if len(versions.data or []) < 2:

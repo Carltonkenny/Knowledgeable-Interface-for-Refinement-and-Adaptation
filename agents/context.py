@@ -71,7 +71,7 @@ def context_agent(state: AgentState) -> Dict[str, Any]:
         latency_ms = int((time.time() - start_time) * 1000)
         logger.info(f"[context] skipped — no conversation history")
         return {
-            "context_analysis": {},
+            "context_analysis": None,  # None for skipped/failed, merge_dict will ignore
             "was_skipped": True,
             "skip_reason": "no conversation history available",
             "latency_ms": latency_ms,
@@ -99,6 +99,7 @@ def context_agent(state: AgentState) -> Dict[str, Any]:
         result = parse_json_response(response.content, agent_name="context")
         
         latency_ms = int((time.time() - start_time) * 1000)
+        result["latency_ms"] = latency_ms
         logger.info(f"[context] skill={result.get('skill_level', 'unknown')} tone={result.get('tone', 'unknown')} latency={latency_ms}ms")
         
         return {
@@ -106,13 +107,15 @@ def context_agent(state: AgentState) -> Dict[str, Any]:
             "was_skipped": False,
             "skip_reason": None,
             "latency_ms": latency_ms,
+            "agents_run": ["context"],
+            "agent_latencies": {"context": latency_ms}
         }
         
     except Exception as e:
         logger.error(f"[context] failed: {e}", exc_info=True)
         latency_ms = int((time.time() - start_time) * 1000)
         return {
-            "context_analysis": {},
+            "context_analysis": None,  # None signals failure, merge_dict will ignore
             "was_skipped": False,
             "skip_reason": None,
             "latency_ms": latency_ms,

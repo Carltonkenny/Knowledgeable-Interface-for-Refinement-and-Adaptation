@@ -21,6 +21,26 @@ interface ChatContainerProps {
   sessionId: string
 }
 
+function MessageSkeleton() {
+  return (
+    <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className={`flex flex-col ${i % 2 === 0 ? 'items-end' : 'items-start'} space-y-2`}>
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 rounded-full bg-border-subtle animate-pulse" />
+            <div className="h-4 w-24 bg-border-subtle rounded animate-pulse" />
+          </div>
+          <div 
+            className={`h-16 rounded-2xl bg-border-subtle/50 animate-pulse ${
+              i % 2 === 0 ? 'w-2/3 rounded-tr-none' : 'w-3/4 rounded-tl-none'
+            }`} 
+          />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function ChatContainer({ 
   token, 
   apiUrl, 
@@ -45,9 +65,12 @@ export default function ChatContainer({
     error,
     clarificationPending,
     clarificationOptions,
+    historyLoadError,
+    historyLoading,
     send,
     retry,
     clearError,
+    reloadHistory,
   } = useKiraStream({
     sessionId,
     token,
@@ -136,8 +159,32 @@ export default function ChatContainer({
   // Chat UI
   return (
     <div className="h-full flex flex-col">
+      {/* History load error with retry button */}
+      {historyLoadError && messages.length === 0 && (
+        <div className="flex-1 flex flex-col items-center justify-center p-8">
+          <div className="text-center space-y-4">
+            <div className="text-text-error text-lg font-medium">{historyLoadError}</div>
+            <button
+              onClick={reloadHistory}
+              className="px-6 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 transition-colors"
+            >
+              Retry Loading Conversation
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Message list */}
-      <MessageList messages={messages} isStreaming={isStreaming} />
+      <div className="flex-1 overflow-hidden relative">
+        <MessageList messages={messages} isStreaming={isStreaming} status={status} />
+        
+        {/* Skeleton Overlay for session switching */}
+        {historyLoading && (
+          <div className="absolute inset-0 bg-bg-primary/80 backdrop-blur-sm z-10 flex flex-col">
+            <MessageSkeleton />
+          </div>
+        )}
+      </div>
 
       {/* Clarification chips */}
       {clarificationPending && (

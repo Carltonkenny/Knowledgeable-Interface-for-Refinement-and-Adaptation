@@ -27,9 +27,12 @@ interface UseKiraStreamReturn {
   error: string | null
   clarificationPending: boolean
   clarificationOptions: string[]
+  historyLoadError: string | null  // Separate error for history loading
+  historyLoading: boolean  // Whether history is currently loading
   send: (message: string, attachment?: File) => void
   retry: () => void
   clearError: () => void
+  reloadHistory: () => void  // Explicit history reload function
 }
 
 /**
@@ -53,12 +56,18 @@ export function useKiraStream({
   const [error, setError] = useState<string | null>(null)
   const [clarificationPending, setClarificationPending] = useState(false)
   const [clarificationOptions, setClarificationOptions] = useState<string[]>([])
+  const [historyLoadError, setHistoryLoadError] = useState<string | null>(null)
 
   // Store last message for retry
   const lastMessageRef = useRef<{ message: string; attachment?: File } | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   // Accumulator for char-by-char SSE kira_message events
   const kiraStreamBufferRef = useRef<string>('')
+  
+  // ── FIX 1: Conversation Cache ───────────────────────────────────────────────
+  // Persists across sessionId changes for this mount
+  const conversationCache = useRef<Map<string, ChatMessage[]>>(new Map())
+  const [historyLoading, setHistoryLoading] = useState(false)
 
   // Rate limit countdown
   useEffect(() => {
@@ -84,14 +93,31 @@ export function useKiraStream({
   useEffect(() => {
     if (!sessionId || !token) return
 
+    // ── FIX 3: Abort previous history fetch ────────────────────────
+    abortControllerRef.current?.abort()
+    abortControllerRef.current = new AbortController()
+    const signal = abortControllerRef.current.signal
+
+    // ── FIX 2: Check cache first (Flash prevention) ───────────────
+    const cached = conversationCache.current.get(sessionId)
+    if (cached) {
+      setMessages(cached)
+      setHistoryLoading(false)
+      return
+    }
+
+    // Do NOT clear messages here — show skeleton overlay in UI instead
+    setHistoryLoading(true)
+
     let retryTimeout: NodeJS.Timeout | null = null
     let retryCount = 0
     const MAX_RETRIES = 3
     const BASE_DELAY = 5000 // 5 seconds base delay for 429
 
     const loadHistory = async () => {
+      setHistoryLoadError(null) // Clear previous error on retry
       try {
-        const history = await apiConversation(token, sessionId)
+        const history = await apiConversation(token, sessionId, signal)
         const mappedMessages: ChatMessage[] = history.map((turn, idx) => {
           if (turn.role === 'user') {
             return {
@@ -111,8 +137,8 @@ export function useKiraStream({
                 diff: [], // We don't store diffs in DB yet, but we show the result
                 quality_score: null,
                 kira_message: turn.message,
-                memories_applied: 0,
-                latency_ms: 0,
+                memories_applied: turn.memories_applied ?? 0,
+                latency_ms: turn.latency_ms ?? 0,
                 agents_run: [],
               },
               sessionId
@@ -125,9 +151,22 @@ export function useKiraStream({
             content: turn.message,
           }
         })
+
+        // ── FIX 1: Update cache (Max 10) ───────────────────────────
+        conversationCache.current.set(sessionId, mappedMessages)
+        if (conversationCache.current.size > 10) {
+          const firstKey = conversationCache.current.keys().next().value
+          if (firstKey) conversationCache.current.delete(firstKey)
+        }
+
         setMessages(mappedMessages)
+        setHistoryLoading(false)
         retryCount = 0 // Reset retry count on success
       } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          return // Intentional abort (session switch)
+        }
+
         // Handle 429 Rate Limit with exponential backoff
         if (err instanceof ApiError && err.status === 429) {
           retryCount++
@@ -141,7 +180,7 @@ export function useKiraStream({
             setIsRateLimited(true)
             setRateLimitSecondsLeft(Math.floor(delay / 1000))
             setError('Rate limit hit. Waiting before retry...')
-            
+
             retryTimeout = setTimeout(() => {
               loadHistory()
             }, delay)
@@ -149,10 +188,17 @@ export function useKiraStream({
           } else {
             logger.error('Max retries exceeded for rate limited history load', { sessionId, retryCount })
             setError('Rate limit exceeded. Please try again later.')
+            setHistoryLoadError('Rate limit exceeded. Please try again later.')
             setIsRateLimited(true)
+            setHistoryLoading(false)
           }
         } else {
-          logger.error('Failed to load conversation history', { err, sessionId })
+          const errorMsg = err instanceof ApiError 
+            ? `Failed to load: ${err.message}` 
+            : 'Failed to load conversation history'
+          logger.error(errorMsg, { err, sessionId })
+          setHistoryLoadError('Failed to load conversation — tap to retry')
+          setHistoryLoading(false)
         }
       }
     }
@@ -396,6 +442,63 @@ export function useKiraStream({
     setError(null)
   }, [])
 
+  /**
+   * Reload conversation history (for retry button)
+   */
+  const reloadHistory = useCallback(() => {
+    if (!sessionId || !token) return
+    setHistoryLoadError(null)
+    
+    // Re-trigger the history loading effect
+    // We do this by calling the same loadHistory logic
+    const loadHistory = async () => {
+      try {
+        const history = await apiConversation(token, sessionId)
+        const mappedMessages: ChatMessage[] = history.map((turn, idx) => {
+          if (turn.role === 'user') {
+            return {
+              id: `hist-u-${idx}`,
+              type: 'user',
+              content: turn.message,
+            }
+          }
+
+          if (turn.message_type === 'output') {
+            return {
+              id: `hist-o-${idx}`,
+              type: 'output',
+              content: turn.message,
+              result: {
+                improved_prompt: turn.improved_prompt || '',
+                diff: [],
+                quality_score: null,
+                kira_message: turn.message,
+                memories_applied: turn.memories_applied ?? 0,
+                latency_ms: turn.latency_ms ?? 0,
+                agents_run: [],
+              },
+              sessionId
+            }
+          }
+
+          return {
+            id: `hist-k-${idx}`,
+            type: 'kira',
+            content: turn.message,
+          }
+        })
+        setMessages(mappedMessages)
+        setHistoryLoadError(null)
+        logger.info('[history] reload successful', { sessionId, count: mappedMessages.length })
+      } catch (err) {
+        logger.error('[history] reload failed', { err, sessionId })
+        setHistoryLoadError('Failed to load conversation — tap to retry')
+      }
+    }
+    
+    loadHistory()
+  }, [sessionId, token])
+
   return {
     messages,
     status,
@@ -405,8 +508,11 @@ export function useKiraStream({
     error,
     clarificationPending,
     clarificationOptions,
+    historyLoadError,
+    historyLoading,
     send,
     retry,
     clearError,
+    reloadHistory,
   }
 }

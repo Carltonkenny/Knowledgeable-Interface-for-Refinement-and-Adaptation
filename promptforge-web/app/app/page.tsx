@@ -15,24 +15,38 @@ export default function ChatPage() {
   useEffect(() => {
     async function initChat() {
       const session = await getSession()
-      
+
       if (!session) {
         router.push('/auth/login')
         return
       }
 
       const token = session.access_token
-      
+
       try {
-        // Fetch sessions to see if we have any
+        // Check localStorage for last session (persistence across refresh)
+        const lastSessionId = typeof window !== 'undefined' 
+          ? localStorage.getItem('pf_last_session') 
+          : null
+
+        if (lastSessionId) {
+          // Try to redirect to last session
+          router.push(`/app/chat/${lastSessionId}`)
+          return
+        }
+
+        // No stored session — fetch sessions to see if we have any
         const sessions = await apiListSessions(token)
-        
+
         if (sessions.length > 0) {
           // Redirect to the most recent session
-          router.push(`/app/chat/${sessions[0].id}`)
+          const mostRecent = sessions[0].id
+          localStorage.setItem('pf_last_session', mostRecent)
+          router.push(`/app/chat/${mostRecent}`)
         } else {
           // Create a new session and redirect
           const newSession = await apiCreateSession(token)
+          localStorage.setItem('pf_last_session', newSession.id)
           router.push(`/app/chat/${newSession.id}`)
         }
       } catch (err) {

@@ -20,17 +20,26 @@ export function MoatSection() {
         </motion.p>
 
         {/* Title */}
-        <motion.h2 
+        <motion.h2
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ delay: 0.1 }}
           className="text-[28px] font-bold tracking-tight text-text-bright mb-4"
         >
-          The longer you use it,
-          <br />
-          the more it costs to leave.
+          Kira gets smarter every time.
         </motion.h2>
+
+        {/* Sub */}
+        <motion.p
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.15 }}
+          className="text-[15px] text-text-dim mb-10 max-w-2xl"
+        >
+          Most AI tools forget you the moment you close the tab. Kira remembers your domains, your style, your preferences. The more you use it, the better it gets.
+        </motion.p>
 
         {/* Card */}
         <motion.div 
@@ -91,7 +100,7 @@ export function MoatSection() {
           <p className="font-mono text-[10px] text-text-dim mt-6 pt-4 border-t border-border-subtle">
             This lives in your profile.{' '}
             <span className="text-text-bright font-semibold">
-              Switching away means starting over.
+              The more you use Kira, the better she gets.
             </span>
           </p>
         </motion.div>

@@ -4,18 +4,20 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { motion } from 'framer-motion'
 import UserMessage from './UserMessage'
 import KiraMessage from './KiraMessage'
 import StatusChips from './StatusChips'
 import OutputCard from './OutputCard'
-import type { ChatMessage } from '../types'
+import type { ChatMessage, ProcessingStatus } from '../types'
 
 interface MessageListProps {
   messages: ChatMessage[]
   isStreaming: boolean
+  status: ProcessingStatus
 }
 
-export default function MessageList({ messages, isStreaming }: MessageListProps) {
+export default function MessageList({ messages, isStreaming, status }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   // Auto-scroll to bottom on new message
@@ -64,14 +66,38 @@ export default function MessageList({ messages, isStreaming }: MessageListProps)
       })}
 
       {/* Status chips during streaming */}
-      {isStreaming && (
-        <StatusChips
-          status={{
-            state: 'swarm_running',
-            agentsComplete: new Set(),
-            agentsSkipped: new Set(),
-          }}
-        />
+      {isStreaming && status && (
+        <StatusChips status={status} />
+      )}
+
+      {/* OutputCard Skeleton while waiting for result */}
+      {isStreaming && status && (status.state === 'swarm_running' || status.state === 'kira_reading') && (
+        <motion.div
+           layoutId="output-card-skeleton"
+           className="mb-6 w-full max-w-2xl mx-auto"
+        >
+          <div className="rounded-[11px] p-px bg-border-subtle/30 overflow-hidden">
+            <div className="bg-layer1 rounded-[10px] p-5 h-40 animate-pulse flex flex-col gap-4">
+               {/* Skeleton Header */}
+               <div className="flex gap-3 items-center">
+                 <div className="h-3 w-24 bg-layer3/50 rounded-full" />
+                 <div className="h-4 w-20 bg-layer3/50 rounded-full" />
+                 <div className="h-3 w-10 bg-layer3/50 rounded-full" />
+               </div>
+               {/* Skeleton Body */}
+               <div className="space-y-2.5 mt-2">
+                 <div className="h-2.5 bg-layer3/40 rounded-full w-[90%]" />
+                 <div className="h-2.5 bg-layer3/40 rounded-full w-[85%]" />
+                 <div className="h-2.5 bg-layer3/40 rounded-full w-[70%]" />
+               </div>
+               {/* Skeleton Chips */}
+               <div className="flex gap-2 mt-auto pt-2">
+                 <div className="h-6 w-32 bg-layer3/30 rounded-md" />
+                 <div className="h-6 w-32 bg-layer3/30 rounded-md" />
+               </div>
+            </div>
+          </div>
+        </motion.div>
       )}
 
       {/* Auto-scroll anchor */}

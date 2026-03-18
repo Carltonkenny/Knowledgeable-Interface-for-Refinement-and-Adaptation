@@ -54,10 +54,10 @@ export function useChatSessions(token: string) {
     }
   }, [token])
 
-  // Fetch deleted sessions (Recycle Bin)
+  // Fetch deleted sessions (Recycle Bin) - NON-CRITICAL, fails silently
   const fetchDeletedSessions = useCallback(async () => {
     if (!token) {
-      logger.warn('Cannot fetch deleted sessions - no auth token', { hasToken: false })
+      logger.debug('Cannot fetch deleted sessions - no auth token', { hasToken: false })
       return
     }
     setIsRecycleBinLoading(true)
@@ -66,14 +66,37 @@ export function useChatSessions(token: string) {
       setDeletedSessions(data)
       logger.debug('Deleted sessions fetched successfully', { count: data.length })
     } catch (err: any) {
-      // RULES.md: Error logging must include full context for debugging
-      logger.error('Failed to fetch deleted sessions', {
-        error_type: err instanceof Error ? err.name : (typeof err === 'string' ? 'string' : 'unknown'),
-        error_message: err instanceof Error ? err.message : (typeof err === 'string' ? err : String(err)),
-        error_status: err?.status || err?.statusCode || 'no status code',
-        has_token: !!token,
-        token_preview: token ? `${token.substring(0, 20)}...` : 'none',
-      })
+      // MODERN ERROR HANDLING:
+      // - 404 = No deleted sessions (normal, don't log error)
+      // - 401/403 = Auth issue (log warning, don't show error)
+      // - 500+ = Server error (log once, don't show error - non-critical feature)
+      
+      const statusCode = err?.status || err?.statusCode
+      const isNotFound = statusCode === 404
+      const isAuthError = statusCode === 401 || statusCode === 403
+      
+      if (isNotFound) {
+        // No deleted sessions - this is normal, set empty array
+        setDeletedSessions([])
+        logger.debug('No deleted sessions found (404)')
+      } else if (isAuthError) {
+        // Auth issue - log warning but don't disrupt UX
+        logger.warn('Deleted sessions: auth failed', { 
+          status: statusCode,
+          has_token: !!token 
+        })
+        setDeletedSessions([])
+      } else {
+        // Server error - log once with full context, don't show error to user
+        // This is a NON-CRITICAL feature - Recycle Bin can be unavailable
+        logger.debug('Deleted sessions: fetch failed (non-critical)', {
+          status: statusCode || 'unknown',
+          message: err instanceof Error ? err.message : 'Unknown error',
+          has_token: !!token,
+        })
+        setDeletedSessions([])
+      }
+      // NEVER set error state for non-critical features
     } finally {
       setIsRecycleBinLoading(false)
     }
@@ -214,6 +237,8 @@ export function useChatSessions(token: string) {
 
   // Switch session
   const switchSession = (sessionId: string) => {
+    // Save to localStorage for persistence across refreshes
+    localStorage.setItem('pf_last_session', sessionId)
     router.push(`/app/chat/${sessionId}`)
   }
 

@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { apiCompareVersions, type VersionData } from '@/lib/api'
+import { apiCompareVersions, type VersionData, type DiffItem } from '@/lib/api'
 import { Scaling, X, ArrowRight, Info } from 'lucide-react'
 import DiffView from '@/features/chat/components/DiffView'
 
@@ -24,7 +24,7 @@ export default function VersionComparison({
   const [data, setData] = useState<{
     version_1: VersionData
     version_2: VersionData
-    diff: any
+    diff: DiffItem[]
   } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 

@@ -17,13 +17,13 @@ const steps = [
   {
     num: '02',
     chips: [
-      { variant: 'intent' as const, label: 'Analyzing intent', active: false, skipped: false },
+      { variant: 'intent' as const, label: 'Intent', active: false, skipped: false },
       { variant: 'context' as const, label: 'Context', active: false, skipped: false },
       { variant: 'domain' as const, label: 'Domain', active: false, skipped: false },
     ],
-    title: 'Three specialists, in parallel',
-    desc: 'Some skip if Kira already knows your domain.',
-    note: 'Gets faster as Kira learns you',
+    title: 'Three agents analyze in parallel',
+    desc: 'Intent, Context, and Domain specialists work simultaneously.',
+    note: 'Some skip if Kira already knows your domain',
   },
   {
     num: '03',

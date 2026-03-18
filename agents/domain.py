@@ -78,7 +78,7 @@ def domain_agent(state: AgentState) -> Dict[str, Any]:
         latency_ms = int((time.time() - start_time) * 1000)
         logger.info(f"[domain] skipped — high confidence ({domain_confidence:.2f})")
         return {
-            "domain_analysis": {},
+            "domain_analysis": None,  # None for skipped/failed, merge_dict will ignore
             "was_skipped": True,
             "skip_reason": f"domain confidence {domain_confidence:.2f} > 0.85",
             "latency_ms": latency_ms,
@@ -104,6 +104,7 @@ def domain_agent(state: AgentState) -> Dict[str, Any]:
         result = parse_json_response(response.content, agent_name="domain")
         
         latency_ms = int((time.time() - start_time) * 1000)
+        result["latency_ms"] = latency_ms
         logger.info(f"[domain] domain={result.get('primary_domain', 'unknown')} confidence={result.get('confidence', 0):.2f} latency={latency_ms}ms")
         
         return {
@@ -111,13 +112,15 @@ def domain_agent(state: AgentState) -> Dict[str, Any]:
             "was_skipped": False,
             "skip_reason": None,
             "latency_ms": latency_ms,
+            "agents_run": ["domain"],
+            "agent_latencies": {"domain": latency_ms}
         }
         
     except Exception as e:
         logger.error(f"[domain] failed: {e}", exc_info=True)
         latency_ms = int((time.time() - start_time) * 1000)
         return {
-            "domain_analysis": {},
+            "domain_analysis": None,  # None signals failure, merge_dict will ignore
             "was_skipped": False,
             "skip_reason": None,
             "latency_ms": latency_ms,

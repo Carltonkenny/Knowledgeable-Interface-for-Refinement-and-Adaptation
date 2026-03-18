@@ -3,10 +3,10 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { getAccessToken } from '@/lib/supabase'
 import { ROUTES } from '@/lib/constants'
+import { useToken } from '@/hooks/useToken'
 import HistoryList from '@/features/history/components/HistoryList'
 import HistorySearchBar from '@/features/history/components/HistorySearchBar'
 import HistoryAnalyticsDashboard from '@/features/history/components/HistoryAnalyticsDashboard'
@@ -14,9 +14,9 @@ import { useHistory } from '@/features/history/hooks/useHistory'
 import { useHistoryAnalytics } from '@/features/history/hooks/useHistoryAnalytics'
 
 export default function HistoryPage() {
-  const [token, setToken] = useState<string | null>(null)
-  const [days, setDays] = useState(30)
   const router = useRouter()
+  const token = useToken()
+  const [days, setDays] = useState(30)
 
   const {
     items,
@@ -42,20 +42,16 @@ export default function HistoryPage() {
     isLoading: isLoadingAnalytics
   } = useHistoryAnalytics(token, days)
 
-  useEffect(() => {
-    async function loadToken() {
-      const accessToken = await getAccessToken()
-      
-      if (!accessToken) {
-        router.push(ROUTES.LOGIN)
-        return
-      }
-      
-      setToken(accessToken)
-    }
-
-    loadToken()
-  }, [router])
+  // Show loading state while token initializes
+  if (!token) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <div className="w-12 h-12 rounded-lg border border-kira bg-[var(--kira-dim)] flex items-center justify-center animate-pulse">
+          <span className="text-kira font-bold font-mono text-xl">K</span>
+        </div>
+      </div>
+    )
+  }
 
   function handleUseAgain(prompt: string) {
     router.push(`/app?prompt=${encodeURIComponent(prompt)}`)

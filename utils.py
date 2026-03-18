@@ -67,22 +67,31 @@ def get_redis_client() -> Optional[redis.Redis]:
 
 # ═══ Cache Functions ═════════════════════════
 
+CACHE_VERSION = "v2"
+"""
+Cache schema version — increment when state schema changes.
+When incremented, old cache keys become orphaned and expire naturally via TTL.
+Prevents stale cached data from being served after schema updates.
+"""
+
+
 def get_cache_key(prompt: str) -> str:
     """
-    SHA-256 hash of normalized prompt.
+    SHA-256 hash of normalized prompt with version prefix.
     Per RULES.md: NEVER use MD5 (security vulnerability).
-    
+
     Args:
         prompt: User's prompt text
-        
+
     Returns:
         64-character hex string (SHA-256 hash)
-        
+
     Example:
         key = get_cache_key("write a story")
         # Returns: "a1b2c3..." (64 chars)
     """
-    return hashlib.sha256(prompt.strip().lower().encode()).hexdigest()
+    raw = f"{CACHE_VERSION}:{prompt.strip().lower()}"
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def get_cached_result(prompt: str) -> Optional[Dict[str, Any]]:

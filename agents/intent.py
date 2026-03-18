@@ -75,7 +75,7 @@ def intent_agent(state: AgentState) -> Dict[str, Any]:
         latency_ms = int((time.time() - start_time) * 1000)
         logger.info(f"[intent] skipped — {orchestrator.get('intent_skip_reason', 'not specified')}")
         return {
-            "intent_analysis": {},
+            "intent_analysis": None,  # None for skipped/failed, merge_dict will ignore
             "was_skipped": True,
             "skip_reason": orchestrator.get("intent_skip_reason", "simple direct command"),
             "latency_ms": latency_ms,
@@ -97,6 +97,7 @@ def intent_agent(state: AgentState) -> Dict[str, Any]:
         result = parse_json_response(response.content, agent_name="intent")
         
         latency_ms = int((time.time() - start_time) * 1000)
+        result["latency_ms"] = latency_ms
         logger.info(f"[intent] clarity={result.get('goal_clarity', 'unknown')} latency={latency_ms}ms")
         
         return {
@@ -104,13 +105,15 @@ def intent_agent(state: AgentState) -> Dict[str, Any]:
             "was_skipped": False,
             "skip_reason": None,
             "latency_ms": latency_ms,
+            "agents_run": ["intent"],
+            "agent_latencies": {"intent": latency_ms}
         }
         
     except Exception as e:
         logger.error(f"[intent] failed: {e}", exc_info=True)
         latency_ms = int((time.time() - start_time) * 1000)
         return {
-            "intent_analysis": {},
+            "intent_analysis": None,  # None signals failure, merge_dict will ignore
             "was_skipped": False,
             "skip_reason": None,
             "latency_ms": latency_ms,

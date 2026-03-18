@@ -26,15 +26,12 @@
 # 5. Otherwise → SWARM (4 agents)
 # ─────────────────────────────────────────────
 
-import os
 import json
 import time
 import logging
-import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from langchain_core.messages import SystemMessage, HumanMessage
-from config import get_fast_llm, get_llm
-from utils import parse_json_response, format_history
+from config import get_fast_llm
 from memory.langmem import query_langmem
 from agents.prompts.orchestrator import build_orchestrator_prompt
 from dotenv import load_dotenv
@@ -96,7 +93,7 @@ RESPONSE FORMAT (valid JSON only):
 ROUTING RULES (apply in order):
 1. message.length < 10 → CONVERSATION (user is being brief)
 2. Modification phrases detected → FOLLOWUP (1 LLM call, skip full swarm)
-3. ambiguity_score > 0.7 → CLARIFICATION (ask ONE question)
+3. ambiguity_score > 0.6 → CLARIFICATION (ask ONE question)
 4. Otherwise → SWARM (select agents based on confidence)
 
 AGENT SELECTION LOGIC:
@@ -156,40 +153,89 @@ def detect_modification_phrases(message: str) -> bool:
 
 def calculate_ambiguity_score(message: str, history: List[Dict]) -> float:
     """
-    Simple heuristic for ambiguity detection.
-    Returns 0.0-1.0 (higher = more ambiguous).
-    
+    Assess if a message needs clarification before proceeding.
+    Returns 0.0-1.0 (higher = more ambiguous, >0.6 triggers clarification).
+
+    Detects:
+    - Missing context (no audience, purpose, or specifics)
+    - Vague words and subjective qualifiers
+    - References to undefined "it", "this", "that"
+    - Incomplete requests
+
     Args:
         message: User's message
         history: Conversation history
-        
+
     Returns:
         Ambiguity score 0.0-1.0
-        
-    Scoring:
-        - Short messages (<20 chars): +0.3
-        - Questions (contains "?"): +0.2
-        - Vague words: +0.3
-        - No context (first message): +0.2
     """
     score = 0.0
+    message_lower = message.lower().strip()
     
-    # Short messages are more ambiguous
-    if len(message.strip()) < 20:
-        score += 0.3
+    # ═══ LENGTH-BASED HEURISTICS ═══
     
-    # Questions are often ambiguous
-    if "?" in message:
+    # Very short messages are often incomplete
+    if len(message.strip()) < 15:
+        score += 0.4
+    elif len(message.strip()) < 25:
         score += 0.2
     
-    # Vague words
-    vague_words = ["something", "thing", "stuff", "whatever", "maybe", "perhaps", "anything"]
-    if any(word in message.lower() for word in vague_words):
+    # ═══ VAGUE WORDS & PHRASES ═══
+    
+    # Generic nouns (no specific subject)
+    vague_nouns = [
+        "something", "thing", "stuff", "whatever", "anything",
+        "someone", "somebody", "somewhere", "somehow",
+    ]
+    if any(word in message_lower for word in vague_nouns):
         score += 0.3
     
-    # No context (first message)
+    # Subjective qualifiers (undefined quality)
+    vague_qualifiers = [
+        "better", "good", "great", "nice", "professional", 
+        "cool", "amazing", "impressive", "quality", "proper",
+    ]
+    if any(word in message_lower for word in vague_qualifiers):
+        score += 0.2
+    
+    # Vague action phrases
+    vague_phrases = [
+        "make it", "do the", "write something", "create something",
+        "help with", "work on", "fix this", "improve this",
+        "make better", "make it good", "do something with",
+        "help me", "assist me", "can you", "could you",
+    ]
+    if any(phrase in message_lower for phrase in vague_phrases):
+        score += 0.2
+    
+    # ═══ MISSING CONTEXT DETECTION ═══
+    
+    # Pronouns without antecedent (first message with "it", "this", "that")
     if len(history) == 0:
-        score += 0.2
+        pronouns = [" it ", " this ", " that ", "these ", "those "]
+        if any(pronoun in f" {message_lower} " for pronoun in pronouns):
+            score += 0.3
+    
+    # Missing "who" (no audience specified for communication)
+    who_words = ["client", "boss", "team", "manager", "customer", "user", "audience", "reader"]
+    if "email" in message_lower or "message" in message_lower or "letter" in message_lower:
+        if not any(word in message_lower for word in who_words):
+            score += 0.2
+    
+    # Missing "what" (no topic specified for creation tasks)
+    what_words = ["about", "for", "regarding", "concerning"]
+    action_verbs = ["write", "create", "make", "build", "design", "develop"]
+    if any(verb in message_lower for verb in action_verbs):
+        if not any(word in message_lower for word in what_words):
+            score += 0.1
+    
+    # ═══ QUESTION DETECTION ═══
+    
+    # Questions are often requests for help, not specific tasks
+    if "?" in message:
+        score += 0.15
+    
+    # ═══ CAP AT 1.0 ═══
     
     return min(score, 1.0)
 
@@ -294,12 +340,15 @@ def orchestrator_node(state: Dict[str, Any]) -> Dict[str, Any]:
         # Query LangMem for user's past memories (BEFORE LLM call)
         langmem_context = []  # Default to empty if user_id not available
         langmem_user_id = state.get("user_id")
-        if langmem_user_id:
+        query_text = (message or "").strip()
+        if langmem_user_id and query_text:
             langmem_context = query_langmem(
                 user_id=langmem_user_id,
-                query=message,
+                query=query_text,
                 top_k=5
             )
+        else:
+            logger.warning(f"[langmem] skipping search — user_id={langmem_user_id}, query_len={len(query_text)}")
         
         history_context = "\n".join([
             f"{t.get('role', 'USER').upper()}: {t.get('message', '')[:100]}"
@@ -434,6 +483,10 @@ Decide routing and return JSON."""
             "user_facing_message": decision["user_facing_message"],
             "proceed_with_swarm": decision["proceed_with_swarm"],
             "latency_ms": latency_ms,
+            "agent_latencies": {"orchestrator": latency_ms},
+            "agents_run": ["orchestrator"],
+            "memories_applied": len(langmem_context) if langmem_context else 0,
+            "user_id": langmem_user_id, # Ensure it persists
         }
         
     except Exception as e:

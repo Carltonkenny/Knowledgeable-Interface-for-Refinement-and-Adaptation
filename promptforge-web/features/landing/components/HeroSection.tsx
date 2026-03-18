@@ -28,8 +28,7 @@ export function HeroSection() {
 
       {/* Sub */}
       <p className="text-[17px] text-text-dim font-light leading-[1.7] text-center max-w-2xl mb-10">
-        Kira learns how you think. The more you use it, the better it serves you.
-        Switching away means starting over.
+        Kira learns how you think. Every session, your prompts get sharper.
       </p>
 
       {/* CTAs */}

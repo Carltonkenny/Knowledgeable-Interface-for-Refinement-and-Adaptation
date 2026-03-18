@@ -29,8 +29,8 @@ export default function UsernameEditor({ initialUsername, isUpdating, onSave }: 
       if (success) {
         setIsEditing(false)
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to update username')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update username')
     }
   }
 
@@ -68,8 +68,9 @@ export default function UsernameEditor({ initialUsername, isUpdating, onSave }: 
                   onKeyDown={handleKeyDown}
                   disabled={isUpdating}
                   autoFocus
-                  className="bg-layer1 border border-primary/50 text-text-bright text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/20 w-48 font-mono"
+                  className="bg-layer2 border border-kira/50 text-text-bright text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-kira/20 w-48 font-mono placeholder:text-text-dim"
                   placeholder="Enter username..."
+                  style={{ color: 'var(--color-text-bright)' }}
                 />
                 {error && (
                   <span className="absolute -bottom-5 left-0 text-[10px] text-intent whitespace-nowrap">

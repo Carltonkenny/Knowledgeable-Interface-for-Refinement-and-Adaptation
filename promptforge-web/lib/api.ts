@@ -49,8 +49,8 @@ export interface HistoryItem {
   id: string
   raw_prompt: string
   improved_prompt: string
-  quality_score: any // Updated in migration 018 to JSONB
-  domain_analysis: any // Added in migration 018
+  quality_score: QualityScore | null
+  domain_analysis: Record<string, unknown> | null
   created_at: string
   session_id: string
   version_id?: string
@@ -111,6 +111,8 @@ export interface ConversationTurn {
   message: string
   message_type: 'chat' | 'output' | 'status'
   improved_prompt?: string
+  memories_applied?: number
+  latency_ms?: number
 }
 
 // ── Phase 4: Profile Types ──────────────────────────────────────────────────
@@ -143,6 +145,7 @@ export interface UsageStats {
   active_chat_sessions: number
   average_quality_score: number
   member_since: string
+  trust_level: 0 | 1 | 2
 }
 
 export interface ExportData {
@@ -336,7 +339,8 @@ export async function apiCompareVersions(
 
 export async function apiConversation(
   token: string,
-  sessionId: string
+  sessionId: string,
+  signal?: AbortSignal
 ): Promise<ConversationTurn[]> {
   if (ENV.USE_MOCKS) {
     await new Promise(r => setTimeout(r, 300))
@@ -344,7 +348,10 @@ export async function apiConversation(
   }
   const res = await fetch(
     `${API_BASE}/conversation?session_id=${sessionId}`,
-    { headers: await authHeaders(token) }
+    { 
+      headers: await authHeaders(token),
+      signal
+    }
   )
   if (!res.ok) await handleResponseError(res)
   const data = await res.json()
@@ -536,7 +543,7 @@ export async function apiGetQualityTrend(token: string): Promise<{ trend: Qualit
 }
 
 export async function apiGetStats(token: string): Promise<UsageStats> {
-  if (ENV.USE_MOCKS) return { total_prompts_engineered: 0, active_chat_sessions: 0, average_quality_score: 0, member_since: '' }
+  if (ENV.USE_MOCKS) return { total_prompts_engineered: 0, active_chat_sessions: 0, average_quality_score: 0, member_since: '', trust_level: 0 }
   const res = await fetch(`${API_BASE}/user/stats`, {
     headers: await authHeaders(token),
   })
@@ -557,6 +564,48 @@ export async function apiDeleteAccount(token: string): Promise<{ status: string,
 export async function apiExportData(token: string): Promise<ExportData> {
   if (ENV.USE_MOCKS) throw new Error('Mocks not implemented')
   const res = await fetch(`${API_BASE}/user/export-data`, {
+    headers: await authHeaders(token),
+  })
+  if (!res.ok) await handleResponseError(res)
+  return res.json()
+}
+
+// ── MCP Token Management ──────────────────────────────────────────────────
+
+export interface McpToken {
+  id: string
+  expires_at: string
+  created_at: string
+}
+
+export interface McpGenerateResult {
+  mcp_token: string
+  expires_in_days: number
+  expires_at: string
+  instructions: string
+}
+
+export async function apiMcpGenerateToken(token: string): Promise<McpGenerateResult> {
+  const res = await fetch(`${API_BASE}/mcp/generate-token`, {
+    method: 'POST',
+    headers: await authHeaders(token),
+  })
+  if (!res.ok) await handleResponseError(res)
+  return res.json()
+}
+
+export async function apiMcpListTokens(token: string): Promise<{ tokens: McpToken[]; count: number }> {
+  const res = await fetch(`${API_BASE}/mcp/list-tokens`, {
+    method: 'GET',
+    headers: await authHeaders(token),
+  })
+  if (!res.ok) await handleResponseError(res)
+  return res.json()
+}
+
+export async function apiMcpRevokeToken(token: string, tokenId: string): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/mcp/revoke-token/${tokenId}`, {
+    method: 'POST',
     headers: await authHeaders(token),
   })
   if (!res.ok) await handleResponseError(res)

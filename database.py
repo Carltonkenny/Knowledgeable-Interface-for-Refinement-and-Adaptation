@@ -86,23 +86,19 @@ def save_request(
         if session_id and user_id:
             logger.debug(f"[db] checking for previous versions in session {session_id[:8]}...")
             
-            # RULES.md: Auto-create session if not exists (prevents FK constraint violations)
-            session_check = db.table("chat_sessions")\
-                .select("id")\
-                .eq("id", session_id)\
-                .eq("user_id", user_id)\
-                .execute()
-            
-            if not session_check.data:
-                # Session doesn't exist - auto-create it
-                logger.info(f"[db] session {session_id[:8]}... not found, auto-creating")
-                db.table("chat_sessions").insert({
+            # RULES.md: Auto-create session if not exists (atomic upsert — no race condition)
+            now = datetime.now(timezone.utc).isoformat()
+            db.table("chat_sessions").upsert(
+                {
                     "id": session_id,
                     "user_id": user_id,
                     "title": "Auto-created session",
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                    "last_activity": datetime.now(timezone.utc).isoformat()
-                }).execute()
+                    "created_at": now,
+                    "last_activity": now
+                },
+                on_conflict="id"
+            ).execute()
+            logger.debug(f"[db] session {session_id[:8]}... ensured via upsert")
             
             latest = db.table("requests")\
                 .select("id, version_id, version_number")\
@@ -267,6 +263,9 @@ def get_conversation_history(session_id: str, limit: int = 6) -> list:
     Retrieves last N turns of conversation for a session.
     Ordered oldest first so agents read it naturally.
     limit=6 means last 3 exchanges (3 user + 3 assistant).
+    
+    Schema Migration Guard: Fills defaults for new fields to prevent
+    breaking when state schema changes (latency_ms, memories_applied, etc.).
     """
     try:
         db = get_client()
@@ -279,6 +278,14 @@ def get_conversation_history(session_id: str, limit: int = 6) -> list:
 
         # Reverse so oldest is first
         history = list(reversed(result.data))
+        
+        # Schema migration guard: fill defaults for new fields
+        # This prevents "failed to load conversation" when old DB records
+        # are missing fields added by recent schema changes
+        for turn in history:
+            turn.setdefault("latency_ms", 0)
+            turn.setdefault("memories_applied", 0)
+        
         logger.info(f"[db] fetched {len(history)} conversation turns for session={session_id}")
         return history
     except Exception as e:
@@ -505,25 +512,15 @@ def save_user_profile(user_id: str, profile_data: dict) -> bool:
     try:
         db = get_client()
         
-        # Check if profile exists
-        existing = get_user_profile(user_id)
-        
-        if existing:
-            # Update existing profile
-            db.table("user_profiles")\
-                .update(profile_data)\
-                .eq("user_id", user_id)\
-                .execute()
-            logger.info(f"[db] updated profile for user_id={user_id[:8]}...")
-        else:
-            # Insert new profile
-            db.table("user_profiles")\
-                .insert({
-                    "user_id": user_id,
-                    **profile_data
-                })\
-                .execute()
-            logger.info(f"[db] created profile for user_id={user_id[:8]}...")
+        # Atomic upsert — no race condition under concurrent requests
+        db.table("user_profiles").upsert(
+            {
+                "user_id": user_id,
+                **profile_data
+            },
+            on_conflict="user_id"
+        ).execute()
+        logger.info(f"[db] upserted profile for user_id={user_id[:8]}...")
         
         return True
         

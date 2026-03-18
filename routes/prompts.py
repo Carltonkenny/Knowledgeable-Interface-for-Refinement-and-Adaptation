@@ -22,9 +22,7 @@ from database import (
     get_conversation_history, update_session_activity, get_last_activity,
     get_conversation_count,
 )
-from agents.handlers.unified import kira_unified_handler, fallback_unified_response
-from agents.handlers.conversation import handle_conversation
-from agents.handlers.followup import handle_followup
+from agents.handlers.unified import kira_unified_handler
 from memory import write_to_langmem, update_user_profile, should_trigger_update
 
 logger = logging.getLogger(__name__)
@@ -47,7 +45,7 @@ class RefineResponse(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    message:    str = Field(..., min_length=1, max_length=2000)
+    message:    str = Field(..., min_length=1, max_length=5000)
     session_id: str = Field(..., min_length=1)
     # Multimodal support
     input_modality: Optional[str] = "text"  # 'text' | 'file' | 'image' | 'voice'
@@ -73,7 +71,11 @@ async def refine(req: RefineRequest, background_tasks: BackgroundTasks, user: Us
     """
     logger.info(f"[api] /refine user_id={user.user_id} session={req.session_id} prompt='{req.prompt[:60]}'")
     try:
-        final_state = _run_swarm(req.prompt)
+        final_state = _run_swarm(
+            prompt=req.prompt,
+            user_id=user.user_id,
+            input_modality="text"
+        )
 
         request_id = save_request(
             raw_prompt=final_state["message"],
@@ -225,7 +227,13 @@ async def chat(
                 return ChatResponse(type="clarification_requested", reply=user_facing_message, improved_prompt=None, breakdown=None, session_id=req.session_id)
 
             # Normal flow
-            final_state = _run_swarm(req.message)
+            final_state = _run_swarm(
+                prompt=req.message,
+                user_id=user.user_id,
+                input_modality=req.input_modality or "text",
+                file_base64=req.file_base64,
+                file_type=req.file_type
+            )
             improved = final_state.get("improved_prompt", "")
             breakdown = {
                 "intent":  final_state.get("intent_analysis", {}),
@@ -273,7 +281,7 @@ async def chat(
 
 
 @router.post("/chat/stream")
-async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
+async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks, user: User = Depends(get_current_user)):
     """
     Streaming version of /chat.
     Sends Server-Sent Events (SSE) as processing progresses.
@@ -358,7 +366,7 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
             yield sse_format("status", {"message": "Engineering your prompt..."})
 
             final_state = await loop.run_in_executor(
-                None, _run_swarm, req.message, req.input_modality or "text", req.file_base64, req.file_type
+                None, _run_swarm, req.message, user.user_id, req.input_modality or "text", req.file_base64, req.file_type
             )
 
             previous_prompt = ""
@@ -392,7 +400,7 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
             })
             yield sse_format("done", {"message": "Complete"})
 
-            from database import save_request, update_session_activity
+            from database import save_request, update_session_activity, get_conversation_count, get_last_activity
             save_request(
                 raw_prompt=req.message, improved_prompt=improved,
                 session_id=req.session_id, user_id=user.user_id,
@@ -403,6 +411,25 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
                 prompt_diff=diff
             )
             update_session_activity(user.user_id, req.session_id)
+
+            # ═══ BACKGROUND TASK: Store in Memory Palace ═══
+            background_tasks.add_task(
+                write_to_langmem,
+                user_id=user.user_id,
+                session_result=final_state
+            )
+
+            # Trigger profile update if threshold reached
+            interaction_count = get_conversation_count(req.session_id)
+            last_activity = get_last_activity(user_id=user.user_id, session_id=req.session_id)
+            if should_trigger_update(interaction_count, last_activity):
+                background_tasks.add_task(
+                    update_user_profile,
+                    user_id=user.user_id,
+                    session_data=final_state,
+                    interaction_count=interaction_count,
+                    last_activity=last_activity
+                )
 
         except Exception as e:
             logger.error(f"[api] /chat/stream error: {e}", exc_info=True)

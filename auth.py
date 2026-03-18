@@ -64,33 +64,51 @@ def get_current_user(
     """
     token = credentials.credentials
 
-    try:
-        # Use Supabase client to validate JWT
-        # This handles ES256/HS256 automatically
-        user_response = supabase.auth.get_user(token)
-        
-        if not user_response.user:
-            logger.warning("[auth] JWT missing user information")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Invalid token: no user info"
+    # Retry once on transient network errors (WinError 10035 on Windows)
+    last_error = None
+    for attempt in range(2):
+        try:
+            # Use Supabase client to validate JWT
+            # This handles ES256/HS256 automatically
+            user_response = supabase.auth.get_user(token)
+
+            if not user_response.user:
+                logger.warning("[auth] JWT missing user information")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Invalid token: no user info"
+                )
+
+            # Log successful authentication
+            logger.info(f"[auth] user authenticated: user_id={user_response.user.id[:8]}...")
+
+            return User(
+                user_id=user_response.user.id,
+                email=user_response.user.email,
+                role="authenticated"
             )
 
-        # Log successful authentication
-        logger.info(f"[auth] user authenticated: user_id={user_response.user.id[:8]}...")
+        except HTTPException:
+            raise  # Don't retry auth failures
+        except OSError as e:
+            # Transient socket error (WinError 10035: non-blocking socket not ready)
+            last_error = e
+            if attempt == 0:
+                logger.warning(f"[auth] transient network error, retrying: {e}")
+                continue
+            logger.error(f"[auth] network error persisted after retry: {e}")
+        except Exception as e:
+            logger.warning(f"[auth] JWT validation failed: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Invalid or expired token: {str(e)}"
+            )
 
-        return User(
-            user_id=user_response.user.id,
-            email=user_response.user.email,
-            role="authenticated"
-        )
-
-    except Exception as e:
-        logger.warning(f"[auth] JWT validation failed: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid or expired token"
-        )
+    # Both attempts failed with transient error
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Authentication service temporarily unavailable"
+    )
 
 
 # Optional: For endpoints that don't require auth

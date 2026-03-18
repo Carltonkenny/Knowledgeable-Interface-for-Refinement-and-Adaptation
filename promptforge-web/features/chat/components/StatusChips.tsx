@@ -1,6 +1,8 @@
 // features/chat/components/StatusChips.tsx
-// Processing chips row
+// Processing chips row with 600ms minimum display time
 
+import { useState, useEffect, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Chip } from '@/components/ui'
 import type { ProcessingStatus } from '../types'
 
@@ -9,65 +11,60 @@ interface StatusChipsProps {
 }
 
 export default function StatusChips({ status }: StatusChipsProps) {
-  const { state, agentsComplete, agentsSkipped } = status
+  const [currentStatus, setCurrentStatus] = useState<string | undefined>('Sleeping') // Initial state
+  const queueRef = useRef<string[]>([])
+  const isDisplayingRef = useRef(false)
+  const isMountedRef = useRef(false)
 
-  if (state === 'idle' || state === 'complete') return null
+  // When statusText changes, queue it up (unless it's empty)
+  useEffect(() => {
+    isMountedRef.current = true
+    if (status.statusText) {
+      queueRef.current.push(status.statusText)
+      processQueue()
+    }
+    return () => { isMountedRef.current = false }
+  }, [status.statusText])
 
-  const isKiraReading = state === 'kira_reading'
-  const isSwarmRunning = state === 'swarm_running'
+  const processQueue = () => {
+    if (isDisplayingRef.current || queueRef.current.length === 0) return
+
+    isDisplayingRef.current = true
+    const nextStatus = queueRef.current.shift()
+    setCurrentStatus(nextStatus)
+
+    setTimeout(() => {
+      isDisplayingRef.current = false
+      if (isMountedRef.current) {
+        processQueue() // Pick up next in queue if any
+      }
+    }, 600) // Minimum 600ms display
+  }
+
+  // If we are fully done processing upstream and queue is empty, fade out entirely
+  if (status.state === 'idle' || status.state === 'complete') {
+     if (queueRef.current.length === 0 && !isDisplayingRef.current) {
+       return null
+     }
+  }
 
   return (
-    <div className="flex items-center gap-2 mb-4 flex-wrap">
-      {/* Kira chip */}
-      <Chip
-        variant="kira"
-        active={isKiraReading}
-      >
-        Reading context
-      </Chip>
-
-      {/* Intent chip */}
-      {isSwarmRunning && (
-        <Chip
-          variant="intent"
-          active={!agentsSkipped.has('intent')}
-          skipped={agentsSkipped.has('intent')}
-        >
-          Analyzing intent
-        </Chip>
-      )}
-
-      {/* Context chip */}
-      {isSwarmRunning && (
-        <Chip
-          variant="context"
-          active={!agentsSkipped.has('context')}
-          skipped={agentsSkipped.has('context')}
-        >
-          Context
-        </Chip>
-      )}
-
-      {/* Domain chip */}
-      {isSwarmRunning && (
-        <Chip
-          variant="domain"
-          active={!agentsSkipped.has('domain')}
-          skipped={agentsSkipped.has('domain')}
-        >
-          Domain
-        </Chip>
-      )}
-
-      {/* Engineer chip */}
-      {isSwarmRunning && (
-        <Chip
-          variant="engineer"
-          active
-        >
-          Crafting prompt
-        </Chip>
-      )}
+    <div className="flex items-center gap-2 mb-4 h-8 overflow-hidden pl-1">
+      <AnimatePresence mode="wait">
+        {currentStatus && (
+          <motion.div
+            key={currentStatus}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Chip variant="kira" active>
+              {currentStatus}
+            </Chip>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

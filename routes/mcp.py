@@ -6,7 +6,6 @@
 #   POST   /mcp/generate-token  → Generate long-lived JWT
 #   GET    /mcp/list-tokens     → List active tokens
 #   POST   /mcp/revoke-token/{id} → Revoke token
-#   POST   /memory/onboarding   → Save onboarding profile
 #
 # RULES.md: <500 lines, type hints, docstrings
 # ─────────────────────────────────────────────
@@ -185,57 +184,13 @@ async def revoke_mcp_token(token_id: str, user: User = Depends(get_current_user)
         result = db.table("mcp_tokens").update({"revoked": True}).eq(
             "id", token_id
         ).eq("user_id", user.user_id).execute()
-        
+
         if not result.data:
             raise HTTPException(status_code=404, detail="Token not found")
-        
+
         return {"success": True, "message": "Token revoked"}
     except HTTPException:
         raise
     except Exception as e:
         logger.exception("[api] /mcp/revoke-token error")
         raise HTTPException(status_code=500, detail=f"Failed: {str(e)}")
-
-
-# ── Memory Onboarding ────────────────────────
-
-@router.post("/memory/onboarding")
-async def save_onboarding_memory(
-    request: dict,
-    user: User = Depends(get_current_user)
-):
-    """Save onboarding profile as LangMem memory with Gemini embedding."""
-    from memory.langmem import _generate_embedding
-    
-    try:
-        db = get_client()
-        
-        content = request.get("content", "")
-        profile_type = request.get("profile_type", "onboarding")
-        metadata = request.get("metadata", {})
-        
-        embedding = _generate_embedding(content)
-        
-        memory_data = {
-            "user_id": user.user_id,
-            "content": content,
-            "improved_content": f"Onboarding profile: {metadata.get('primary_use', 'unknown')} user",
-            "domain": metadata.get('primary_use', 'general'),
-            "quality_score": {"onboarding": 5},
-            "agents_used": ["onboarding"],
-            "agents_skipped": [],
-            "metadata": metadata,
-        }
-        
-        if embedding:
-            logger.info(f"[api] onboarding embedding generated: {len(embedding)} dim (ready for pgvector migration)")
-        
-        result = db.table("langmem_memories").insert(memory_data).execute()
-        
-        logger.info(f"[api] saved onboarding memory for user {user.user_id[:8]}...")
-        
-        return {"status": "saved", "has_embedding": embedding is not None}
-        
-    except Exception as e:
-        logger.error(f"[api] onboarding memory save failed: {e}")
-        return {"status": "saved", "has_embedding": False}

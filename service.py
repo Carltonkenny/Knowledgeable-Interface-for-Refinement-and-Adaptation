@@ -20,13 +20,13 @@
 import json
 import difflib
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 from fastapi import HTTPException
 
 from workflow import workflow
-from state import AgentState, PromptForgeState
+from state import PromptForgeState
 from utils import get_cached_result, set_cached_result
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ GRAPH_TIMEOUT = 180  # seconds — for sequential 4-call swarm
 
 # ── Swarm Execution ──────────────────────────
 
-def _run_swarm(prompt: str, input_modality: str = "text", 
+def _run_swarm(prompt: str, user_id: str, input_modality: str = "text", 
                file_base64: str = None, file_type: str = None) -> dict:
     """
     Runs full LangGraph swarm.
@@ -46,6 +46,7 @@ def _run_swarm(prompt: str, input_modality: str = "text",
     
     Args:
         prompt: User's message
+        user_id: From authenticated JWT
         input_modality: 'text' | 'file' | 'image' | 'voice'
         file_base64: Base64 encoded file content (if any)
         file_type: MIME type of file (if any)
@@ -71,14 +72,35 @@ def _run_swarm(prompt: str, input_modality: str = "text",
             "media_type": file_type,
         }]
 
-    initial_state = AgentState(
+    initial_state = PromptForgeState(
         message=prompt,
+        user_id=user_id,  # PROPAGATED: Essential for LangMem
+        session_id="default",  # Overwritten by route if needed
         intent_analysis={},
         context_analysis={},
         domain_analysis={},
         improved_prompt="",
         attachments=attachments,
         input_modality=input_modality,
+        latency_ms=0,      # INITIALIZED: Survives parallel join
+        memories_applied=0, # INITIALIZED: Survives parallel join
+        conversation_history=[],
+        user_profile={},
+        langmem_context=[],
+        mcp_trust_level=0,
+        orchestrator_decision={},
+        user_facing_message="Analyzing your request...",
+        pending_clarification=False,
+        clarification_key=None,
+        proceed_with_swarm=True,
+        original_prompt=prompt,
+        prompt_diff=[],
+        quality_score={},
+        changes_made=[],
+        breakdown={},
+        agents_skipped=[],
+        agents_run=[],
+        agent_latencies={}
     )
 
     with ThreadPoolExecutor(max_workers=1) as executor:
@@ -157,6 +179,8 @@ def _run_swarm_with_clarification(
         domain_analysis={},
         agents_skipped=["context"],
         agent_latencies={},
+        latency_ms=0,
+        memories_applied=0,
         improved_prompt="",
         original_prompt=message,
         prompt_diff=[],

@@ -21,34 +21,6 @@ export default function KiraMessage({
   retryable,
   onRetry,
 }: KiraMessageProps) {
-  const [displayedText, setDisplayedText] = useState('')
-  
-  // Typewriter effect for streaming messages
-  useEffect(() => {
-    if (!isStreaming) {
-      // Show full message immediately when not streaming
-      setDisplayedText(message)
-      return
-    }
-    
-    // Streaming typewriter effect
-    let currentIndex = 0
-    setDisplayedText('')
-    
-    const typeInterval = setInterval(() => {
-      if (currentIndex < message.length) {
-        // Add chunk of 2-3 chars for faster typing
-        const chunkSize = Math.min(3, message.length - currentIndex)
-        setDisplayedText(message.slice(0, currentIndex + chunkSize))
-        currentIndex += chunkSize
-      } else {
-        clearInterval(typeInterval)
-      }
-    }, 10) // 10ms per chunk = fast typing
-    
-    return () => clearInterval(typeInterval)
-  }, [message, isStreaming])
-
   // Parse simple bold markdown (**text**)
   const parseBold = (text: string) => {
     const parts = text.split(/(\*\*.*?\*\*)/g)
@@ -75,8 +47,8 @@ export default function KiraMessage({
       {/* Message */}
       <div className="flex-1">
         <p className="text-text-default text-sm leading-relaxed">
-          {parseBold(displayedText)}
-          {isStreaming && displayedText.length < message.length && (
+          {parseBold(message)}
+          {isStreaming && (
             <span className="inline-block w-0.5 h-4 bg-kira ml-1 animate-pulse" />
           )}
         </p>

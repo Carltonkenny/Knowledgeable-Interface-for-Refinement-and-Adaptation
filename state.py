@@ -16,8 +16,18 @@
 # - Easy to test in isolation
 # ─────────────────────────────────────────────
 
-from typing import Any, Optional, List, Dict
+from typing import Any, Optional, List, Dict, Annotated
+from operator import add
 from typing_extensions import TypedDict, NotRequired
+
+
+def merge_dict(left: Dict[str, Any], right: Dict[str, Any]) -> Dict[str, Any]:
+    """Reducer for merging dictionaries from parallel agents — non-empty wins."""
+    if left is None or left == {}:
+        return right
+    if right is None or right == {}:
+        return left
+    return {**left, **right}
 
 
 class PromptForgeState(TypedDict):
@@ -25,7 +35,7 @@ class PromptForgeState(TypedDict):
     Complete state schema for PromptForge v2.0 swarm orchestration.
     Passed between all agents in LangGraph workflow.
 
-    Total: 26 fields organized in 5 sections.
+    Total: 27 fields organized in 5 sections.
     All fields must be initialized before use (use empty defaults if needed).
     """
 
@@ -85,25 +95,34 @@ class PromptForgeState(TypedDict):
 
     # ═══ SECTION 4: AGENT OUTPUTS (5 fields) ═══
 
-    intent_analysis: Dict[str, Any]
+    intent_analysis: Annotated[Dict[str, Any], merge_dict]
     """From intent agent — analyzes user's true goal.
     Keys: primary_intent, goal_clarity, missing_info."""
 
-    context_analysis: Dict[str, Any]
+    context_analysis: Annotated[Dict[str, Any], merge_dict]
     """From context agent — analyzes user context.
     Keys: skill_level, tone, constraints, implicit_preferences."""
 
-    domain_analysis: Dict[str, Any]
+    domain_analysis: Annotated[Dict[str, Any], merge_dict]
     """From domain agent — identifies domain/patterns.
     Keys: primary_domain, sub_domain, relevant_patterns, complexity."""
 
-    agents_skipped: List[str]
+    agents_skipped: Annotated[List[str], add]
     """Which agents didn't run and why.
     Example: ['context: no session history', 'domain: profile has 90% confidence']"""
 
-    agent_latencies: Dict[str, int]
+    agents_run: Annotated[List[str], add]
+    """List of agent names that successfully completed execution."""
+
+    agent_latencies: Annotated[Dict[str, int], merge_dict]
     """Execution time per agent in milliseconds.
     Format: {agent_name: latency_ms} for performance monitoring."""
+
+    latency_ms: Annotated[int, add]
+    """Aggregate execution time for the entire swarm."""
+
+    memories_applied: Annotated[int, add]
+    """Number of LangMem memories retrieved and used for context."""
 
     # ═══ SECTION 5: OUTPUT (7 fields) ═══
 

@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from auth import User, get_current_user
 from database import get_client
 from utils import calculate_overall_quality
+from memory.langmem import write_to_langmem
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ async def update_user_profile_endpoint(
     logger.info(f"[api] /user/profile update requested by user={user.user_id}")
     try:
         db = get_client()
-        
+
         update_data = {}
         if req.primary_use is not None:
             update_data["primary_use"] = req.primary_use
@@ -71,20 +72,51 @@ async def update_user_profile_endpoint(
             update_data["clarification_rate"] = req.clarification_rate
         if req.prompt_quality_score is not None:
             update_data["prompt_quality_score"] = req.prompt_quality_score
-        
+
         result = db.table("user_profiles").update(update_data).eq("user_id", user.user_id).execute()
-        
+
         if not result.data:
             insert_data = {"user_id": user.user_id, **update_data}
             result = db.table("user_profiles").insert(insert_data).execute()
-        
+
         logger.info(f"[api] profile updated for user={user.user_id}")
         return {"status": "success", "profile": result.data[0] if result.data else update_data}
-        
+
     except HTTPException:
         raise
     except Exception as e:
         logger.exception(f"[api] Profile update failed for user={user.user_id}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/user/username")
+async def update_username_endpoint(
+    req: UsernameUpdateRequest,
+    user: User = Depends(get_current_user)
+):
+    """Update the user's username (display name) via Supabase auth metadata."""
+    logger.info(f"[api] /user/username update requested by user={user.user_id}")
+    try:
+        from supabase import create_client
+        import os
+        
+        # Use service role key to update user metadata
+        supabase_admin = create_client(
+            os.getenv("SUPABASE_URL"),
+            os.getenv("SUPABASE_SERVICE_KEY")
+        )
+        
+        # Update user metadata in auth.users
+        result = supabase_admin.auth.admin.update_user_by_id(
+            user_id=user.user_id,
+            attributes={"data": {"username": req.username}}
+        )
+        
+        logger.info(f"[api] username updated for user={user.user_id} to {req.username}")
+        return {"status": "success", "username": req.username}
+        
+    except Exception as e:
+        logger.exception(f"[api] Username update failed for user={user.user_id}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -177,28 +209,44 @@ async def get_user_stats(user: User = Depends(get_current_user)):
     logger.info(f"[api] /user/stats requested by user={user.user_id}")
     try:
         db = get_client()
-        
+
         req_result = db.table("requests").select("id", count="exact").eq("user_id", user.user_id).execute()
         total_prompts = req_result.count if hasattr(req_result, 'count') else len(req_result.data)
-        
+
         sess_result = db.table("chat_sessions").select("id", count="exact").eq("user_id", user.user_id).execute()
         total_sessions = sess_result.count if hasattr(sess_result, 'count') else len(sess_result.data)
-        
+
         quality_res = db.table("requests").select("quality_score").eq("user_id", user.user_id).limit(100).execute()
         scores = []
         for row in quality_res.data:
             sc = row.get("quality_score") or {}
             scores.append(calculate_overall_quality(sc))
-            
+
         avg_quality = sum(scores) / len(scores) if scores else 0.0
+
+        # FIX #2: Calculate real member_since from first activity
+        first_activity_result = db.table("requests").select("created_at").eq("user_id", user.user_id).order("created_at", desc=False).limit(1).execute()
+        member_since = first_activity_result.data[0]["created_at"] if first_activity_result.data else datetime.now(timezone.utc).isoformat()
+
+        # FIX #1: Calculate trust level using same logic as memory/supermemory.py:get_trust_level()
+        conv_result = db.table("conversations").select("id", count="exact").eq("user_id", user.user_id).execute()
+        session_count = conv_result.count if hasattr(conv_result, 'count') else len(conv_result.data)
         
+        if session_count < 10:
+            trust_level = 0  # Cold
+        elif session_count < 30:
+            trust_level = 1  # Warm
+        else:
+            trust_level = 2  # Tuned
+
         return {
             "total_prompts_engineered": total_prompts,
             "active_chat_sessions": total_sessions,
             "average_quality_score": round(avg_quality, 1),
-            "member_since": "2024-01-01T00:00:00Z"
+            "member_since": member_since,
+            "trust_level": trust_level
         }
-        
+
     except Exception as e:
         logger.exception(f"[api] Get user stats failed for user={user.user_id}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -230,12 +278,12 @@ async def export_user_data(user: User = Depends(get_current_user)):
     logger.info(f"[api] GDPR DATA EXPORT requested by user={user.user_id}")
     try:
         db = get_client()
-        
+
         profile = db.table("user_profiles").select("*").eq("user_id", user.user_id).execute()
         requests = db.table("requests").select("*").eq("user_id", user.user_id).execute()
         sessions = db.table("chat_sessions").select("*").eq("user_id", user.user_id).execute()
         conversations = db.table("conversations").select("*").eq("user_id", user.user_id).execute()
-        
+
         return {
             "export_date": datetime.now(timezone.utc).isoformat(),
             "user_id": user.user_id,
@@ -244,7 +292,47 @@ async def export_user_data(user: User = Depends(get_current_user)):
             "sessions": sessions.data,
             "conversations": conversations.data
         }
-        
+
     except Exception as e:
         logger.exception(f"[api] Data export failed for user={user.user_id}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/memory/onboarding")
+async def save_onboarding_memory(
+    request: dict,
+    user: User = Depends(get_current_user)
+):
+    """
+    Save onboarding profile as LangMem memory.
+    Uses write_to_langmem() abstraction — never calls _generate_embedding directly.
+    """
+    logger.info(f"[api] /memory/onboarding requested by user={user.user_id}")
+    try:
+        content = request.get("content", "")
+        metadata = request.get("metadata", {})
+
+        # Build minimal state dict for write_to_langmem
+        # Per RULES.md: Never call _generate_embedding directly
+        state = {
+            "message": content,
+            "improved_prompt": f"Onboarding profile: {metadata.get('primary_use', 'unknown')} user",
+            "input_modality": "text",
+            "attachments": [],
+            "user_id": user.user_id,
+            "domain_analysis": {"primary_domain": metadata.get('primary_use', 'general')},
+            "quality_score": {"onboarding": 5},
+            "agents_run": ["onboarding"],
+            "agents_skipped": []
+        }
+
+        # Use LangMem abstraction — handles embedding internally
+        success = write_to_langmem(user_id=user.user_id, session_result=state)
+
+        logger.info(f"[api] onboarding memory saved for user {user.user_id[:8]}... success={success}")
+
+        return {"status": "saved", "success": success}
+
+    except Exception as e:
+        logger.error(f"[api] onboarding memory save failed: {e}")
+        return {"status": "saved", "success": False}

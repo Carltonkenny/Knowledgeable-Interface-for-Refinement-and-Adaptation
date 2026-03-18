@@ -5,7 +5,6 @@
 'use client'
 
 import { useState } from 'react'
-import { LiveDemoWidget } from './LiveDemoWidget'
 
 type SessionCard = {
   session: string
@@ -110,11 +109,6 @@ export function KiraVoiceSection() {
         <p className="font-mono text-[10px] text-text-dim text-center mb-10">
           She reads your profile before every response. The more you use it, the less you explain.
         </p>
-
-        {/* Live Demo Widget */}
-        <div className="mt-12">
-          <LiveDemoWidget />
-        </div>
       </div>
     </section>
   )

@@ -205,7 +205,10 @@ Rewrite the prompt based on this comprehensive analysis. Match the user's establ
         # ═══ FIRST LLM CALL ═══
         response = llm.invoke(messages)
         result = parse_json_response(response.content, agent_name="prompt_engineer")
-        
+
+        # Debug: Log what LLM returned for quality_score
+        logger.info(f"[prompt_engineer] LLM returned quality_score: {result.get('quality_score', 'MISSING')}")
+
         improved = result.get("improved_prompt", "")
         
         # ═══ QUALITY GATE ═══
@@ -244,24 +247,8 @@ Rewrite the prompt with substantially more detail and specificity."""
         if not qs.get("overall"):
             qs["overall"] = round((qs.get("specificity", 3) + qs.get("clarity", 3) + qs.get("actionability", 3)) / 3, 1)
 
-        # ═══ BUG FIX 1: Aggregate latencies from all upstream agents ═══
-        # Collect individual agent latencies into agent_latencies dict
-        agent_latencies = {
-            "prompt_engineer": latency_ms,
-        }
-        
-        # Add upstream agent latencies if they ran
-        if state.get("intent_analysis") and state["intent_analysis"].get("latency_ms"):
-            agent_latencies["intent"] = state["intent_analysis"]["latency_ms"]
-        if state.get("context_analysis") and state["context_analysis"].get("latency_ms"):
-            agent_latencies["context"] = state["context_analysis"]["latency_ms"]
-        if state.get("domain_analysis") and state["domain_analysis"].get("latency_ms"):
-            agent_latencies["domain"] = state["domain_analysis"]["latency_ms"]
-        
-        # Calculate total latency (sum of all agent latencies)
-        total_latency_ms = sum(agent_latencies.values())
-        
-        logger.info(f"[prompt_engineer] agent_latencies={agent_latencies}, total={total_latency_ms}ms")
+        # ═══ SECTION 3: AGENT LATENCIES ═══
+        logger.info(f"[prompt_engineer] self_latency={latency_ms}ms")
 
         return {
             "improved_prompt": improved,
@@ -270,8 +257,9 @@ Rewrite the prompt with substantially more detail and specificity."""
             "prompt_diff": prompt_diff,
             "was_skipped": False,
             "skip_reason": None,
-            "latency_ms": total_latency_ms,
-            "agent_latencies": agent_latencies,
+            "latency_ms": latency_ms,
+            "agent_latencies": {"prompt_engineer": latency_ms},
+            "agents_run": ["prompt_engineer"],
         }
         
     except Exception as e:

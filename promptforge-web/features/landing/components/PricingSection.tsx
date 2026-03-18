@@ -12,17 +12,17 @@ export function PricingSection() {
     <section id="pricing" className="py-16 px-12 border-t border-border-subtle">
       <div className="max-w-4xl mx-auto">
         {/* Eyebrow */}
-        <p className="font-mono text-kira tracking-[3px] uppercase text-[10px] mb-4 reveal">
+        <p className="font-mono text-kira tracking-[3px] uppercase text-[10px] mb-4">
           // 05  Pricing
         </p>
 
         {/* Title */}
-        <h2 className="text-[28px] font-bold tracking-tight text-text-bright mb-4 reveal reveal-delay-1">
+        <h2 className="text-[28px] font-bold tracking-tight text-text-bright mb-4">
           Simple. Honest. Free tier is real.
         </h2>
 
         {/* Cards */}
-        <div className="grid grid-cols-2 gap-6 mt-10 reveal reveal-delay-2">
+        <div className="grid grid-cols-2 gap-6 mt-10">
           {/* FREE card */}
           <div className="border border-border-default rounded-xl bg-layer1 p-6">
             <span className="font-mono text-[10px] tracking-wider uppercase text-text-dim">

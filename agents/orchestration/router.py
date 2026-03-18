@@ -46,9 +46,9 @@ class RoutingDecision:
 
 class RoutingConfig:
     """Configurable routing thresholds."""
-    
+
     MESSAGE_LENGTH_CONVERSATION: int = 10
-    AMBIGUITY_THRESHOLD: float = 0.7
+    AMBIGUITY_THRESHOLD: float = 0.6
     
     MODIFICATION_PHRASES: List[str] = None
     
@@ -70,12 +70,12 @@ def decide_route(
 ) -> RoutingDecision:
     """
     Make routing decision based on message and context.
-    
+
     RULES.md Routing Logic (in order):
     1. message.length < 10 → CONVERSATION
     2. pending_clarification → SWARM (direct)
     3. Modification phrases → FOLLOWUP
-    4. ambiguity_score > 0.7 → CLARIFICATION
+    4. ambiguity_score > 0.6 → CLARIFICATION
     5. Otherwise → SWARM
     
     Args:

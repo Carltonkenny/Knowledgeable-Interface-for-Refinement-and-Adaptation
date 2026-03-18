@@ -45,6 +45,8 @@ class TestPromptForgeState:
             quality_score={},
             changes_made=[],
             breakdown={},
+            latency_ms=0,
+            memories_applied=0,
         )
         
         assert "attachments" in state
@@ -82,6 +84,8 @@ class TestPromptForgeState:
             quality_score={},
             changes_made=[],
             breakdown={},
+            latency_ms=0,
+            memories_applied=0,
         )
         
         assert state["attachments"] == []
@@ -117,6 +121,8 @@ class TestPromptForgeState:
             quality_score={},
             changes_made=[],
             breakdown={},
+            latency_ms=0,
+            memories_applied=0,
         )
         
         # Verify all 26 fields per RULES.md
@@ -126,7 +132,8 @@ class TestPromptForgeState:
             'orchestrator_decision', 'user_facing_message', 'pending_clarification',
             'clarification_key', 'proceed_with_swarm', 'intent_analysis', 'context_analysis',
             'domain_analysis', 'agents_skipped', 'agent_latencies', 'improved_prompt',
-            'original_prompt', 'prompt_diff', 'quality_score', 'changes_made', 'breakdown'
+            'original_prompt', 'prompt_diff', 'quality_score', 'changes_made', 'breakdown',
+            'latency_ms', 'memories_applied'
         ]
         
         for field in required_fields:

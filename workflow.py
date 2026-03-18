@@ -64,9 +64,9 @@ def route_to_agents(state: AgentState) -> List[Optional[Send]]:
     agents_to_run = decision.get("agents_to_run", [])
     proceed_with_swarm = decision.get("proceed_with_swarm", False)
     
-    # If no swarm, skip all agents
+    # If no swarm or no agents, go straight to prompt engineer
     if not proceed_with_swarm or not agents_to_run:
-        return []
+        return ["prompt_engineer"]
     
     # Map agent names to node names
     node_map = {
@@ -127,6 +127,7 @@ def build_graph() -> StateGraph:
             "intent_agent": "intent_agent",
             "context_agent": "context_agent",
             "domain_agent": "domain_agent",
+            "prompt_engineer": "prompt_engineer"
         }
     )
     

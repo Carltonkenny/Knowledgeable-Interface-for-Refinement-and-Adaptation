@@ -60,6 +60,8 @@ export function useProfile(token: string | null) {
     setIsUpdatingAttr(true)
     try {
       await apiUpdateUsername(token, newUsername)
+      // Refresh all profile data to reflect username change
+      await loadProfileData()
       return true
     } catch (err: any) {
       console.error('Failed to update username:', err)
@@ -103,6 +105,7 @@ export function useProfile(token: string | null) {
     updateUsername,
     exportData,
     deleteAccount,
-    refreshStats: loadProfileData
+    refreshStats: loadProfileData,
+    trustLevel: stats?.trust_level ?? 0
   }
 }

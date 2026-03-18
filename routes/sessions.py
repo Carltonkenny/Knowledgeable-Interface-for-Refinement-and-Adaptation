@@ -30,6 +30,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Sessions"])
 
 
+def _validate_uuid(value: str, name: str = "session_id") -> str:
+    """Validate that a URL parameter is a valid UUID. Raises 400 if not."""
+    try:
+        uuid.UUID(value)
+        return value
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail=f"Invalid {name}: must be a valid UUID")
+
+
 # ── Schemas ───────────────────────────────────
 
 class ChatSessionResponse(BaseModel):
@@ -80,6 +89,7 @@ async def update_session_meta(
     user: User = Depends(get_current_user)
 ):
     """Update session metadata (title, pin, favorite)."""
+    _validate_uuid(session_id)
     updates = req.dict(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided")
@@ -96,6 +106,7 @@ async def restore_session_route(
     user: User = Depends(get_current_user)
 ):
     """Restore a soft-deleted session."""
+    _validate_uuid(session_id)
     success = restore_chat_session(session_id, user.user_id)
     if not success:
         raise HTTPException(status_code=404, detail="Session not found or restore failed")
@@ -108,6 +119,7 @@ async def trash_session(
     user: User = Depends(get_current_user)
 ):
     """Soft-delete a session (move to Recycle Bin)."""
+    _validate_uuid(session_id)
     success = delete_chat_session(session_id, user.user_id)
     if not success:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -120,6 +132,7 @@ async def wipe_session_permanent(
     user: User = Depends(get_current_user)
 ):
     """Permanently delete a session and all its data."""
+    _validate_uuid(session_id)
     success = purge_chat_session(session_id, user.user_id)
     if not success:
         raise HTTPException(status_code=404, detail="Session not found")

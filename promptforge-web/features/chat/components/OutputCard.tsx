@@ -49,8 +49,8 @@ export default function OutputCard({ promptId, sessionId, result }: OutputCardPr
   return (
     <motion.div 
       layoutId={`output-card-${promptId}`}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0, scale: 0.98 }}
+      animate={{ opacity: 1, scale: 1 }}
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
       className="mb-6"
     >

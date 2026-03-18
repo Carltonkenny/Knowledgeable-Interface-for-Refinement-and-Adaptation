@@ -101,6 +101,7 @@ class TestRunSwarmWithAttachments:
         
         result = _run_swarm(
             prompt="Test prompt",
+            user_id="test-user",
             input_modality="text"
         )
         
@@ -114,6 +115,7 @@ class TestRunSwarmWithAttachments:
         # Should not raise exception
         result = _run_swarm(
             prompt="Analyze this file",
+            user_id="test-user",
             input_modality="file",
             file_base64="data:text/plain;base64,SGVsbG8=",
             file_type="text/plain"
@@ -137,13 +139,14 @@ class TestRunSwarmWithAttachments:
             }
         
         # Temporarily replace workflow.invoke
-        import workflow
-        original_invoke = workflow.workflow.invoke
-        workflow.workflow.invoke = mock_invoke
+        import service
+        original_invoke = service.workflow.invoke
+        service.workflow.invoke = mock_invoke
         
         try:
             _run_swarm(
                 prompt="Test with file",
+                user_id="test-user",
                 input_modality="file",
                 file_base64="data:text/plain;base64,SGVsbG8=",
                 file_type="text/plain"
@@ -194,6 +197,8 @@ class TestPromptForgeState:
             quality_score={},
             changes_made=[],
             breakdown={},
+            latency_ms=0,
+            memories_applied=0,
         )
         
         assert "attachments" in state
@@ -229,6 +234,8 @@ class TestPromptForgeState:
             quality_score={},
             changes_made=[],
             breakdown={},
+            latency_ms=0,
+            memories_applied=0,
         )
         
         assert state["attachments"] == []

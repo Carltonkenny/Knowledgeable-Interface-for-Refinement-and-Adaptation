@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { getSession } from '@/lib/supabase'
 import { ROUTES } from '@/lib/constants'
 import ChatSidebar from '@/features/chat/components/ChatSidebar'
@@ -61,16 +62,16 @@ export default function AppLayout({ children }: AppLayoutProps) {
             </div>
 
             {/* Nav links */}
-            <div className="hidden md:flex items-center gap-1">
-              <a href="/app" className="px-3 py-1.5 rounded-md text-sm text-text-bright bg-layer2">
+            <div className="flex items-center gap-1">
+              <Link href="/app" className="px-3 py-1.5 rounded-md text-sm text-text-bright bg-layer2">
                 Chat
-              </a>
-              <a href="/app/history" className="px-3 py-1.5 rounded-md text-sm text-text-dim hover:text-text-bright transition-colors">
+              </Link>
+              <Link href="/app/history" className="px-3 py-1.5 rounded-md text-sm text-text-dim hover:text-text-bright transition-colors">
                 History
-              </a>
-              <a href="/app/profile" className="px-3 py-1.5 rounded-md text-sm text-text-dim hover:text-text-bright transition-colors">
+              </Link>
+              <Link href="/app/profile" className="px-3 py-1.5 rounded-md text-sm text-text-dim hover:text-text-bright transition-colors">
                 Profile
-              </a>
+              </Link>
             </div>
           </div>
 

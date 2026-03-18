@@ -1,11 +1,12 @@
 // app/app/profile/page.tsx
 'use client'
 
-import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { getSession } from '@/lib/supabase'
 import { ROUTES } from '@/lib/constants'
+import { useToken } from '@/hooks/useToken'
 import { useProfile } from '@/features/profile/hooks/useProfile'
+
+import McpTokenSection from '@/features/profile/components/McpTokenSection'
 
 import UsernameEditor from '@/features/profile/components/UsernameEditor'
 import DomainNiches from '@/features/profile/components/DomainNiches'
@@ -16,35 +17,13 @@ import DataExport from '@/features/profile/components/DataExport'
 import DangerZone from '@/features/profile/components/DangerZone'
 
 export default function ProfilePage() {
-  const [userId, setUserId] = useState<string | null>(null)
   const router = useRouter()
-
-  useEffect(() => {
-    async function loadUser() {
-      const session = await getSession()
-      
-      if (!session) {
-        router.push(ROUTES.LOGIN)
-        return
-      }
-      setUserId(session.user.id)
-    }
-    loadUser()
-  }, [router])
-
-  const [token, setToken] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (userId) {
-      getSession().then(s => {
-        if (s) setToken(s.access_token)
-      })
-    }
-  }, [userId])
+  const token = useToken()
 
   const profile = useProfile(token)
 
-  if (!userId || profile.isInitializing) {
+  // Show loading state while token initializes
+  if (!token || profile.isInitializing) {
     return (
       <div className="h-full flex items-center justify-center min-h-[50vh]">
         <div className="w-12 h-12 rounded-lg border border-kira bg-[var(--kira-dim)] flex items-center justify-center animate-pulse shadow-[0_0_20px_rgba(var(--color-kira),0.2)]">
@@ -105,6 +84,15 @@ export default function ProfilePage() {
             trend={profile.trend}
             isLoading={profile.isInitializing}
           />
+
+          {/* MCP Integration */}
+          {token && (
+            <McpTokenSection
+              sessionCount={profile.stats?.active_chat_sessions ?? 0}
+              trustLevel={profile.trustLevel}
+              authToken={token}
+            />
+          )}
 
           {/* Data Export (GDPR right - accessible) */}
           <DataExport
