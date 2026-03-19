@@ -101,3 +101,6 @@ promptforge-web/$null
 "scripts/"  
 "migrations/"  
 "*.tsbuildinfo" 
+"*.log"  
+".qwen/"  
+"*.output" 
