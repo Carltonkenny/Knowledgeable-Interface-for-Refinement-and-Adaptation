@@ -196,14 +196,4 @@ def check_forbidden_phrases(text: str) -> List[str]:
 
 
 # ═══ BACKWARD COMPATIBILITY ═══════════════════════════════════
-
-# Deprecated: Use adapt_kira_personality() instead
-# Removed in: v2.1.0
-# Reason: Rename to distinguish from analyze_user_personality() in context/adapters.py
-adapt_personality = adapt_kira_personality
-"""
-Backward compatibility alias — deprecated.
-
-Use adapt_kira_personality() instead.
-This alias will be removed in v2.1.0.
-"""
+# (No deprecated functions - clean codebase)

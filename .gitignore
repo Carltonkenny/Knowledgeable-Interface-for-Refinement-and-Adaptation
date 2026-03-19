@@ -92,3 +92,12 @@ docker-compose.override.yml
 *.tsbuildinfo
 $null
 promptforge-web/$null
+"check_*.py"  
+"debug_*.py"  
+"test_*.py"  
+"diagnose_*.py"  
+"verify_*.py"  
+"investigate_*.py"  
+"scripts/"  
+"migrations/"  
+"*.tsbuildinfo" 

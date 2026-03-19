@@ -286,7 +286,7 @@ def write_to_langmem(
         db = get_client()
 
         # Extract base content
-        # NOTE: Swarm uses 'message', but legacy code expects 'raw_prompt'
+        # NOTE: Swarm uses 'message' key, so we check both for backward compatibility
         raw_prompt = session_result.get("raw_prompt") or session_result.get("message", "")[:2000]
         improved_prompt = session_result.get("improved_prompt", "")[:2000]
         input_modality = session_result.get("input_modality", "text")
