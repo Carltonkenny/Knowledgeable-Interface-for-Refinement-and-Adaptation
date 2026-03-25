@@ -29,16 +29,20 @@ if not API_KEY:
     logger.error("[config] POLLINATIONS_API_KEY not set in .env")
     raise ValueError("POLLINATIONS_API_KEY environment variable is required")
 
-# Models from official API:
-# - openai: OpenAI GPT-5 Mini (best quality)
-# - nova: Amazon Nova Micro (fastest)
-MODEL_FULL = "openai"        # For prompt engineer
-MODEL_FAST = "nova"          # For analysis agents - FASTEST
+# Models from .env (restart server to change)
+MODEL_FULL = os.getenv("POLLINATIONS_MODEL_FULL", "nova-fast")
+MODEL_FAST = os.getenv("POLLINATIONS_MODEL_FAST", "nova-fast")
 
 logger.info(f"[config] Pollinations Gen API: {BASE_URL}")
 logger.info(f"[config] Models: FULL={MODEL_FULL}, FAST={MODEL_FAST}")
 
 # ═══ LLM FACTORY FUNCTIONS ═══════════════════
+
+def clear_llm_cache():
+    """Clear LLM cache - call after .env changes or use /restart endpoint"""
+    get_llm.cache_clear()
+    get_fast_llm.cache_clear()
+    logger.info("[config] LLM cache cleared - new models will be loaded on next call")
 
 @lru_cache(maxsize=1)
 def get_llm() -> ChatOpenAI:

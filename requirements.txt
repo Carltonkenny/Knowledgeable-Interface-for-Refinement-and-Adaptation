@@ -21,3 +21,6 @@ python-multipart==0.0.9
 
 # Google Gemini API (for embeddings)
 google-generativeai>=0.8.0
+
+# Monitoring & Error Tracking (Sentry)
+sentry-sdk[fastapi]==2.20.0

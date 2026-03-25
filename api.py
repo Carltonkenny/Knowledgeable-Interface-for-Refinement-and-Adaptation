@@ -17,9 +17,29 @@
 #   - No wildcard CORS ✅
 #   - Rate limiting enabled ✅
 #   - JWT auth on all protected routes ✅
+#   - Error tracking with Sentry ✅
 # ─────────────────────────────────────────────
 
+# ═══ SENTRY INITIALIZATION — MUST BE FIRST ═══
+# Per RULES.md: Error tracking for production monitoring
+# This MUST come before any other imports to capture all errors
 import os
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+
+sentry_sdk.init(
+    dsn=os.getenv("SENTRY_DSN"),
+    integrations=[FastApiIntegration()],
+    traces_sample_rate=0.1,  # Sample 10% of transactions for performance monitoring
+    profiles_sample_rate=0.1,  # Sample 10% of profiles
+    environment=os.getenv("ENVIRONMENT", "production"),
+    release="promptforge-2.0.0",
+    # Only send errors in production
+    send_default_pii=False,
+)
+
+# ── Standard Imports ──────────────────────────
+
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -70,3 +90,19 @@ logger.info(f"[api] Registered {len(ALL_ROUTERS)} route modules")
 
 from routes.prompts import ChatRequest, ChatResponse, RefineRequest, RefineResponse
 from service import compute_diff as _compute_diff, sse_format as _sse
+
+
+# ── Test Route for Sentry (Remove in Production) ─
+# Per RULES.md: Testing infrastructure before deployment
+
+@app.get("/test-error")
+async def test_sentry_error():
+    """
+    Test route to verify Sentry error tracking is working.
+    Remove this route before production deployment.
+    
+    Visit: GET /test-error
+    Expected: 500 error sent to Sentry dashboard
+    """
+    logger.warning("[test] triggering test error for Sentry verification")
+    raise ValueError("🔍 SENTRY TEST ERROR — If you see this in Sentry, integration works!")

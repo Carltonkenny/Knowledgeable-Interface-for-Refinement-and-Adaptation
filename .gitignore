@@ -1,6 +1,8 @@
 # ─────────────────────────────────────────────
-# Python
+# PromptForge v2.0 — Complete .gitignore
 # ─────────────────────────────────────────────
+
+# ═══ PYTHON ═══════════════════════════════════
 __pycache__/
 *.py[cod]
 *$py.class
@@ -23,24 +25,19 @@ wheels/
 *.egg
 MANIFEST
 
-# ─────────────────────────────────────────────
-# Virtual Environment
-# ─────────────────────────────────────────────
+# ═══ VIRTUAL ENVIRONMENT ═══════════════════════
 venv/
 ENV/
 env/
 .venv/
 
-# ─────────────────────────────────────────────
-# Environment Variables (NEVER commit secrets)
-# ─────────────────────────────────────────────
+# ═══ ENVIRONMENT VARIABLES (NEVER COMMIT) ══════
 .env
 .env.local
 .env.*.local
+.env.sentry-build-plugin
 
-# ─────────────────────────────────────────────
-# IDE
-# ─────────────────────────────────────────────
+# ═══ IDE ═══════════════════════════════════════
 .vscode/
 .idea/
 *.swp
@@ -50,9 +47,7 @@ env/
 .pydevproject
 .settings/
 
-# ─────────────────────────────────────────────
-# OS
-# ─────────────────────────────────────────────
+# ═══ OS ════════════════════════════════════════
 .DS_Store
 .DS_Store?
 ._*
@@ -60,47 +55,47 @@ env/
 .Trashes
 ehthumbs.db
 Thumbs.db
+$null
 
-# ─────────────────────────────────────────────
-# Logs
-# ─────────────────────────────────────────────
+# ═══ LOGS ══════════════════════════════════════
 *.log
 logs/
 
-# ─────────────────────────────────────────────
-# Testing
-# ─────────────────────────────────────────────
+# ═══ TESTING ═══════════════════════════════════
 .pytest_cache/
 .coverage
 htmlcov/
 .tox/
 .nox/
 
-# ─────────────────────────────────────────────
-# Jupyter Notebook
-# ─────────────────────────────────────────────
+# ═══ JUPYTER ═══════════════════════════════════
 .ipynb_checkpoints
 
-# ─────────────────────────────────────────────
-# Docker
-# ─────────────────────────────────────────────
+# ═══ DOCKER ════════════════════════════════════
 docker-compose.override.yml
 
-# ─────────────────────────────────────────────
-# Node / Next.js Exclusions
-# ─────────────────────────────────────────────
-*.tsbuildinfo
-$null
-promptforge-web/$null
-"check_*.py"  
-"debug_*.py"  
-"test_*.py"  
-"diagnose_*.py"  
-"verify_*.py"  
-"investigate_*.py"  
-"scripts/"  
-"migrations/"  
-"*.tsbuildinfo" 
-"*.log"  
-".qwen/"  
-"*.output" 
+# ═══ NODE / NEXT.JS ════════════════════════════
+promptforge-web/node_modules/
+promptforge-web/.next/
+promptforge-web/out/
+promptforge-web/.vercel/
+promptforge-web/*.tsbuildinfo
+promptforge-web/*.log
+
+# ═══ QWEN CODE (LOCAL TOOL) ════════════════════
+.qwen/
+*.output
+
+# ═══ TEMP / SCRATCH FILES ══════════════════════
+# Test scripts (local development only)
+quick_test_*.py
+test_*.py
+debug_*.py
+diagnose_*.py
+verify_*.py
+investigate_*.py
+check_*.py
+
+# Temporary files
+*.tmp
+*.bak

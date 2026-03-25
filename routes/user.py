@@ -99,22 +99,23 @@ async def update_username_endpoint(
     try:
         from supabase import create_client
         import os
-        
+
         # Use service role key to update user metadata
         supabase_admin = create_client(
             os.getenv("SUPABASE_URL"),
             os.getenv("SUPABASE_SERVICE_KEY")
         )
-        
+
         # Update user metadata in auth.users
+        # Note: update_user_by_id takes user_id as first positional arg (not keyword)
         result = supabase_admin.auth.admin.update_user_by_id(
-            user_id=user.user_id,
-            attributes={"data": {"username": req.username}}
+            user.user_id,
+            {"data": {"username": req.username}}
         )
-        
+
         logger.info(f"[api] username updated for user={user.user_id} to {req.username}")
         return {"status": "success", "username": req.username}
-        
+
     except Exception as e:
         logger.exception(f"[api] Username update failed for user={user.user_id}")
         raise HTTPException(status_code=500, detail=str(e))

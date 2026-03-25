@@ -12,6 +12,7 @@
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
+    "@sentry/nextjs": "^10.45.0",
     "@supabase/ssr": "^0.5.2",
     "autoprefixer": "^10.4.27",
     "clsx": "^2.1.1",
