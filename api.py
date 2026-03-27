@@ -92,17 +92,19 @@ from routes.prompts import ChatRequest, ChatResponse, RefineRequest, RefineRespo
 from service import compute_diff as _compute_diff, sse_format as _sse
 
 
-# ── Test Route for Sentry (Remove in Production) ─
-# Per RULES.md: Testing infrastructure before deployment
+# ── Test Route for Sentry (Development only) ─
+# Per RULES.md: Available in dev for testing, gated in production
 
-@app.get("/test-error")
-async def test_sentry_error():
-    """
-    Test route to verify Sentry error tracking is working.
-    Remove this route before production deployment.
-    
-    Visit: GET /test-error
-    Expected: 500 error sent to Sentry dashboard
-    """
-    logger.warning("[test] triggering test error for Sentry verification")
-    raise ValueError("🔍 SENTRY TEST ERROR — If you see this in Sentry, integration works!")
+if os.getenv("ENVIRONMENT", "production") != "production":
+    @app.get("/test-error")
+    async def test_sentry_error():
+        """
+        Test route to verify Sentry error tracking is working.
+        Only available when ENVIRONMENT != production.
+        
+        Visit: GET /test-error
+        Expected: 500 error sent to Sentry dashboard
+        """
+        logger.warning("[test] triggering test error for Sentry verification")
+        raise ValueError("🔍 SENTRY TEST ERROR — If you see this in Sentry, integration works!")
+

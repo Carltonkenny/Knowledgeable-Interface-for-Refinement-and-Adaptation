@@ -4,7 +4,7 @@
 'use client'
 
 import { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { Chip } from '@/components/ui'
 import { History as HistoryIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -26,6 +26,7 @@ const countDiffType = (diff: ChatResult['diff'], type: 'add' | 'remove'): number
 }
 
 export default function OutputCard({ promptId, sessionId, result }: OutputCardProps) {
+  const shouldReduce = useReducedMotion()
   const [showDiff, setShowDiff] = useState(false)
   const [isCopied, setIsCopied] = useState(false)
 
@@ -46,12 +47,17 @@ export default function OutputCard({ promptId, sessionId, result }: OutputCardPr
   const additions = countDiffType(result.diff, 'add')
   const removals = countDiffType(result.diff, 'remove')
 
+  // Strip markdown symbols for display only (preserve original for copy)
+  const displayPrompt = result.improved_prompt
+    ? result.improved_prompt.replace(/(\*\*|```|`|^#+\s)/gm, '')
+    : ''
+
   return (
     <motion.div 
-      layoutId={`output-card-${promptId}`}
-      initial={{ opacity: 0, scale: 0.98 }}
+      layoutId={shouldReduce ? undefined : `output-card-${promptId}`}
+      initial={{ opacity: 0, scale: shouldReduce ? 1 : 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
-      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+      transition={{ type: "spring", stiffness: 300, damping: 30, duration: shouldReduce ? 0 : undefined }}
       className="mb-6"
     >
       {/* Gradient border wrapper */}
@@ -73,8 +79,8 @@ export default function OutputCard({ promptId, sessionId, result }: OutputCardPr
           </div>
 
           {/* Output text */}
-          <p className="text-[--output-text] text-sm leading-relaxed mb-4">
-            {result.improved_prompt}
+          <p className="text-[--output-text] text-sm leading-relaxed mb-4 whitespace-pre-wrap">
+            {displayPrompt}
           </p>
 
           {/* Annotation chips */}
@@ -102,7 +108,7 @@ export default function OutputCard({ promptId, sessionId, result }: OutputCardPr
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.2, ease: "easeInOut" }}
+                transition={{ duration: shouldReduce ? 0 : 0.2, ease: "easeInOut" }}
                 className="mb-4 overflow-hidden"
               >
                 <div className="p-3 bg-[var(--surface-hover)] rounded-lg border border-border-subtle">

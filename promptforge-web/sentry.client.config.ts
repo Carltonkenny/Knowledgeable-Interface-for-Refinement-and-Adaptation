@@ -7,11 +7,11 @@ Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
   
   // Enable tracing for performance monitoring
-  tracesSampleRate: 1.0, // 100% of traces in dev, reduce in prod
+  tracesSampleRate: 0.1, // 10% of traces — protects free tier quota
   
   // Enable Session Replay
-  replaysSessionSampleRate: 1.0,
-  replaysOnErrorSampleRate: 1.0,
+  replaysSessionSampleRate: 0.1, // 10% of sessions — saves quota
+  replaysOnErrorSampleRate: 1.0, // 100% of error sessions — always capture errors
   
   // Integrations
   integrations: [

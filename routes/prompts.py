@@ -322,10 +322,12 @@ async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks, user:
             logger.info(f"[api] unified handler complete: intent={intent}, memories={memories_applied}, latency={latency_ms}ms")
 
             if intent in ["CONVERSATION", "FOLLOWUP"]:
-                for i, char in enumerate(reply):
-                    yield sse_format("kira_message", {"message": char, "complete": False})
-                    if i % 10 == 0:
-                        await asyncio.sleep(0.01)
+                # Word-by-word streaming (natural cadence, ~6x fewer SSE events)
+                words = reply.split(" ")
+                for i, word in enumerate(words):
+                    chunk = word + (" " if i < len(words) - 1 else "")
+                    yield sse_format("kira_message", {"message": chunk, "complete": False})
+                    await asyncio.sleep(0.02)
             
             if intent == "CONVERSATION":
                 save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="conversation", user_id=user.user_id)
@@ -380,10 +382,12 @@ async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks, user:
             improved = final_state.get("improved_prompt", "")
             diff = compute_diff(previous_prompt, improved) if improved else []
             
-            for i, char in enumerate(reply):
-                yield sse_format("kira_message", {"message": char, "complete": False})
-                if i % 10 == 0:
-                    await asyncio.sleep(0.01)
+            # Word-by-word streaming (natural cadence, ~6x fewer SSE events)
+            words = reply.split(" ")
+            for i, word in enumerate(words):
+                chunk = word + (" " if i < len(words) - 1 else "")
+                yield sse_format("kira_message", {"message": chunk, "complete": False})
+                await asyncio.sleep(0.02)
                     
             yield sse_format("kira_message", {"message": "", "complete": True})
             

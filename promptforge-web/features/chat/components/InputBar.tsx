@@ -4,6 +4,7 @@
 'use client'
 
 import { useRef, KeyboardEvent } from 'react'
+import { motion, useReducedMotion } from 'framer-motion'
 import { Chip } from '@/components/ui'
 import AttachmentPill from './AttachmentPill'
 import { Paperclip, Mic, ArrowRight } from 'lucide-react'
@@ -35,6 +36,7 @@ export default function InputBar({
   attachment,
   onRemoveAttachment,
 }: InputBarProps) {
+  const shouldReduce = useReducedMotion()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -134,13 +136,15 @@ export default function InputBar({
           </button>
 
           {/* Send */}
-          <button
+          <motion.button
+            whileTap={shouldReduce ? undefined : { scale: 0.97 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 17, duration: 0.1 }}
             onClick={onSubmit}
             disabled={disabled || !value.trim()}
             className="bg-kira border border-transparent text-white rounded-lg px-3 py-1.5 flex items-center justify-center hover:shadow-glow hover:border-border-focus disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ease-in-out"
           >
             <ArrowRight size={18} />
-          </button>
+          </motion.button>
         </div>
       </div>
     </div>

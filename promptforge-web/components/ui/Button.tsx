@@ -5,17 +5,19 @@
 'use client'
 
 import { ButtonHTMLAttributes, forwardRef } from 'react'
+import { motion, useReducedMotion } from 'framer-motion'
 
 export type ButtonVariant = 'primary' | 'ghost' | 'kira' | 'danger' | 'paid' | 'waitlist'
 export type ButtonSize = 'sm' | 'md' | 'lg'
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onDrag' | 'onDragStart' | 'onDragEnd' | 'onAnimationStart'> {
   variant?: ButtonVariant
   size?: ButtonSize
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className = '', variant = 'primary', size = 'md', children, disabled, ...props }, ref) => {
+    const shouldReduce = useReducedMotion()
     const baseStyles = 'inline-flex items-center justify-center font-medium rounded-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-kira focus:ring-offset-2 focus:ring-offset-bg disabled:opacity-50 disabled:cursor-not-allowed'
     
     const variantStyles = {
@@ -34,15 +36,17 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     }
 
     return (
-      <button
+      <motion.button
         ref={ref}
+        whileTap={shouldReduce ? undefined : { scale: 0.97 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 17, duration: 0.1 }}
         className={`${baseStyles} ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
         disabled={disabled}
         suppressHydrationWarning
         {...props}
       >
         {children}
-      </button>
+      </motion.button>
     )
   }
 )

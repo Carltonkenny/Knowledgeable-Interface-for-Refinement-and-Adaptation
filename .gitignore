@@ -99,3 +99,4 @@ check_*.py
 # Temporary files
 *.tmp
 *.bak
+.agent/ 

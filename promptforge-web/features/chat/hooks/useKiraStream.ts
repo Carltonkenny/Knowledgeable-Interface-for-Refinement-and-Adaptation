@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { parseStream } from '@/lib/stream'
 import { mapError } from '@/lib/errors'
+import { KIRA_ERROR_MESSAGES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
 import { apiConversation, type ChatResult, ApiError } from '@/lib/api'
 import type { ChatMessage } from '../types'
@@ -179,7 +180,7 @@ export function useKiraStream({
             })
             setIsRateLimited(true)
             setRateLimitSecondsLeft(Math.floor(delay / 1000))
-            setError('Rate limit hit. Waiting before retry...')
+            setError(KIRA_ERROR_MESSAGES.RATE_LIMIT)
 
             retryTimeout = setTimeout(() => {
               loadHistory()
@@ -187,7 +188,7 @@ export function useKiraStream({
             return
           } else {
             logger.error('Max retries exceeded for rate limited history load', { sessionId, retryCount })
-            setError('Rate limit exceeded. Please try again later.')
+            setError(KIRA_ERROR_MESSAGES.RATE_LIMIT)
             setHistoryLoadError('Rate limit exceeded. Please try again later.')
             setIsRateLimited(true)
             setHistoryLoading(false)
@@ -410,7 +411,7 @@ export function useKiraStream({
         }
 
         logger.error('Stream failed', { err })
-        setError('Something went wrong. Your prompt is safe — try again.')
+        setError(KIRA_ERROR_MESSAGES.UNKNOWN)
         setIsStreaming(false)
       } finally {
         // ALWAYS reset streaming state (fixes Enter button stopping after one message)
