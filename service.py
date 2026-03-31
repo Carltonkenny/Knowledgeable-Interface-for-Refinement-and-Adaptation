@@ -57,8 +57,8 @@ def _run_swarm(prompt: str, user_id: str, input_modality: str = "text",
     Raises:
         HTTPException: 504 on timeout
     """
-    # Cache check — instant return on hit
-    cached = get_cached_result(prompt)
+    # Cache check — instant return on hit (includes user_id for personalized caching)
+    cached = get_cached_result(prompt, user_id)
     if cached:
         return cached
 
@@ -107,11 +107,66 @@ def _run_swarm(prompt: str, user_id: str, input_modality: str = "text",
         future = executor.submit(workflow.invoke, initial_state)
         try:
             result = future.result(timeout=GRAPH_TIMEOUT)
-            # Store in cache for next time
-            set_cached_result(prompt, result)
+            # Store in cache for next time (with user_id for personalization)
+            set_cached_result(prompt, result, user_id)
             return result
         except TimeoutError:
             raise HTTPException(status_code=504, detail="Request timed out — please retry")
+
+async def _astream_swarm(prompt: str, user_id: str, input_modality: str = "text",
+                         file_base64: str = None, file_type: str = None):
+    """
+    Async native streaming of LangGraph swarm.
+    Yields chunks incrementally exactly as nodes execute.
+    """
+    cached = get_cached_result(prompt, user_id)
+    if cached:
+        yield {"is_cached": True, "final_state": cached}
+        return
+
+    attachments = []
+    if file_base64 and file_type:
+        attachments = [{
+            "type": "image" if file_type.startswith("image/") else "file",
+            "content": file_base64,
+            "filename": f"upload.{file_type.split('/')[-1]}",
+            "media_type": file_type,
+        }]
+
+    initial_state = PromptForgeState(
+        message=prompt,
+        user_id=user_id,
+        session_id="default",
+        intent_analysis={},
+        context_analysis={},
+        domain_analysis={},
+        improved_prompt="",
+        attachments=attachments,
+        input_modality=input_modality,
+        latency_ms=0,
+        memories_applied=0,
+        conversation_history=[],
+        user_profile={},
+        langmem_context=[],
+        mcp_trust_level=0,
+        orchestrator_decision={},
+        user_facing_message="Analyzing your request...",
+        pending_clarification=False,
+        clarification_key=None,
+        proceed_with_swarm=True,
+        original_prompt=prompt,
+        prompt_diff=[],
+        quality_score={},
+        changes_made=[],
+        breakdown={},
+        agents_skipped=[],
+        agents_run=[],
+        agent_latencies={}
+    )
+
+    # Natively offloads to LangGraph's background threadpool, solving the block!
+    async for chunk in workflow.astream(initial_state):
+        yield chunk
 
 
 def _run_swarm_with_clarification(
@@ -141,14 +196,14 @@ def _run_swarm_with_clarification(
             session_id="session-123"
         )
     """
-    # Check cache first
-    cached = get_cached_result(message)
+    # Check cache first (with user_id for personalized caching)
+    cached = get_cached_result(message, user_id)
     if cached:
         logger.info(f"[service] cache hit for clarification answer")
         return cached
-    
+
     logger.info(f"[service] running swarm with clarification: key={clarification_key}")
-    
+
     # Initialize state with clarification already resolved
     initial_state = PromptForgeState(
         message=message,
@@ -188,14 +243,14 @@ def _run_swarm_with_clarification(
         changes_made=[],
         breakdown={},
     )
-    
+
     # Run workflow
     with ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(workflow.invoke, initial_state)
         try:
             result = future.result(timeout=GRAPH_TIMEOUT)
-            # Store in cache
-            set_cached_result(message, result)
+            # Store in cache (with user_id for personalization)
+            set_cached_result(message, result, user_id)
             return result
         except TimeoutError:
             raise HTTPException(status_code=504, detail="Request timed out — please retry")
@@ -260,9 +315,10 @@ _compute_diff = compute_diff
 
 
 __all__ = [
-    "_run_swarm",
-    "_run_swarm_with_clarification",
     "compute_diff",
     "sse_format",
     "_compute_diff",  # backward compat
+    "_astream_swarm",
+    "_run_swarm",
+    "_run_swarm_with_clarification"
 ]

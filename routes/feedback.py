@@ -118,4 +118,4 @@ async def submit_feedback(
 
     except Exception as e:
         logger.error(f"[feedback] failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")

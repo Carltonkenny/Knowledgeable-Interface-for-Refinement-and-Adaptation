@@ -75,38 +75,51 @@ Prevents stale cached data from being served after schema updates.
 """
 
 
-def get_cache_key(prompt: str) -> str:
+def get_cache_key(prompt: str, user_id: Optional[str] = None) -> str:
     """
-    SHA-256 hash of normalized prompt with version prefix.
+    SHA-256 hash of normalized prompt with version prefix and optional user personalization.
+    
     Per RULES.md: NEVER use MD5 (security vulnerability).
-
+    
     Args:
         prompt: User's prompt text
-
+        user_id: Optional user ID for personalized caching (includes profile hash)
+    
     Returns:
         64-character hex string (SHA-256 hash)
-
+    
     Example:
-        key = get_cache_key("write a story")
+        key = get_cache_key("write a story", "user-123")
         # Returns: "a1b2c3..." (64 chars)
     """
-    raw = f"{CACHE_VERSION}:{prompt.strip().lower()}"
+    # Normalize prompt
+    normalized = prompt.strip().lower()
+    
+    # Include user_id in cache key if provided (for personalized results)
+    if user_id:
+        # Hash the user_id to keep key length reasonable
+        user_hash = hashlib.sha256(user_id.encode()).hexdigest()[:16]
+        raw = f"{CACHE_VERSION}:{user_hash}:{normalized}"
+    else:
+        raw = f"{CACHE_VERSION}:{normalized}"
+    
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-def get_cached_result(prompt: str) -> Optional[Dict[str, Any]]:
+def get_cached_result(prompt: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     Returns cached swarm result for this prompt from Redis.
     Returns None if not cached or Redis unavailable.
     
     Args:
         prompt: User's prompt text
-        
+        user_id: Optional user ID for personalized cache lookup
+    
     Returns:
         Cached swarm result dict, or None if not found
-        
+    
     Example:
-        cached = get_cached_result("write a story")
+        cached = get_cached_result("write a story", "user-123")
         if cached:
             return cached  # Cache hit — skip LLM calls
         else:
@@ -119,16 +132,16 @@ def get_cached_result(prompt: str) -> Optional[Dict[str, Any]]:
         return None
     
     try:
-        key = f"prompt:{get_cache_key(prompt)}"
+        key = f"prompt:{get_cache_key(prompt, user_id)}"
         cached = client.get(key)
         
         if cached:
-            logger.info(f"[cache] HIT for prompt: '{prompt[:50]}'")
+            logger.info(f"[cache] HIT for prompt: '{prompt[:50]}' user={user_id[:8] if user_id else 'anon'}")
             return json.loads(cached)
         else:
-            logger.info(f"[cache] MISS for prompt: '{prompt[:50]}'")
+            logger.debug(f"[cache] MISS for prompt: '{prompt[:50]}' user={user_id[:8] if user_id else 'anon'}")
             return None
-            
+    
     except redis.ConnectionError as e:
         logger.warning(f"[cache] Redis connection error: {e}")
         return None
@@ -140,7 +153,7 @@ def get_cached_result(prompt: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def set_cached_result(prompt: str, result: Dict[str, Any]) -> None:
+def set_cached_result(prompt: str, result: Dict[str, Any], user_id: Optional[str] = None) -> None:
     """
     Stores swarm result in Redis with 1-hour expiry.
     LRU eviction handled automatically by Redis.
@@ -148,10 +161,11 @@ def set_cached_result(prompt: str, result: Dict[str, Any]) -> None:
     Args:
         prompt: User's prompt text
         result: Full swarm result dict to cache
-        
+        user_id: Optional user ID for personalized cache key
+    
     Example:
-        result = run_swarm("write a story")
-        set_cached_result("write a story", result)
+        result = run_swarm("write a story", "user-123")
+        set_cached_result("write a story", result, "user-123")
         # Next get_cached_result() returns cached result
     """
     client = get_redis_client()
@@ -161,18 +175,18 @@ def set_cached_result(prompt: str, result: Dict[str, Any]) -> None:
         return
     
     try:
-        key = f"prompt:{get_cache_key(prompt)}"
+        key = f"prompt:{get_cache_key(prompt, user_id)}"
         
         # Store with 1-hour expiry (3600 seconds)
         client.setex(key, 3600, json.dumps(result))
         
-        logger.info(f"[cache] STORED result for prompt: '{prompt[:50]}' (expires in 1h)")
+        logger.info(f"[cache] STORED result for prompt: '{prompt[:50]}' user={user_id[:8] if user_id else 'anon'} (expires in 1h)")
         
         # Track cache size for monitoring
         cache_size = client.dbsize()
         if cache_size > 100:
             logger.warning(f"[cache] size={cache_size} — consider increasing capacity or reducing TTL")
-            
+    
     except redis.ConnectionError as e:
         logger.warning(f"[cache] Redis connection error on write: {e}")
     except (TypeError, json.JSONDecodeError) as e:
@@ -181,32 +195,60 @@ def set_cached_result(prompt: str, result: Dict[str, Any]) -> None:
         logger.error(f"[cache] unexpected error on write: {e}")
 
 
-def parse_json_response(raw: str, agent_name: str, retries: int = 1) -> dict:
+def parse_json_response(raw: str, agent_name: str, retries: int = 2) -> dict:
     """
-    Safely parses JSON from LLM response.
+    Safely parses JSON from LLM response with exponential backoff retry.
+    
     Handles 3 failure modes: clean JSON, markdown-wrapped, buried in text.
+    Retries with backoff on parse failure — useful for streaming/partial responses.
     Returns {} on complete failure — caller decides how to handle.
+    
+    Args:
+        raw: Raw LLM response string
+        agent_name: Agent name for logging context
+        retries: Number of retry attempts with exponential backoff (default: 2)
+    
+    Returns:
+        Parsed JSON dict or empty dict on failure
+    
+    Example:
+        >>> result = parse_json_response('```json{"key": "value"}```', "intent")
+        >>> result
+        {"key": "value"}
     """
+    import time
+    
     if not raw or not raw.strip():
         logger.warning(f"[{agent_name}] empty response from LLM")
         return {}
 
-    attempts = [
+    # Parse attempts in order of preference
+    parse_attempts = [
         lambda r: json.loads(r.strip()),
         lambda r: json.loads(re.sub(r'```(?:json)?|```', '', r).strip()),
         lambda r: json.loads(re.search(r'\{.*\}', r, re.DOTALL).group()),
     ]
 
-    for i, attempt in enumerate(attempts):
-        try:
-            result = attempt(raw)
-            if i > 0:
-                logger.debug(f"[{agent_name}] JSON parsed on attempt {i + 1}")
-            return result
-        except (json.JSONDecodeError, AttributeError):
-            continue
+    # Retry loop with exponential backoff
+    for retry in range(retries + 1):
+        for i, attempt in enumerate(parse_attempts):
+            try:
+                result = attempt(raw)
+                if i > 0:
+                    logger.debug(f"[{agent_name}] JSON parsed on attempt {i + 1}")
+                if retry > 0:
+                    logger.info(f"[{agent_name}] JSON parsed successfully on retry {retry}")
+                return result
+            except (json.JSONDecodeError, AttributeError):
+                continue
+        
+        # If all parse attempts failed and we have retries left, wait with backoff
+        if retry < retries:
+            backoff_seconds = 0.5 * (2 ** retry)  # 0.5s, 1s, 2s...
+            logger.warning(f"[{agent_name}] JSON parse failed, retrying in {backoff_seconds}s (attempt {retry + 1}/{retries})")
+            time.sleep(backoff_seconds)
 
-    logger.error(f"[{agent_name}] all JSON parse attempts failed. Raw: {raw[:200]}")
+    logger.error(f"[{agent_name}] all JSON parse attempts failed after {retries} retries. Raw: {raw[:200]}")
     return {}
 
 

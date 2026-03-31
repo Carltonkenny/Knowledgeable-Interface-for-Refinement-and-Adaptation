@@ -41,8 +41,8 @@ export default function DangerZone({ onDelete, isAuthorizing }: DangerZoneProps)
               Delete Account
             </h4>
             <p className="text-xs text-text-dim max-w-sm mb-3">
-              Permanently destroy your LangMem context graph, historical prompts, 
-              domain tracking, and digital identity. This action <strong className="text-intent">CANNOT be undone</strong>.
+              Permanently delete all your data including prompts, chat history, 
+              saved memories, and profile information. This action <strong className="text-intent">CANNOT be undone</strong>.
             </p>
 
             {/* What will be deleted */}
@@ -56,7 +56,7 @@ export default function DangerZone({ onDelete, isAuthorizing }: DangerZoneProps)
                   Chat History
                 </span>
                 <span className="px-2 py-0.5 bg-intent/10 rounded text-[10px] text-intent border border-intent/20">
-                  LangMem Context
+                  Saved Memories
                 </span>
                 <span className="px-2 py-0.5 bg-intent/10 rounded text-[10px] text-intent border border-intent/20">
                   Domain Stats

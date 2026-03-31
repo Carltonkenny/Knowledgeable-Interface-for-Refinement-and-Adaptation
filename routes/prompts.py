@@ -10,12 +10,13 @@
 
 import asyncio
 import logging
+import time
 from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from service import _run_swarm, _run_swarm_with_clarification, compute_diff, sse_format
+from service import compute_diff, sse_format, _astream_swarm, _run_swarm, _run_swarm_with_clarification
 from auth import User, get_current_user
 from database import (
     save_request, save_agent_logs, save_conversation,
@@ -115,7 +116,7 @@ async def refine(req: RefineRequest, background_tasks: BackgroundTasks, user: Us
         raise
     except Exception as e:
         logger.exception("[api] /refine error")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -270,14 +271,14 @@ async def chat(
                     interaction_count=interaction_count,
                     last_activity=last_activity
                 )
-            
+
             return ChatResponse(type="prompt_improved", reply=reply, improved_prompt=improved, breakdown=breakdown, session_id=req.session_id)
 
     except HTTPException:
         raise
     except Exception as e:
         logger.exception("[api] /chat error")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/chat/stream")
@@ -303,23 +304,48 @@ async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks, user:
 
             yield sse_format("status", {"message": "Understanding your message..."})
 
-            result = await loop.run_in_executor(
-                None,
-                lambda: kira_unified_handler(
-                    message=req.message,
-                    history=history,
-                    user_profile=user_profile
+            # Default values in case unified handler fails
+            intent = "NEW_PROMPT"
+            reply = "Processing your request..."
+            confidence = 0.5
+            clarification_needed = False
+            memories_applied = 0
+            latency_ms = 0
+
+            try:
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: kira_unified_handler(
+                        message=req.message,
+                        history=history,
+                        user_profile=user_profile
+                    )
                 )
-            )
+
+                intent = result.get("intent", "NEW_PROMPT")
+                reply = result.get("response", reply)
+                confidence = result.get("confidence", 0.5)
+                clarification_needed = result.get("clarification_needed", False)
+                memories_applied = result.get("memories_applied", 0)
+                latency_ms = result.get("latency_ms", 0)
+
+                logger.info(f"[api] unified handler complete: intent={intent}, memories={memories_applied}, latency={latency_ms}ms")
+            except Exception as e:
+                logger.warning(f"[api] unified handler failed: {e}, defaulting to NEW_PROMPT")
+
+            # 🧠 PHASE 1 TRANSPARENCY: Inject Brain findings into Thought Accordion
+            intent_map = {
+                "CONVERSATION": "Engaging in casual conversation...",
+                "FOLLOWUP": "Analyzing your refinement request...",
+                "NEW_PROMPT": "New objective detected: Engineering a precise prompt..."
+            }
+            yield sse_format("status", {"message": f"🧠 {intent_map.get(intent, 'Analyzing intent...')}"})
             
-            intent = result["intent"]
-            reply = result["response"]
-            confidence = result.get("confidence", 0.5)
-            clarification_needed = result.get("clarification_needed", False)
-            memories_applied = result.get("memories_applied", 0)
-            latency_ms = result.get("latency_ms", 0)
-            
-            logger.info(f"[api] unified handler complete: intent={intent}, memories={memories_applied}, latency={latency_ms}ms")
+            if memories_applied > 0:
+                summary = result.get("memory_summary", f"Recalled {memories_applied} memories for personalization.")
+                yield sse_format("status", {"message": f"📚 {summary}"})
+            else:
+                yield sse_format("status", {"message": "📚 No relevant past memories found. Processing as a fresh request."})
 
             if intent in ["CONVERSATION", "FOLLOWUP"]:
                 # Word-by-word streaming (natural cadence, ~6x fewer SSE events)
@@ -359,17 +385,129 @@ async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks, user:
                 return
 
             # NEW_PROMPT (swarm execution)
-            yield sse_format("status", {"message": "Analyzing intent..."})
-            await asyncio.sleep(0.2)
-            yield sse_format("status", {"message": "Extracting context..."})
-            await asyncio.sleep(0.2)
-            yield sse_format("status", {"message": "Identifying domain..."})
-            await asyncio.sleep(0.2)
-            yield sse_format("status", {"message": "Engineering your prompt..."})
+            yield sse_format("status", {"message": "⚡ Orchestrator: Launching agents..."})
 
-            final_state = await loop.run_in_executor(
-                None, _run_swarm, req.message, user.user_id, req.input_modality or "text", req.file_base64, req.file_type
-            )
+            final_state = {}
+            start_time = time.time()
+
+            # Using Native LangGraph Streaming instead of thread-blocking executor
+            async for chunk in _astream_swarm(req.message, user.user_id, req.input_modality or "text", req.file_base64, req.file_type):
+                if chunk.get("is_cached"):
+                    final_state = chunk["final_state"]
+                    break
+
+                # ═══ REAL AGENT THINKING: Stream actual agent data ═══
+                if "orchestrator_decision" in chunk:
+                    decision = chunk["orchestrator_decision"]
+                    latency_ms = chunk.get("latency_ms", 0)
+                    memories_applied = chunk.get("memories_applied", 0)
+                    
+                    yield sse_format("agent_update", {
+                        "agent": "orchestrator",
+                        "state": "complete",
+                        "latency_ms": latency_ms,
+                        "data": {
+                            "agents_to_run": decision.get("agents_to_run", []),
+                            "clarification_needed": decision.get("clarification_needed", False),
+                            "tone_used": decision.get("tone_used", "direct"),
+                            "skip_reasons": decision.get("skip_reasons", {})
+                        },
+                        "memories_applied": memories_applied
+                    })
+
+                if "intent_agent" in chunk:
+                    agent_data = chunk["intent_agent"]
+                    analysis = agent_data.get("intent_analysis", {})
+                    latency_ms = agent_data.get("latency_ms", 0)
+                    was_skipped = agent_data.get("was_skipped", False)
+                    
+                    if was_skipped:
+                        yield sse_format("agent_update", {
+                            "agent": "intent",
+                            "state": "skipped",
+                            "latency_ms": latency_ms,
+                            "skip_reason": agent_data.get("skip_reason", "skipped"),
+                            "data": None
+                        })
+                    elif analysis and analysis.get("primary_intent"):
+                        yield sse_format("agent_update", {
+                            "agent": "intent",
+                            "state": "complete",
+                            "latency_ms": latency_ms,
+                            "data": {
+                                "primary_intent": analysis.get("primary_intent", ""),
+                                "goal_clarity": analysis.get("goal_clarity", "unknown"),
+                                "missing_info": analysis.get("missing_info", [])
+                            }
+                        })
+
+                if "context_agent" in chunk:
+                    agent_data = chunk["context_agent"]
+                    analysis = agent_data.get("context_analysis", {})
+                    latency_ms = agent_data.get("latency_ms", 0)
+                    was_skipped = agent_data.get("was_skipped", False)
+                    
+                    if was_skipped:
+                        yield sse_format("agent_update", {
+                            "agent": "context",
+                            "state": "skipped",
+                            "latency_ms": latency_ms,
+                            "skip_reason": agent_data.get("skip_reason", "no conversation history"),
+                            "data": None
+                        })
+                    elif analysis and analysis.get("tone"):
+                        yield sse_format("agent_update", {
+                            "agent": "context",
+                            "state": "complete",
+                            "latency_ms": latency_ms,
+                            "data": {
+                                "skill_level": analysis.get("skill_level", "intermediate"),
+                                "tone": analysis.get("tone", "direct"),
+                                "constraints": analysis.get("constraints", []),
+                                "implicit_preferences": analysis.get("implicit_preferences", [])
+                            }
+                        })
+
+                if "domain_agent" in chunk:
+                    agent_data = chunk["domain_agent"]
+                    analysis = agent_data.get("domain_analysis", {})
+                    latency_ms = agent_data.get("latency_ms", 0)
+                    was_skipped = agent_data.get("was_skipped", False)
+                    
+                    if was_skipped:
+                        yield sse_format("agent_update", {
+                            "agent": "domain",
+                            "state": "skipped",
+                            "latency_ms": latency_ms,
+                            "skip_reason": agent_data.get("skip_reason", "high domain confidence"),
+                            "data": None
+                        })
+                    elif analysis and analysis.get("primary_domain"):
+                        yield sse_format("agent_update", {
+                            "agent": "domain",
+                            "state": "complete",
+                            "latency_ms": latency_ms,
+                            "data": {
+                                "primary_domain": analysis.get("primary_domain", ""),
+                                "sub_domain": analysis.get("sub_domain", "general"),
+                                "relevant_patterns": analysis.get("relevant_patterns", []),
+                                "complexity": analysis.get("complexity", "medium"),
+                                "confidence": analysis.get("confidence", 0)
+                            }
+                        })
+
+                if "prompt_engineer" in chunk:
+                    final_state = chunk["prompt_engineer"]
+                    yield sse_format("agent_update", {
+                        "agent": "engineer",
+                        "state": "complete",
+                        "latency_ms": final_state.get("latency_ms", 0),
+                        "data": {
+                            "quality_score": final_state.get("quality_score", {}),
+                            "agents_run": final_state.get("agents_run", []),
+                            "agents_skipped": final_state.get("agents_skipped", [])
+                        }
+                    })
 
             previous_prompt = ""
             for turn in reversed(history):

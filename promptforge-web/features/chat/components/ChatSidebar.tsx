@@ -2,7 +2,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, MessageSquare, Trash2, ChevronLeft, ChevronRight, Pin, Star, Trash } from 'lucide-react'
+import { Plus, MessageSquare, Trash2, ChevronLeft, ChevronRight, Pin, Star, Trash, Sparkles } from 'lucide-react'
 import { useChatSessions } from '../hooks/useChatSessions'
 import RecycleBin from './RecycleBin'
 import { cn } from '@/lib/utils'
@@ -104,7 +104,6 @@ const SessionItem = memo(({
               <Trash2 size={13} className={isConfirming ? "animate-pulse" : ""} />
             </button>
 
-            {/* Confirmation warning text */}
             {isConfirming && (
               <span className="text-[10px] font-bold text-intent animate-pulse ml-1">
                 Confirm?
@@ -121,9 +120,10 @@ SessionItem.displayName = 'SessionItem'
 
 interface ChatSidebarProps {
   token: string
+  mode?: 'chat' | 'history'
 }
 
-export default function ChatSidebar({ token }: ChatSidebarProps) {
+export default function ChatSidebar({ token, mode = 'chat' }: ChatSidebarProps) {
   const { 
     sessions, 
     isLoading, 
@@ -167,28 +167,37 @@ export default function ChatSidebar({ token }: ChatSidebarProps) {
       {/* Collapse Toggle */}
       <button 
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className="absolute -right-3 top-20 w-6 h-6 rounded-full border border-border-strong bg-layer-2 flex items-center justify-center text-text-dim hover:text-text-bright z-10"
+        className="absolute -right-3 top-20 w-6 h-6 rounded-full border border-border-strong bg-layer-2 flex items-center justify-center text-text-dim hover:text-text-bright z-10 shadow-sm"
       >
         {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
       </button>
 
-      {/* New Chat Button */}
-      <div className="p-4">
+      {/* Header Label */}
+      <div className={cn("p-4 pb-2", isCollapsed && "hidden")}>
+         <h2 className="text-[10px] font-bold text-text-dim uppercase tracking-[0.2em]">
+            {mode === 'history' ? 'Search History' : 'Chat Sessions'}
+         </h2>
+      </div>
+
+      {/* New Action Button */}
+      <div className="p-4 pt-2">
         <button 
           onClick={() => createNewChat()}
           className={cn(
-            "w-full flex items-center gap-3 px-3 py-2 rounded-lg border border-border-bright bg-layer-2 text-text-bright hover:bg-layer-3 transition-colors group",
-            isCollapsed && "justify-center"
+            "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-kira/20 bg-kira/5 text-text-bright hover:bg-kira/10 hover:border-kira/40 transition-all group shadow-sm shadow-kira/5",
+            isCollapsed && "justify-center px-0"
           )}
-          title="New Chat"
+          title={mode === 'history' ? "New Search" : "New Chat"}
         >
-          <Plus size={18} className="text-kira transition-transform group-hover:rotate-90" />
-          {!isCollapsed && <span className="font-medium">New Chat</span>}
+          <div className="p-1.5 rounded-lg bg-layer2 border border-border group-hover:border-kira/30 shrink-0">
+             {mode === 'history' ? <Sparkles size={16} className="text-kira" /> : <Plus size={16} className="text-kira transition-transform group-hover:rotate-90" />}
+          </div>
+          {!isCollapsed && <span className="font-semibold text-sm">{mode === 'history' ? 'Palace Search' : 'New Chat'}</span>}
         </button>
       </div>
 
       {/* Sessions List */}
-      <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-4 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-6 custom-scrollbar">
         {isLoading && !sessions.length ? (
           <div className="flex flex-col gap-2 p-2">
             {[1, 2, 3].map(i => (
@@ -200,15 +209,17 @@ export default function ChatSidebar({ token }: ChatSidebarProps) {
             {/* Pinned Section */}
             {pinnedSessions.length > 0 && !isCollapsed && (
               <div className="space-y-1">
-                <h3 className="px-3 text-[10px] font-bold text-text-muted uppercase tracking-wider mb-1">Pinned</h3>
+                <h3 className="px-3 text-[10px] font-bold text-text-muted uppercase tracking-wider mb-2">Pinned</h3>
                 {pinnedSessions.map(renderSessionItem)}
               </div>
             )}
             
             {/* Recent Section */}
             <div className="space-y-1">
-              {pinnedSessions.length > 0 && !isCollapsed && (
-                 <h3 className="px-3 text-[10px] font-bold text-text-muted uppercase tracking-wider mb-1">Recent</h3>
+              {!isCollapsed && (
+                 <h3 className="px-3 text-[10px] font-bold text-text-muted uppercase tracking-wider mb-2">
+                   {mode === 'history' ? 'Older Sessions' : 'Recent Chats'}
+                 </h3>
               )}
               {recentSessions.map(renderSessionItem)}
             </div>
@@ -222,8 +233,8 @@ export default function ChatSidebar({ token }: ChatSidebarProps) {
         <button
           onClick={() => setShowRecycleBin(true)}
           className={cn(
-            "flex items-center gap-3 px-5 py-3 text-text-dim hover:bg-layer-2 hover:text-text-bright transition-colors transition-opacity",
-            isCollapsed && "justify-center"
+            "flex items-center gap-3 px-5 py-3 text-text-dim hover:bg-layer-2 hover:text-text-bright transition-colors",
+            isCollapsed && "justify-center px-0"
           )}
           title="Recycle Bin"
         >
@@ -235,15 +246,15 @@ export default function ChatSidebar({ token }: ChatSidebarProps) {
         <div className="p-4 border-t border-border-subtle">
           <div className={cn(
             "flex items-center gap-3",
-            isCollapsed && "justify-center"
+            isCollapsed && "justify-center px-0"
           )}>
-            <div className="w-8 h-8 rounded-full bg-kira flex items-center justify-center text-white font-bold shrink-0 shadow-lg shadow-kira/20">
-              U
+            <div className="w-8 h-8 rounded-lg border border-kira/30 bg-kira/10 flex items-center justify-center text-kira font-bold font-mono text-sm shrink-0 shadow-sm">
+              K
             </div>
             {!isCollapsed && (
               <div className="flex flex-col min-w-0">
-                <span className="text-sm font-semibold text-text-bright truncate text-reveal">User Profile</span>
-                <span className="text-xs text-text-muted truncate">Premium Plan</span>
+                <span className="text-sm font-semibold text-text-bright truncate">PromptForge</span>
+                <span className="text-xs text-text-muted truncate">v2.0</span>
               </div>
             )}
           </div>

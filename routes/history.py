@@ -42,6 +42,7 @@ class SearchQuery(BaseModel):
     date_from: Optional[str] = None
     date_to: Optional[str] = None
     limit: int = 20
+    offset: int = 0
 
 
 class CreateVersionRequest(BaseModel):
@@ -87,15 +88,24 @@ def conversation(
 
 # ── Search ────────────────────────────────────
 
+# ── Search ────────────────────────────────────
+
 @router.post("/history/search", response_model=dict)
 async def search_history(
     search_query: SearchQuery,
     user: User = Depends(get_current_user)
 ):
-    """Semantic search across user's prompt history with RAG toggle."""
+    """
+    Robust search across user's prompt history.
+    Unifies RAG and Keyword results and fixes legacy filtering bugs.
+    """
     try:
         logger.info(f"[api] /history/search user_id={user.user_id[:8]}... query='{search_query.query[:30]}...' rag={search_query.use_rag}")
         
+        results = []
+        mode_used = "rag" if search_query.use_rag else "keyword"
+
+        # ═══ Branch 1: Semantic Search (RAG) ═══
         if search_query.use_rag:
             from memory.langmem import query_langmem
             memories = query_langmem(
@@ -104,169 +114,204 @@ async def search_history(
                 top_k=search_query.limit * 2,
                 surface="web_app"
             )
-            results = memories
-            logger.info(f"[api] RAG search returned {len(results)} memories")
-        else:
+            
+            # Map memory objects to unified SearchResult shape
+            for m in memories:
+                results.append({
+                    "id": m.get("id"),
+                    "raw_prompt": m.get("content", ""),
+                    "improved_prompt": m.get("improved_content", ""),
+                    "domain": m.get("domain", "general"),
+                    "quality_score": m.get("quality_score", {}),
+                    "created_at": m.get("created_at"),
+                    "search_score": m.get("similarity_score", 0),
+                    "session_id": m.get("session_id")
+                })
+
+        # ═══ Branch 2: Keyword Search (or Fallback) ═══
+        if not results:  # (Either Keyword mode was picked OR RAG returned zero results)
+            if search_query.use_rag and memories: # RAG was used but all filtered by similarity
+                logger.info(f"[api] RAG similarity too low → falling back to keyword search")
+            
+            mode_used = "keyword"
             db = get_client()
-            query = db.table("requests")\
+            # Escape SQL wildcards to prevent injection
+            sanitized_query = search_query.query.replace('%', '\\%').replace('_', '\\_')
+            query_obj = db.table("requests")\
                 .select("*")\
                 .eq("user_id", user.user_id)\
-                .ilike("raw_prompt", f"%{search_query.query}%")\
+                .ilike("raw_prompt", f"%{sanitized_query}%")\
                 .limit(search_query.limit)
             
             if search_query.date_from:
-                query = query.gte("created_at", search_query.date_from)
+                query_obj = query_obj.gte("created_at", search_query.date_from)
             if search_query.date_to:
-                query = query.lte("created_at", search_query.date_to)
+                query_obj = query_obj.lte("created_at", search_query.date_to)
             
-            result = query.execute()
-            results = result.data or []
-            logger.info(f"[api] keyword search returned {len(results)} results")
-        
-        # Apply filters
+            # Sub-200ms Paginated Query
+            query_obj = query_obj.range(search_query.offset, search_query.offset + search_query.limit - 1)
+            
+            db_res = query_obj.execute()
+            for r in (db_res.data or []):
+                # Map DB row to unified SearchResult shape
+                results.append({
+                    "id": r.get("id"),
+                    "raw_prompt": r.get("raw_prompt", ""),
+                    "improved_prompt": r.get("improved_prompt", ""),
+                    # FIX: Handle None domain_analysis safely
+                    "domain": (r.get("domain_analysis") or {}).get("primary_domain", "general"),
+                    "quality_score": r.get("quality_score", {}),
+                    "created_at": r.get("created_at"),
+                    "search_score": 1.0,
+                    "session_id": r.get("session_id"),
+                    "is_favorite": r.get("is_favorite", False)
+                })
+
+        # ═══ Robust Filtering ═══
         filtered = results
+        
+        # Domain Filter (Now uses unified 'domain' key)
         if search_query.domains:
-            filtered = [r for r in filtered 
-                       if r.get('domain_analysis', {}).get('primary_domain', '') in search_query.domains]
-            filtered = [r for r in filtered if calculate_overall_quality(r.get('quality_score', {})) >= search_query.min_quality]
+            filtered = [r for r in filtered if r.get("domain") in search_query.domains]
         
-        filtered = filtered[:search_query.limit]
-        logger.info(f"[api] filtered results: {len(filtered)}")
+        # Quality Filter
+        if search_query.min_quality > 0:
+            filtered = [r for r in filtered if calculate_overall_quality(r.get("quality_score", {})) >= search_query.min_quality]
         
-        return {"results": filtered, "total": len(filtered)}
-    
-    except Exception as e:
-        logger.exception(f"[api] /history/search failed")
-        raise HTTPException(status_code=500, detail="Search failed")
-
-
-# ── Analytics ─────────────────────────────────
-
-@router.get("/history/analytics", response_model=dict)
-async def get_history_analytics(
-    days: int = Query(default=30, ge=1, le=90),
-    user: User = Depends(get_current_user)
-):
-    """Get user's prompt analytics and insights."""
-    try:
-        logger.info(f"[api] /history/analytics user_id={user.user_id[:8]}... days={days}")
+        # Sort and truncate
+        filtered.sort(key=lambda x: x.get("search_score", 0), reverse=True)
+        final_results = filtered[:search_query.limit]
         
-        db = get_client()
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-        
-        prompts_result = db.table("requests")\
-            .select("*")\
-            .eq("user_id", user.user_id)\
-            .gte("created_at", cutoff.isoformat())\
-            .execute()
-        
-        prompts = prompts_result.data or []
-        total_prompts = len(prompts)
-        
-        quality_scores = [
-            p.get("quality_score", {}).get("overall", 0)
-            for p in prompts if p.get("quality_score")
-        ]
-        avg_quality = round(sum(quality_scores) / len(quality_scores), 2) if quality_scores else 0
-        
-        domains = [p.get("domain_analysis", {}).get("primary_domain", "general") for p in prompts]
-        unique_domains = len(set(domains))
-        hours_saved = round((total_prompts * 5) / 60, 1)
-        
-        # Quality trend (daily averages)
-        daily_quality = {}
-        for p in prompts:
-            date = p["created_at"][:10]
-            if date not in daily_quality:
-                daily_quality[date] = []
-            qs = p.get("quality_score", {})
-            if qs:
-                daily_quality[date].append(calculate_overall_quality(qs))
-        
-        quality_trend = [
-            {"date": date, "avg_quality": round(sum(scores) / len(scores), 2) if scores else 0, "prompt_count": len(scores)}
-            for date, scores in sorted(daily_quality.items())
-        ]
-        
-        # Domain distribution
-        domain_counts = {}
-        for d in domains:
-            domain_counts[d] = domain_counts.get(d, 0) + 1
-        
-        # Session activity
-        daily_activity = {}
-        for p in prompts:
-            date = p["created_at"][:10]
-            daily_activity[date] = daily_activity.get(date, 0) + 1
-        
-        session_activity = [{"date": date, "count": count} for date, count in sorted(daily_activity.items())]
+        logger.info(f"[api] search complete. Mode: {mode_used}, Found: {len(results)}, Filtered: {len(final_results)}")
         
         return {
-            "total_prompts": total_prompts,
-            "avg_quality": avg_quality,
-            "unique_domains": unique_domains,
-            "hours_saved": hours_saved,
-            "quality_trend": quality_trend,
-            "domain_distribution": domain_counts,
-            "session_activity": session_activity
+            "results": final_results,
+            "total": len(final_results),
+            "search_mode": mode_used
         }
-    
+
     except Exception as e:
-        logger.exception(f"[api] /history/analytics failed")
-        raise HTTPException(status_code=500, detail="Failed to load analytics")
+        logger.exception(f"[api] /history/search robust failure: {str(e)}")
+        raise HTTPException(status_code=500, detail="Search engine failed")
 
 
 @router.get("/history/sessions", response_model=dict)
 async def get_history_sessions(
     user: User = Depends(get_current_user),
-    limit: int = Query(default=20, ge=1, le=100)
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0)
 ):
-    """Get prompt history grouped by chat sessions."""
+    """
+    Get prompt history grouped by chat sessions.
+    [SENIOR DEV FIX]: Eliminates N+1 query problem using single-query batch retrieval.
+    """
     try:
-        logger.info(f"[api] /history/sessions user_id={user.user_id[:8]}... limit={limit}")
+        logger.info(f"[api] /history/sessions user_id={user.user_id[:8]}... limit={limit} offset={offset}")
         
         db = get_client()
         sessions_result = db.table("chat_sessions")\
             .select("id, title, created_at, last_activity")\
             .eq("user_id", user.user_id)\
             .order("last_activity", desc=True)\
-            .limit(limit)\
+            .range(offset, offset + limit - 1)\
             .execute()
         
+        if not sessions_result.data:
+            return {"sessions": [], "total": 0}
+
+        session_ids = [s["id"] for s in sessions_result.data]
+
+        # 🚀 BATCH FETCH: Get all prompts for these sessions in ONE query
+        prompts_result = db.table("requests")\
+            .select("*")\
+            .in_("session_id", session_ids)\
+            .eq("user_id", user.user_id)\
+            .order("created_at", desc=True)\
+            .execute()
+
+        # Group prompts by session_id in Python memory (O(N) efficiency)
+        prompts_by_session = {}
+        for r in (prompts_result.data or []):
+            sid = r["session_id"]
+            if sid not in prompts_by_session:
+                prompts_by_session[sid] = []
+            prompts_by_session[sid].append(r)
+
         sessions = []
-        for session in sessions_result.data or []:
-            prompts_result = db.table("requests")\
-                .select("*")\
-                .eq("session_id", session["id"])\
-                .eq("user_id", user.user_id)\
-                .order("created_at", desc=True)\
-                .execute()
+        for session in sessions_result.data:
+            session_prompts = prompts_by_session.get(session["id"], [])
             
             quality_scores = [
-                r.get("quality_score", {}).get("overall", 0)
-                for r in prompts_result.data or [] if r.get("quality_score")
+                calculate_overall_quality(r.get("quality_score", {}))
+                for r in session_prompts
             ]
             avg_quality = round(sum(quality_scores) / len(quality_scores), 2) if quality_scores else 0
-            
-            domains = [r.get("domain_analysis", {}).get("primary_domain", "general") for r in prompts_result.data or []]
+
+            # FIX: Handle None domain_analysis safely
+            domains = [
+                (r.get("domain_analysis") or {}).get("primary_domain", "general")
+                for r in session_prompts
+            ]
             primary_domain = max(set(domains), key=domains.count) if domains else "general"
             
             sessions.append({
                 "session_id": session["id"],
                 "title": session["title"] or "Untitled Chat",
-                "prompt_count": len(prompts_result.data or []),
+                "prompt_count": len(session_prompts),
                 "avg_quality": avg_quality,
                 "domain": primary_domain,
-                "prompts": prompts_result.data or [],
+                "prompts": session_prompts,
                 "created_at": session["created_at"],
                 "last_activity": session["last_activity"]
             })
         
-        return {"sessions": sessions}
+        return {"sessions": sessions, "total": len(sessions)}
 
     except Exception as e:
-        logger.exception(f"[api] /history/sessions failed")
+        logger.exception(f"[api] /history/sessions batch failed")
         raise HTTPException(status_code=500, detail="Failed to load sessions")
+
+
+@router.patch("/history/session/{session_id}", response_model=dict)
+async def rename_session(
+    session_id: str,
+    title: str = Query(..., min_length=1),
+    user: User = Depends(get_current_user)
+):
+    """Rename a conversation session."""
+    try:
+        db = get_client()
+        db.table("chat_sessions")\
+            .update({"title": title})\
+            .eq("id", session_id)\
+            .eq("user_id", user.user_id)\
+            .execute()
+        return {"success": True, "new_title": title}
+    except Exception as e:
+        logger.exception(f"[api] rename_session failed")
+        raise HTTPException(status_code=500, detail="Failed to rename session")
+
+
+class BulkDeleteRequest(BaseModel):
+    ids: list[str]
+
+@router.post("/history/bulk-delete", response_model=dict)
+async def bulk_delete_prompts(
+    req: BulkDeleteRequest,
+    user: User = Depends(get_current_user)
+):
+    """Delete multiple prompts at once."""
+    try:
+        db = get_client()
+        db.table("requests")\
+            .delete()\
+            .in_("id", req.ids)\
+            .eq("user_id", user.user_id)\
+            .execute()
+        return {"success": True, "deleted_count": len(req.ids)}
+    except Exception as e:
+        logger.exception(f"[api] bulk_delete failed")
+        raise HTTPException(status_code=500, detail="Bulk delete failed")
 
 
 # ── Version Control ───────────────────────────

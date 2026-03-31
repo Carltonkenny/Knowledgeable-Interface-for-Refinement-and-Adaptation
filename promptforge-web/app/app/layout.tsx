@@ -11,6 +11,7 @@ import { getSession } from '@/lib/supabase'
 import { ROUTES } from '@/lib/constants'
 import ChatSidebar from '@/features/chat/components/ChatSidebar'
 import VersionHistoryOverlay from '@/features/history/components/VersionHistoryOverlay'
+import { usePathname } from 'next/navigation'
 
 interface AppLayoutProps {
   children: React.ReactNode
@@ -20,6 +21,9 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const [loading, setLoading] = useState(true)
   const [token, setToken] = useState<string | null>(null)
   const router = useRouter()
+  const pathname = usePathname()
+  
+  const isHistoryMode = pathname === '/app/history'
 
   useEffect(() => {
     async function checkSession() {
@@ -63,10 +67,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
             {/* Nav links */}
             <div className="flex items-center gap-1">
-              <Link href="/app" className="px-3 py-1.5 rounded-md text-sm text-text-bright bg-layer2">
+              <Link href="/app" className={`px-3 py-1.5 rounded-md text-sm ${pathname === '/app' ? 'text-text-bright bg-layer2' : 'text-text-dim hover:text-text-bright'}`}>
                 Chat
               </Link>
-              <Link href="/app/history" className="px-3 py-1.5 rounded-md text-sm text-text-dim hover:text-text-bright transition-colors">
+              <Link href="/app/history" className={`px-3 py-1.5 rounded-md text-sm ${pathname === '/app/history' ? 'text-text-bright bg-layer2' : 'text-text-dim hover:text-text-bright'}`}>
                 History
               </Link>
               <Link href="/app/profile" className="px-3 py-1.5 rounded-md text-sm text-text-dim hover:text-text-bright transition-colors">
@@ -89,7 +93,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar */}
-        <ChatSidebar token={token} />
+        <ChatSidebar token={token} mode={isHistoryMode ? 'history' : 'chat'} />
 
         {/* Content */}
         <main className="flex-1 relative overflow-y-auto custom-scrollbar">

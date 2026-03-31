@@ -131,9 +131,12 @@ export default function McpTokenSection({ sessionCount, trustLevel, authToken }:
         {/* Generate button */}
         {trustLevel === 2 ? (
           <button
+            id="mcp-generate-token"
+            name="generate-mcp-token"
             onClick={handleGenerate}
             disabled={generating || !!generatedToken}
             className="w-full py-2.5 bg-kira text-white rounded-lg font-medium hover:bg-kira/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            aria-label="Generate new MCP token for IDE integration"
           >
             {generating ? (
               <>

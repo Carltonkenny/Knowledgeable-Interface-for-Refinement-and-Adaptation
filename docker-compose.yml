@@ -1,5 +1,5 @@
-# PromptForge v2.0 - Docker Compose
-# Orchestrates API + Redis + (optional) Supabase local
+# PromptForge v2.0 - Docker Compose (Backend Only)
+# Frontend runs locally via `npm run dev`
 # ─────────────────────────────────────────────
 
 services:
@@ -28,29 +28,20 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
-      # LLM Provider (Pollinations.ai)
-      - POLLINATIONS_API_KEY=${POLLINATIONS_API_KEY}
-      - POLLINATIONS_MODEL_FULL=${POLLINATIONS_MODEL_FULL:-nova-fast}
-      
-      # Database (Supabase)
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_KEY=${SUPABASE_KEY}
-      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
-      
-      # Redis
+      # Override Redis to use Docker internal network
       - REDIS_URL=redis://redis:6379
-      
-      # Frontend URL (CORS)
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:9000}
+      # CORS: Allow local frontend
+      - FRONTEND_URLS=http://localhost:3000,http://localhost:9000
+      # Dev mode
+      - ENVIRONMENT=development
     depends_on:
       redis:
         condition: service_healthy
-    volumes:
-      # Mount .env for runtime config changes
-      - ./.env:/app/.env:ro
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3

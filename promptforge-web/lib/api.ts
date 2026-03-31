@@ -49,12 +49,14 @@ export interface HistoryItem {
   id: string
   raw_prompt: string
   improved_prompt: string
+  domain: string
   quality_score: QualityScore | null
   domain_analysis: Record<string, unknown> | null
   created_at: string
   session_id: string
   version_id?: string
   version_number?: number
+  is_favorite?: boolean
 }
 
 export interface SearchQuery {
@@ -65,6 +67,7 @@ export interface SearchQuery {
   date_from?: string
   date_to?: string
   limit?: number
+  offset?: number
 }
 
 export interface HistoryAnalytics {
@@ -73,7 +76,7 @@ export interface HistoryAnalytics {
   unique_domains: number
   hours_saved: number
   quality_trend: Array<{ date: string; avg_quality: number; prompt_count: number }>
-  domain_distribution: Record<string, number>
+  domain_distribution: Record<string, { count: number; avg_quality: number }>
   session_activity: Array<{ date: string; count: number }>
 }
 
@@ -86,13 +89,6 @@ export interface HistorySession {
   prompts: HistoryItem[]
   created_at: string
   last_activity: string
-}
-
-export interface UserProfile {
-  primary_use: string
-  audience: string
-  ai_frustration: string
-  frustration_detail?: string
 }
 
 export interface ChatSession {
@@ -116,10 +112,6 @@ export interface ConversationTurn {
 }
 
 // ── Phase 4: Profile Types ──────────────────────────────────────────────────
-export interface UserProfile {
-  username?: string
-}
-
 export interface DomainStat {
   domain: string
   confidence: number
@@ -146,6 +138,24 @@ export interface UsageStats {
   average_quality_score: number
   member_since: string
   trust_level: 0 | 1 | 2
+  loyalty_tier?: 'Bronze' | 'Silver' | 'Gold' | 'Kira'
+  email?: string | null
+  phone?: string | null
+  company?: string | null
+  location?: string | null
+  bio?: string | null
+  job_title?: string | null
+  website?: string | null
+  github?: string | null
+  twitter?: string | null
+  linkedin?: string | null
+  avatar_url?: string | null
+}
+
+export interface ActivityHeatmap {
+  heatmap: Array<{ date: string; count: number }>
+  total_year_prompts: number
+  max_daily: number
 }
 
 export interface ExportData {
@@ -214,37 +224,78 @@ export async function apiChat(
 
 export async function apiHistory(
   token: string,
-  sessionId?: string
+  sessionId?: string,
+  limit: number = 20,
+  offset: number = 0
 ): Promise<HistoryItem[]> {
   const url = sessionId
-    ? `${API_BASE}/history?session_id=${sessionId}`
-    : `${API_BASE}/history`
+    ? `${API_BASE}/history?session_id=${sessionId}&limit=${limit}&offset=${offset}`
+    : `${API_BASE}/history?limit=${limit}&offset=${offset}`
   const res = await fetch(url, { headers: await authHeaders(token) })
   if (!res.ok) await handleResponseError(res)
   const data = await res.json()
   // Backend returns {count, history} - extract the history array
-  return data.history || data || []
+  return data.history || data.results || data || []
 }
 
 export async function apiHistorySearch(
   token: string,
   req: SearchQuery
-): Promise<HistoryItem[]> {
+): Promise<{ results: HistoryItem[]; total: number; search_mode: string }> {
   const res = await fetch(`${API_BASE}/history/search`, {
     method: 'POST',
     headers: await authHeaders(token),
     body: JSON.stringify(req),
   })
   if (!res.ok) await handleResponseError(res)
-  const data = await res.json()
-  return data.results || []
+  return res.json()
+}
+
+export async function apiToggleFavorite(
+  token: string,
+  requestId: string,
+  isFavorite: boolean
+): Promise<{ status: string; is_favorite: boolean }> {
+  if (ENV.USE_MOCKS) {
+    await new Promise(r => setTimeout(r, 200))
+    return { status: 'success', is_favorite: isFavorite }
+  }
+  const res = await fetch(`${API_BASE}/user/activity/${requestId}/favorite`, {
+    method: 'PUT',
+    headers: await authHeaders(token),
+    body: JSON.stringify({ is_favorite: isFavorite }),
+  })
+  if (!res.ok) await handleResponseError(res)
+  return res.json()
 }
 
 export async function apiHistoryAnalytics(
   token: string,
   days: number = 30
 ): Promise<HistoryAnalytics> {
-  const res = await fetch(`${API_BASE}/history/analytics?days=${days}`, {
+  // Legacy support - forwards to analytics/summary
+  const res = await fetch(`${API_BASE}/analytics/summary?days=${days}`, {
+    headers: await authHeaders(token),
+  })
+  if (!res.ok) await handleResponseError(res)
+  return res.json()
+}
+
+export async function apiGetAnalyticsSummary(
+  token: string,
+  days: number = 30
+): Promise<HistoryAnalytics> {
+  const res = await fetch(`${API_BASE}/analytics/summary?days=${days}`, {
+    headers: await authHeaders(token),
+  })
+  if (!res.ok) await handleResponseError(res)
+  return res.json()
+}
+
+export async function apiGetAnalyticsHeatmap(
+  token: string
+): Promise<ActivityHeatmap> {
+  const res = await fetch(`${API_BASE}/analytics/heatmap`, {
     headers: await authHeaders(token),
   })
   if (!res.ok) await handleResponseError(res)
@@ -253,14 +304,42 @@ export async function apiHistoryAnalytics(
 
 export async function apiHistorySessions(
   token: string,
-  limit: number = 20
+  limit: number = 20,
+  offset: number = 0
 ): Promise<HistorySession[]> {
-  const res = await fetch(`${API_BASE}/history/sessions?limit=${limit}`, {
+  const res = await fetch(`${API_BASE}/history/sessions?limit=${limit}&offset=${offset}`, {
     headers: await authHeaders(token),
   })
   if (!res.ok) await handleResponseError(res)
   const data = await res.json()
   return data.sessions || []
+}
+
+export async function apiHistoryRenameSession(
+  token: string,
+  sessionId: string,
+  title: string
+): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/history/session/${sessionId}?title=${encodeURIComponent(title)}`, {
+    method: 'PATCH',
+    headers: await authHeaders(token),
+  })
+  if (!res.ok) await handleResponseError(res)
+  return true
+}
+
+export async function apiHistoryBulkDelete(
+  token: string,
+  ids: string[]
+): Promise<number> {
+  const res = await fetch(`${API_BASE}/history/bulk-delete`, {
+    method: 'POST',
+    headers: await authHeaders(token),
+    body: JSON.stringify({ ids }),
+  })
+  if (!res.ok) await handleResponseError(res)
+  const data = await res.json()
+  return data.deleted_count || 0
 }
 
 // ═══ Version Control API Functions (Phase 3) ═══════════════
@@ -373,6 +452,31 @@ export async function apiTranscribe(
     method: 'POST',
     headers: { 'Authorization': `Bearer ${token}` },
     body: form,
+  })
+  if (!res.ok) await handleResponseError(res)
+  return res.json()
+}
+
+export async function apiUpdateProfile(
+  token: string,
+  data: {
+    bio?: string | null
+    location?: string | null
+    job_title?: string | null
+    company?: string | null
+    website?: string | null
+    github?: string | null
+    twitter?: string | null
+    linkedin?: string | null
+    avatar_url?: string | null
+    phone?: string | null
+  }
+): Promise<{ status: string }> {
+  if (ENV.USE_MOCKS) return { status: 'success' }
+  const res = await fetch(`${API_BASE}/user/profile`, {
+    method: 'POST',
+    headers: await authHeaders(token),
+    body: JSON.stringify(data),
   })
   if (!res.ok) await handleResponseError(res)
   return res.json()
@@ -503,6 +607,20 @@ export async function apiDemoChat(
 }
 
 // ── Phase 4: Profile ─────────────────────────────────────────────────────────
+
+export interface UserProfile {
+  username: string | null
+  email: string
+  created_at: string
+}
+
+export async function apiGetProfile(token: string): Promise<UserProfile> {
+  // Profile data is fetched from stats endpoint which includes member_since
+  // Username comes from JWT token decoded on frontend or passed from parent
+  if (ENV.USE_MOCKS) return { username: null, email: 'demo@example.com', created_at: new Date().toISOString() }
+  // For now, return placeholder - username is managed via auth metadata
+  return { username: null, email: '', created_at: new Date().toISOString() }
+}
 
 export async function apiUpdateUsername(token: string, username: string): Promise<{ status: string, username: string }> {
   if (ENV.USE_MOCKS) return { status: 'success', username }

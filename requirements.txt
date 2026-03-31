@@ -10,7 +10,6 @@ supabase==2.9.1
 
 # Phase 1: Authentication & Caching
 redis==5.0.1
-pyjwt==2.8.0
 python-jose[cryptography]==3.3.0
 
 # Health check dependency
@@ -24,3 +23,6 @@ google-generativeai>=0.8.0
 
 # Monitoring & Error Tracking (Sentry)
 sentry-sdk[fastapi]==2.20.0
+
+# Phase 2: Hybrid Memory Recall (BM25 + reranking)
+rank-bm25==0.2.2

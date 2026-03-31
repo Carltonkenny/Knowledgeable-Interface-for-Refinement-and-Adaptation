@@ -22,6 +22,7 @@ from config import get_llm
 from state import AgentState
 from utils import parse_json_response
 from memory.langmem import get_style_reference
+from agents.quality_gate import evaluate_prompt_quality
 
 logger = logging.getLogger(__name__)
 
@@ -210,11 +211,65 @@ Rewrite the prompt based on this comprehensive analysis. Match the user's establ
         logger.info(f"[prompt_engineer] LLM returned quality_score: {result.get('quality_score', 'MISSING')}")
 
         improved = result.get("improved_prompt", "")
+
+        # ═══ MULTI-CRITERIA QUALITY GATE (Phase 2.2) ═══
+        # Evaluate with 5 dimensions: similarity, density, constraints, specificity, LLM judge
+        quality_report = evaluate_prompt_quality(
+            original=prompt,
+            improved=improved,
+            context={
+                'required_constraints': ['role', 'audience', 'format'],  # Default constraints
+                'domain': state.get('domain_analysis', {}).get('primary_domain', 'general'),
+            }
+        )
         
-        # ═══ QUALITY GATE ═══
-        # Retry once if output is clearly worse than input
+        logger.info(
+            f"[prompt_engineer] quality gate: overall={quality_report.overall:.2f}, "
+            f"retry={quality_report.should_retry}, reason={quality_report.retry_reason or 'none'}"
+        )
+        
+        # Retry if quality gate fails
+        if quality_report.should_retry:
+            logger.warning(f"[prompt_engineer] quality gate failed - {quality_report.retry_reason}, retrying once")
+            
+            retry_context = f"""Your previous output did not meet quality standards.
+
+QUALITY FEEDBACK:
+{chr(10).join(quality_report.feedback)}
+
+REQUIRED IMPROVEMENTS:
+1. Add specific role assignment (expert persona)
+2. Include concrete constraints (length, format, tone)
+3. Add measurable success criteria
+4. Include examples or patterns to follow
+5. Be more specific - add numbers, details, examples
+
+Original prompt: {prompt}
+
+Analysis context: {analysis_context}
+
+Rewrite the prompt with substantially higher quality addressing all feedback above."""
+
+            messages = [
+                SystemMessage(content=SYSTEM_PROMPT),
+                HumanMessage(content=retry_context)
+            ]
+
+            response = llm.invoke(messages)
+            result = parse_json_response(response.content, agent_name="prompt_engineer")
+            improved = result.get("improved_prompt", "")
+            
+            # Re-evaluate after retry (for logging)
+            quality_report_retry = evaluate_prompt_quality(
+                original=prompt,
+                improved=improved,
+                context={'required_constraints': ['role', 'audience', 'format']}
+            )
+            logger.info(f"[prompt_engineer] after retry: overall={quality_report_retry.overall:.2f}")
+
+        # Fallback to simple quality checks if multi-criteria passed
         if not improved.strip() or len(improved) < len(prompt) or improved.strip() == prompt.strip():
-            logger.warning(f"[prompt_engineer] quality gate failed - output empty/short/identical, retrying once")
+            logger.warning(f"[prompt_engineer] simple quality gate failed - output empty/short/identical, retrying once")
 
             retry_context = f"""Your previous output was inadequate. The improved_prompt must be:
 1. Longer and more detailed than the original
@@ -226,16 +281,16 @@ Original prompt: {prompt}
 Analysis context: {analysis_context}
 
 Rewrite the prompt with substantially more detail and specificity."""
-            
+
             messages = [
                 SystemMessage(content=SYSTEM_PROMPT),
                 HumanMessage(content=retry_context)
             ]
-            
+
             response = llm.invoke(messages)
             result = parse_json_response(response.content, agent_name="prompt_engineer")
             improved = result.get("improved_prompt", "")
-        
+
         latency_ms = int((time.time() - start_time) * 1000)
         logger.info(f"[prompt_engineer] output: {len(improved)} chars, latency={latency_ms}ms")
 

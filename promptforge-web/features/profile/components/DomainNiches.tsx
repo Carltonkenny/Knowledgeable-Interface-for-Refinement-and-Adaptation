@@ -49,7 +49,7 @@ export default function DomainNiches({ domains, isLoading }: DomainNichesProps) 
         <div>
           <h3 className="text-base font-medium text-text-bright">Domain Niches</h3>
           <p className="text-[10px] text-text-dim uppercase tracking-wider font-semibold">
-            Tracked by LangMem
+            Auto-detected from usage
           </p>
         </div>
       </div>

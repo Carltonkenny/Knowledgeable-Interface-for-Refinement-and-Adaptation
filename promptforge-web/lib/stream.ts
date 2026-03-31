@@ -16,6 +16,7 @@ export type StreamEventType =
   | 'result'
   | 'done'
   | 'error'
+  | 'agent_update'
 
 export interface StatusEvent {
   type: 'status'
@@ -25,6 +26,18 @@ export interface StatusEvent {
 export interface KiraMessageEvent {
   type: 'kira_message'
   data: { message: string; complete: boolean }
+}
+
+export interface AgentUpdateEvent {
+  type: 'agent_update'
+  data: {
+    agent: 'orchestrator' | 'intent' | 'context' | 'domain' | 'engineer'
+    state: 'running' | 'complete' | 'skipped'
+    latency_ms: number
+    data?: any | null
+    skip_reason?: string
+    memories_applied?: number
+  }
 }
 
 export interface ResultEvent {
@@ -40,6 +53,7 @@ export interface ErrorEvent {
 export type TypedStreamEvent =
   | StatusEvent
   | KiraMessageEvent
+  | AgentUpdateEvent
   | ResultEvent
   | ErrorEvent
   | { type: 'classification'; data: unknown }
@@ -124,6 +138,9 @@ export async function parseStream(
         switch (event.type) {
           case 'status':
             callbacks.onStatus?.((event.data as StatusEvent['data']).message)
+            break
+          case 'agent_update':
+            callbacks.onAgentUpdate?.((event.data as AgentUpdateEvent['data']))
             break
           case 'kira_message':
             const km = event.data as KiraMessageEvent['data']

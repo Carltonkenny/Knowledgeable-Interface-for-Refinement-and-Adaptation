@@ -17,8 +17,12 @@ RULES.md Compliance:
 from typing import Dict, Any, List, Optional
 import logging
 import time
+import os
 
 logger = logging.getLogger(__name__)
+
+# Configurable memory recall limit
+TOP_K_MEMORIES = int(os.getenv("TOP_K_MEMORIES", "5"))
 
 # Import prompts from modular location
 from agents.prompts.shared import FORBIDDEN_PHRASES
@@ -92,11 +96,20 @@ def kira_unified_handler(
             langmem_context = query_langmem(
                 user_id=user_id,
                 query=message,
-                top_k=5
+                top_k=TOP_K_MEMORIES
             )
         else:
             logger.debug("[kira_unified] user_id not in profile, skipping LangMem query")
 
+        # Summarize memories for metadata (NEW: Specific recall for thought transparency)
+        memory_summary = None
+        if langmem_context:
+            # Create a specific summary of top 3 memory domains or snippets
+            topics = list(set([m.get("domain", "general") for m in langmem_context[:3]]))
+            topic_str = " and ".join(topics)
+            memory_summary = f"Recalled {len(langmem_context)} memories, focusing on your work in {topic_str}."
+
+        
         # Get Kira system prompt with personality
         system_prompt = _get_kira_unified_prompt()
 
@@ -119,6 +132,7 @@ def kira_unified_handler(
         result["latency_ms"] = latency_ms
         result["input_quality"] = quality.score
         result["memories_applied"] = len(langmem_context) if langmem_context else 0
+        result["memory_summary"] = memory_summary # Inject for thought stream extraction
 
         logger.info(f"[kira_unified] intent={result['intent']} latency={latency_ms}ms memories={result['memories_applied']}")
 
@@ -188,7 +202,7 @@ def build_kira_context(
 def _get_kira_unified_prompt() -> str:
     """
     Get Kira unified system prompt with personality.
-    
+
     Returns:
         Full system prompt string
     """
@@ -203,11 +217,12 @@ PERSONALITY:
 FORBIDDEN PHRASES (NEVER USE):
 "Certainly", "Great question", "Of course", "I'd be happy to", "Let me help you", "No problem", "Sure!", "Absolutely", "Happy to help"
 
-YOUR TASK:
-1. Read the user's message and conversation history
-2. Understand their intent (conversation/followup/new_prompt)
-3. Respond naturally with your personality
 4. If they want a prompt improved, provide the improved version
+
+INTENT RULES:
+- If message is a short greeting (e.g. "hi", "hello") -> intent: "conversation"
+- If message is too short (< 15 chars) to be a real prompt -> intent: "conversation" OR set "clarification_needed": true
+- Only use "new_prompt" if user explicitly provides a goal to engineer.
 
 RESPONSE FORMAT (JSON):
 {
@@ -224,6 +239,8 @@ RESPONSE FORMAT (JSON):
     "adaptation_notes": "Brief explanation"
   }
 }
+
+IMPORTANT: Output ONLY valid JSON. No markdown, no code blocks, no extra text. Start with { and end with }.
 """
 
 

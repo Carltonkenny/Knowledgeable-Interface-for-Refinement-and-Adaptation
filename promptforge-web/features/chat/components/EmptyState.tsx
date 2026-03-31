@@ -22,8 +22,8 @@ export default function EmptyState({ domain, onSuggestionClick }: EmptyStateProp
       {/* Welcome message */}
       <p className="text-text-default text-base mb-8 max-w-md">
         {domain
-          ? `${domain} — got it. I've got your profile ready. **Show me what you're working on.**`
-          : "I've got your profile ready. **Show me what you're working on.**"}
+          ? `${domain} mode — ready. **Paste a rough idea and I'll engineer it into a precise prompt.**`
+          : "Ready when you are. **Paste a rough idea and I'll turn it into a production-grade prompt.**"}
       </p>
 
       {/* Suggestion cards */}
@@ -46,9 +46,9 @@ export default function EmptyState({ domain, onSuggestionClick }: EmptyStateProp
 }
 
 const defaultSuggestions = [
-  "Help me write an email to my client",
-  "Make this paragraph more specific",
-  "Write a brief for my team",
+  "Turn this rough idea into a structured prompt",
+  "Make my instructions more specific and actionable",
+  "Write a system prompt for a chatbot",
 ]
 
 const domainSuggestions: Record<string, string[]> = {

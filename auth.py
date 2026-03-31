@@ -101,7 +101,7 @@ def get_current_user(
             logger.warning(f"[auth] JWT validation failed: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Invalid or expired token: {str(e)}"
+                detail="Invalid or expired token"
             )
 
     # Both attempts failed with transient error

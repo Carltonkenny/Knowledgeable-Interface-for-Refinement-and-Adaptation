@@ -48,6 +48,8 @@ export function useKiraStream({
   const [status, setStatus] = useState<ProcessingStatus>({
     state: 'idle',
     statusText: undefined,
+    statusLogs: [],
+    startTime: undefined,
     agentsComplete: new Set(),
     agentsSkipped: new Set(),
   })
@@ -237,7 +239,12 @@ export function useKiraStream({
 
       // Set streaming state
       setIsStreaming(true)
-      setStatus((prev) => ({ ...prev, state: 'kira_reading' }))
+      setStatus((prev) => ({ 
+        ...prev, 
+        state: 'kira_reading',
+        statusLogs: [],
+        startTime: Date.now()
+      }))
 
       // Create abort controller for this request
       abortControllerRef.current = new AbortController()
@@ -269,20 +276,36 @@ export function useKiraStream({
               ...prev,
               state: 'swarm_running',
               statusText,
+              statusLogs: [...prev.statusLogs, statusText],
+            }))
+          },
+          onAgentUpdate: (agentUpdate: any) => {
+            logger.info('[kira] agent update', {
+              agent: agentUpdate.agent,
+              state: agentUpdate.state,
+              latency_ms: agentUpdate.latency_ms,
+            })
+            setStatus((prev) => ({
+              ...prev,
+              state: 'swarm_running',
+              agentUpdates: [...(prev.agentUpdates || []), agentUpdate],
             }))
           },
           onKiraMessage: (kiraMessage: string, complete: boolean) => {
-            // Backend may stream char-by-char or send full message.
-            // If complete=true with empty string, it's a completion signal — use buffer as-is.
-            // Otherwise accumulate into buffer for smooth word-by-word display.
-            if (complete && kiraMessage === '') {
-              // Completion signal — just mark streaming done, keep buffered text
+            // FIX: Always append to buffer, never overwrite
+            // Backend streams char-by-char OR sends full message
+            if (complete) {
+              // Completion signal - append final chunk if non-empty, then mark done
+              if (kiraMessage !== '') {
+                kiraStreamBufferRef.current += kiraMessage
+              }
+              // Buffer now contains full accumulated message
             } else if (kiraMessage.length <= 2) {
               // Char-by-char streaming — accumulate
               kiraStreamBufferRef.current += kiraMessage
             } else {
-              // Full message received at once — use directly
-              kiraStreamBufferRef.current = kiraMessage
+              // Full message chunk — append (don't overwrite!)
+              kiraStreamBufferRef.current += kiraMessage
             }
 
             const displayText = kiraStreamBufferRef.current

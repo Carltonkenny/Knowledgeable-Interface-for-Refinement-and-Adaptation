@@ -7,7 +7,7 @@ import { useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import UserMessage from './UserMessage'
 import KiraMessage from './KiraMessage'
-import StatusChips from './StatusChips'
+import ThinkAccordion from './ThinkAccordion'
 import OutputCard from './OutputCard'
 import type { ChatMessage, ProcessingStatus } from '../types'
 
@@ -65,9 +65,9 @@ export default function MessageList({ messages, isStreaming, status }: MessageLi
         }
       })}
 
-      {/* Status chips during streaming */}
-      {isStreaming && status && (
-        <StatusChips status={status} />
+      {/* Animated Accordion for Agent Thoughts */}
+      {status && (status.state === 'kira_reading' || status.state === 'swarm_running' || status.state === 'complete') && (
+        <ThinkAccordion status={status} />
       )}
 
       {/* OutputCard Skeleton while waiting for result */}

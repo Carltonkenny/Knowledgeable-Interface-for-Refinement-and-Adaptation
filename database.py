@@ -23,7 +23,7 @@
 import os
 import uuid
 import logging
-from typing import Optional
+from typing import Optional, Tuple
 from functools import lru_cache
 from datetime import datetime, timezone
 from supabase import create_client, Client
@@ -701,3 +701,126 @@ def get_last_activity(user_id: str, session_id: str) -> Optional[datetime]:
     except Exception as e:
         logger.error(f"[db] get_last_activity failed: {e}")
         return None
+
+
+# ═══ USAGE TRACKING (Rate Limiting Support) ═══════════════════
+
+def track_user_usage(user_id: str) -> None:
+    """
+    Track user's daily and monthly usage in Supabase.
+    Call this after every successful request.
+
+    RULES.md: Silent fail — usage tracking is non-critical
+
+    Args:
+        user_id: User UUID from JWT
+
+    Example:
+        track_user_usage("user-uuid")
+        # Inserts/updates usage_logs table
+    """
+    try:
+        db = get_client()
+        today = datetime.now(timezone.utc).date().isoformat()
+        current_month = datetime.now(timezone.utc).month
+        current_year = datetime.now(timezone.utc).year
+
+        # Upsert today's usage (increment by 1)
+        db.table("usage_logs").upsert({
+            "user_id": user_id,
+            "date": today,
+            "month": current_month,
+            "year": current_year,
+            "requests_count": 1
+        }, on_conflict="user_id,date").execute()
+
+        logger.debug(f"[usage] tracked for {user_id[:8]}... date={today}")
+
+    except Exception as e:
+        logger.error(f"[usage] tracking failed: {e}")
+        # Silent fail — usage tracking is non-critical
+
+
+def get_user_usage(user_id: str) -> dict:
+    """
+    Get user's current usage (daily + monthly) from Supabase.
+
+    Args:
+        user_id: User UUID from JWT
+
+    Returns:
+        Dict with daily_count, monthly_count, and limits from env
+
+    Example:
+        usage = get_user_usage("user-uuid")
+        # Returns: {
+        #   "daily_count": 25,
+        #   "daily_limit": 50,
+        #   "monthly_count": 800,
+        #   "monthly_limit": 1500
+        # }
+    """
+    try:
+        db = get_client()
+        today = datetime.now(timezone.utc).date().isoformat()
+        current_month = datetime.now(timezone.utc).month
+        current_year = datetime.now(timezone.utc).year
+
+        # Get daily usage
+        daily_result = db.table("usage_logs").select("requests_count").eq(
+            "user_id", user_id
+        ).eq("date", today).execute()
+
+        # Get monthly usage
+        monthly_result = db.table("usage_logs").select("requests_count").eq(
+            "user_id", user_id
+        ).eq("month", current_month).eq("year", current_year).execute()
+
+        daily_count = sum(r["requests_count"] for r in daily_result.data) if daily_result.data else 0
+        monthly_count = sum(r["requests_count"] for r in monthly_result.data) if monthly_result.data else 0
+
+        return {
+            "daily_count": daily_count,
+            "daily_limit": int(os.getenv("RATE_LIMIT_DAILY", "50")),
+            "monthly_count": monthly_count,
+            "monthly_limit": int(os.getenv("RATE_LIMIT_MONTHLY", "1500")),
+            "hourly_limit": int(os.getenv("RATE_LIMIT_HOURLY", "10"))
+        }
+
+    except Exception as e:
+        logger.error(f"[usage] fetch failed: {e}")
+        # Return safe defaults on error
+        return {
+            "daily_count": 0,
+            "daily_limit": 50,
+            "monthly_count": 0,
+            "monthly_limit": 1500,
+            "hourly_limit": 10
+        }
+
+
+def check_usage_limits(user_id: str) -> Tuple[bool, str]:
+    """
+    Check if user has exceeded usage limits (from Supabase).
+
+    Args:
+        user_id: User UUID from JWT
+
+    Returns:
+        Tuple of (is_allowed, reason)
+
+    Example:
+        allowed, reason = check_usage_limits("user-uuid")
+        # Returns: (True, "OK") or (False, "Daily limit exceeded (50/50)")
+    """
+    usage = get_user_usage(user_id)
+
+    # Check daily limit
+    if usage["daily_count"] >= usage["daily_limit"]:
+        return False, f"Daily limit exceeded ({usage['daily_count']}/{usage['daily_limit']})"
+
+    # Check monthly limit
+    if usage["monthly_count"] >= usage["monthly_limit"]:
+        return False, f"Monthly limit exceeded ({usage['monthly_count']}/{usage['monthly_limit']})"
+
+    return True, "OK"

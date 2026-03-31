@@ -214,7 +214,7 @@ export default function ChatContainer({
           onVoice={handleVoice}
           disabled={isStreaming || isRateLimited}
           personaDotColor={personaDotColor}
-          placeholder={clarificationPending ? "Answer Kira..." : "Type your prompt..."}
+          placeholder={clarificationPending ? "Reply to Kira..." : "Type your prompt..."}
           isRecording={isRecording}
           attachment={attachment}
           onRemoveAttachment={clearAttachment}

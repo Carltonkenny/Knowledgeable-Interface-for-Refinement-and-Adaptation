@@ -25,12 +25,25 @@ export interface ChatMessage {
   sessionId?: string
 }
 
+// Agent update from backend streaming
+export interface AgentUpdate {
+  agent: 'orchestrator' | 'intent' | 'context' | 'domain' | 'engineer'
+  state: 'running' | 'complete' | 'skipped'
+  latency_ms: number
+  data?: any | null
+  skip_reason?: string
+  memories_applied?: number
+}
+
 // Chat-specific processing status
 export interface ProcessingStatus {
   state: 'idle' | 'kira_reading' | 'swarm_running' | 'complete' | 'error' | 'rate_limited' | 'clarification'
   statusText?: string
+  statusLogs: string[]
+  startTime?: number
   agentsComplete: Set<string>
   agentsSkipped: Set<string>
+  agentUpdates?: AgentUpdate[]
 }
 
 // Chat local state

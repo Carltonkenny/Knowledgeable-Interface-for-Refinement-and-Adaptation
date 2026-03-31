@@ -45,6 +45,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from middleware.rate_limiter import RateLimiterMiddleware
+from middleware.metrics import MetricsMiddleware
 from routes import ALL_ROUTERS
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,10 @@ app.add_middleware(
 # Rate limiting middleware (RULES.md Security Rule #8)
 logger.info("[api] Rate limiting enabled: 100 requests/hour per user")
 app.add_middleware(RateLimiterMiddleware)
+
+# Metrics collection middleware (for monitoring and debugging)
+logger.info("[api] Metrics middleware enabled: structured logging + latency tracking")
+app.add_middleware(MetricsMiddleware)
 
 
 # ── Register All Routers ──────────────────────

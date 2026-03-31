@@ -69,6 +69,14 @@ export interface UserProfileData {
 // ── Stream Callbacks (used by parseStream in lib/stream.ts) ───────────────
 export interface StreamCallbacks {
   onStatus?:      (message: string) => void
+  onAgentUpdate?: (update: {
+    agent: 'orchestrator' | 'intent' | 'context' | 'domain' | 'engineer'
+    state: 'running' | 'complete' | 'skipped'
+    latency_ms: number
+    data?: any | null
+    skip_reason?: string
+    memories_applied?: number
+  }) => void
   onKiraMessage?: (message: string, complete: boolean) => void
   onResult?:      (result: import('./api').ChatResult) => void
   onError?:       (message: string) => void

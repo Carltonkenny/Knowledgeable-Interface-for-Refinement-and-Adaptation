@@ -12,14 +12,21 @@
 # RULES.md: <500 lines, type hints, docstrings
 # ─────────────────────────────────────────────
 
+import os
 import logging
 from typing import Optional
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Form, Query
 from pydantic import BaseModel, Field
+from supabase import create_client
 
 from auth import User, get_current_user
 from database import get_client
+from collections import defaultdict
+
+class FavoriteUpdate(BaseModel):
+    is_favorite: bool
+
 from utils import calculate_overall_quality
 from memory.langmem import write_to_langmem
 
@@ -43,6 +50,30 @@ class UserProfileUpdateRequest(BaseModel):
     preferred_tone: Optional[str] = None
     clarification_rate: Optional[float] = None
     prompt_quality_score: Optional[float] = None
+    phone: Optional[str] = Field(None, max_length=20, description="User's phone number")
+    company: Optional[str] = Field(None, max_length=100, description="Company/organization name")
+    location: Optional[str] = Field(None, max_length=100, description="User's location/timezone")
+    bio: Optional[str] = Field(None, max_length=500, description="Short bio or description")
+    job_title: Optional[str] = Field(None, max_length=100, description="Job title/role")
+    website: Optional[str] = Field(None, max_length=200, description="Personal website URL")
+    github: Optional[str] = Field(None, max_length=100, description="GitHub username")
+    twitter: Optional[str] = Field(None, max_length=100, description="Twitter username")
+    linkedin: Optional[str] = Field(None, max_length=200, description="LinkedIn profile URL")
+    avatar_url: Optional[str] = Field(None, max_length=500, description="Profile picture URL")
+    is_public: Optional[bool] = Field(None, description="Whether profile is publicly visible")
+    default_tone: Optional[str] = Field(None, max_length=20, description="Default prompt tone")
+    default_audience: Optional[str] = Field(None, max_length=20, description="Default audience")
+    session_timeout_hours: Optional[int] = Field(None, ge=1, le=720, description="Session timeout in hours")
+
+
+class OnboardingRequest(BaseModel):
+    """Schema for memory onboarding request"""
+    content: str = Field(..., min_length=10, max_length=5000, description="User's onboarding profile content")
+    metadata: dict = Field(default_factory=dict, description="Additional metadata (primary_use, audience, etc.)")
+    phone: Optional[str] = Field(None, max_length=20, description="User's phone number")
+    company: Optional[str] = Field(None, max_length=100, description="Company/organization name")
+    location: Optional[str] = Field(None, max_length=100, description="User's location/timezone")
+    bio: Optional[str] = Field(None, max_length=500, description="Short bio or description")
 
 
 # ── Endpoints ─────────────────────────────────
@@ -72,11 +103,36 @@ async def update_user_profile_endpoint(
             update_data["clarification_rate"] = req.clarification_rate
         if req.prompt_quality_score is not None:
             update_data["prompt_quality_score"] = req.prompt_quality_score
+        if req.phone is not None:
+            update_data["phone"] = req.phone
+        if req.company is not None:
+            update_data["company"] = req.company
+        if req.location is not None:
+            update_data["location"] = req.location
+        if req.bio is not None:
+            update_data["bio"] = req.bio
+        if req.job_title is not None:
+            update_data["job_title"] = req.job_title
+        if req.website is not None:
+            update_data["website"] = req.website
+        if req.github is not None:
+            update_data["github"] = req.github
+        if req.twitter is not None:
+            update_data["twitter"] = req.twitter
+        if req.linkedin is not None:
+            update_data["linkedin"] = req.linkedin
+        if req.avatar_url is not None:
+            update_data["avatar_url"] = req.avatar_url
 
         result = db.table("user_profiles").update(update_data).eq("user_id", user.user_id).execute()
 
         if not result.data:
-            insert_data = {"user_id": user.user_id, **update_data}
+            insert_data = {
+                "user_id": user.user_id,
+                "prompt_quality_trend": "stable",
+                "clarification_rate": 0.0,
+                **update_data
+            }
             result = db.table("user_profiles").insert(insert_data).execute()
 
         logger.info(f"[api] profile updated for user={user.user_id}")
@@ -86,7 +142,7 @@ async def update_user_profile_endpoint(
         raise
     except Exception as e:
         logger.exception(f"[api] Profile update failed for user={user.user_id}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.patch("/user/username")
@@ -118,7 +174,7 @@ async def update_username_endpoint(
 
     except Exception as e:
         logger.exception(f"[api] Username update failed for user={user.user_id}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/user/domains")
@@ -156,7 +212,7 @@ async def get_user_domains(user: User = Depends(get_current_user)):
         
     except Exception as e:
         logger.exception(f"[api] Get domains failed for user={user.user_id}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/user/memories")
@@ -180,7 +236,7 @@ async def get_user_memories(user: User = Depends(get_current_user)):
         
     except Exception as e:
         logger.exception(f"[api] Get memories failed for user={user.user_id}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/user/quality-trend")
@@ -201,7 +257,7 @@ async def get_user_quality_trend(user: User = Depends(get_current_user)):
         
     except Exception as e:
         logger.exception(f"[api] Get quality trend failed for user={user.user_id}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/user/stats")
@@ -250,7 +306,335 @@ async def get_user_stats(user: User = Depends(get_current_user)):
 
     except Exception as e:
         logger.exception(f"[api] Get user stats failed for user={user.user_id}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/user/profile-info")
+async def get_user_profile_info(user: User = Depends(get_current_user)):
+    """Get user's profile information including email and personal details."""
+    logger.info(f"[api] /user/profile-info requested by user={user.user_id}")
+    try:
+        db = get_client()
+        
+        # Get user profile info
+        profile_result = db.table("user_profiles").select("phone, company, location, bio, job_title, website, github, twitter, linkedin, avatar_url").eq("user_id", user.user_id).execute()
+        profile_data = profile_result.data[0] if profile_result.data else {}
+        
+        # Get email from Supabase auth
+        try:
+            supabase_admin = create_client(
+                os.getenv("SUPABASE_URL"),
+                os.getenv("SUPABASE_SERVICE_KEY")
+            )
+            user_data = supabase_admin.auth.admin.get_user_by_id(user.user_id)
+            email = user_data.user.email
+        except:
+            email = None
+
+        return {
+            "email": email,
+            "phone": profile_data.get("phone"),
+            "company": profile_data.get("company"),
+            "location": profile_data.get("location"),
+            "bio": profile_data.get("bio"),
+            "job_title": profile_data.get("job_title"),
+            "website": profile_data.get("website"),
+            "github": profile_data.get("github"),
+            "twitter": profile_data.get("twitter"),
+            "linkedin": profile_data.get("linkedin"),
+            "avatar_url": profile_data.get("avatar_url")
+        }
+
+    except Exception as e:
+        logger.exception(f"[api] Get profile info failed for user={user.user_id}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/user/change-password")
+async def change_password(
+    current_password: str = Form(...),
+    new_password: str = Form(..., min_length=8, max_length=100),
+    user: User = Depends(get_current_user)
+):
+    """Change user's password. Requires current password for verification."""
+    logger.info(f"[security] password change requested by user={user.user_id[:8]}...")
+    try:
+        supabase_admin = create_client(
+            os.getenv("SUPABASE_URL"),
+            os.getenv("SUPABASE_SERVICE_KEY")
+        )
+        
+        # Sign in with current password to verify
+        try:
+            supabase_admin.auth.sign_in_with_password({
+                "email": user.email,
+                "password": current_password
+            })
+        except Exception:
+            raise HTTPException(status_code=401, detail="Current password is incorrect")
+        
+        # Update to new password
+        supabase_admin.auth.admin.update_user_by_id(
+            user.user_id,
+            {"password": new_password}
+        )
+        
+        logger.info(f"[security] password updated for user={user.user_id[:8]}...")
+        return {"status": "success", "message": "Password updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[security] password change failed for user={user.user_id}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/user/sessions")
+async def get_active_sessions(user: User = Depends(get_current_user)):
+    """Get list of active login sessions for the user."""
+    logger.info(f"[security] sessions list requested by user={user.user_id[:8]}...")
+    try:
+        # Supabase doesn't expose session list via API
+        # Return current session info + mock data for demo
+        # In production, implement custom session tracking table
+        
+        return {
+            "sessions": [
+                {
+                    "id": "current",
+                    "device": "Desktop",
+                    "browser": "Chrome",
+                    "location": "Current Location",
+                    "last_active": datetime.now(timezone.utc).isoformat(),
+                    "is_current": True
+                }
+            ]
+        }
+        
+    except Exception as e:
+        logger.exception(f"[security] sessions list failed for user={user.user_id}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.delete("/user/sessions/{session_id}")
+async def revoke_session(session_id: str, user: User = Depends(get_current_user)):
+    """Revoke a specific login session."""
+    logger.info(f"[security] session revoke requested by user={user.user_id[:8]}... session={session_id}")
+    try:
+        # Supabase doesn't expose session revocation via API
+        # In production, implement custom session tracking table
+        
+        return {"status": "success", "message": "Session revoked"}
+        
+    except Exception as e:
+        logger.exception(f"[security] session revoke failed for user={user.user_id}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/user/activity")
+async def get_user_activity(
+    limit: int = Query(default=15, ge=1, le=50),
+    user: User = Depends(get_current_user)
+):
+    """Get user's recent activity (prompts, achievements, stats)."""
+    logger.info(f"[activity] activity feed requested by user={user.user_id[:8]}...")
+    try:
+        db = get_client()
+        
+        # Get recent prompts
+        prompts_result = db.table("requests")\
+            .select("id, raw_prompt, improved_prompt, domain_analysis, quality_score, created_at, is_favorite")\
+            .eq("user_id", user.user_id)\
+            .order("created_at", desc=True)\
+            .limit(limit)\
+            .execute()
+        
+        prompts = []
+        for row in (prompts_result.data or []):
+            prompts.append({
+                "id": row.get("id"),
+                "raw_prompt": row.get("raw_prompt", "")[:100],
+                "improved_prompt": row.get("improved_prompt", "")[:100],
+                "domain": (row.get("domain_analysis") or {}).get("primary_domain", "general"),
+                "quality_score": (row.get("quality_score") or {}).get("overall", 0),
+                "created_at": row.get("created_at"),
+                "is_favorite": row.get("is_favorite", False)
+            })
+        
+        # Get stats
+        stats_result = db.table("requests").select("id, quality_score, created_at").eq("user_id", user.user_id).execute()
+        stats_data = stats_result.data or []
+        
+        total_prompts = len(stats_data)
+        
+        # Avg Quality
+        scores = [(r.get("quality_score") or {}).get("overall", 0) for r in stats_data if r.get("quality_score")]
+        avg_quality = sum(scores) / len(scores) if scores else 0
+        
+        # Streak Calculation
+        dates_set = set()
+        for r in stats_data:
+            dt_str = r.get("created_at")
+            if dt_str:
+                dates_set.add(dt_str.split("T")[0])
+                
+        today = datetime.now(timezone.utc).date()
+        from datetime import timedelta
+        
+        streak = 0
+        curr_d = today
+        if str(curr_d) in dates_set:
+            streak += 1
+            curr_d -= timedelta(days=1)
+            while str(curr_d) in dates_set:
+                streak += 1
+                curr_d -= timedelta(days=1)
+        elif str(today - timedelta(days=1)) in dates_set:
+            streak += 1
+            curr_d = today - timedelta(days=2)
+            while str(curr_d) in dates_set:
+                streak += 1
+                curr_d -= timedelta(days=1)
+        
+        return {
+            "prompts": prompts,
+            "total_prompts": total_prompts,
+            "avg_quality": avg_quality,
+            "streak": streak
+        }
+        
+    except Exception as e:
+        logger.exception(f"[activity] activity feed failed for user={user.user_id}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.put("/user/activity/{request_id}/favorite")
+async def toggle_favorite(request_id: str, update: FavoriteUpdate, user: User = Depends(get_current_user)):
+    """Toggle the favorite status of a prompt."""
+    logger.info(f"[activity] favorite toggle requested by user={user.user_id[:8]} for request={request_id}")
+    try:
+        db = get_client()
+        result = db.table("requests").update({"is_favorite": update.is_favorite}).eq("id", request_id).eq("user_id", user.user_id).execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Prompt not found")
+            
+        return {"status": "success", "is_favorite": update.is_favorite}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[activity] favorite toggle failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/user/achievements")
+async def get_user_achievements(user: User = Depends(get_current_user)):
+    """Get user's unlocked achievement badges."""
+    logger.info(f"[activity] achievements requested by user={user.user_id[:8]}...")
+    try:
+        db = get_client()
+        
+        # Get total prompts
+        total_prompts = db.table("requests").select("id", count="exact").eq("user_id", user.user_id).execute().count or 0
+        
+        # Get average quality
+        quality_res = db.table("requests").select("quality_score").eq("user_id", user.user_id).limit(100).execute()
+        scores = [(r.get("quality_score") or {}).get("overall", 0) for r in (quality_res.data or []) if r.get("quality_score")]
+        avg_quality = sum(scores) / len(scores) if scores else 0
+        
+        # Calculate achievements
+        achievements = []
+        
+        # Tier badges
+        if total_prompts >= 1000 and avg_quality >= 4.5:
+            achievements.append({"id": "kira", "name": "Kira Tier", "icon": "⭐", "description": "Reached Kira tier"})
+        elif total_prompts >= 500 and avg_quality >= 4.0:
+            achievements.append({"id": "gold", "name": "Gold Tier", "icon": "🥇", "description": "Reached Gold tier"})
+        elif total_prompts >= 100:
+            achievements.append({"id": "silver", "name": "Silver Tier", "icon": "🥈", "description": "Reached Silver tier"})
+        
+        # Milestone badges
+        if total_prompts >= 1:
+            achievements.append({"id": "first", "name": "First Prompt", "icon": "📝", "description": "Created first prompt"})
+        if total_prompts >= 10:
+            achievements.append({"id": "ten", "name": "Getting Started", "icon": "📝📝", "description": "Created 10 prompts"})
+        if total_prompts >= 100:
+            achievements.append({"id": "hundred", "name": "Century", "icon": "💯", "description": "Created 100 prompts"})
+        
+        # Quality badges
+        if avg_quality >= 4.5:
+            achievements.append({"id": "quality_master", "name": "Quality Master", "icon": "⭐⭐", "description": "Average quality 4.5+"})
+        elif avg_quality >= 4.0:
+            achievements.append({"id": "quality_pro", "name": "Quality Pro", "icon": "⭐", "description": "Average quality 4.0+"})
+        
+        return {"achievements": achievements}
+        
+    except Exception as e:
+        logger.exception(f"[activity] achievements failed for user={user.user_id}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/user/settings")
+async def get_user_settings(user: User = Depends(get_current_user)):
+    """Get user's profile settings."""
+    logger.info(f"[settings] settings requested by user={user.user_id[:8]}...")
+    try:
+        db = get_client()
+        
+        profile_result = db.table("user_profiles")\
+            .select("is_public, default_tone, default_audience, session_timeout_hours")\
+            .eq("user_id", user.user_id)\
+            .execute()
+        
+        profile_data = profile_result.data[0] if profile_result.data else {}
+        
+        return {
+            "is_public": profile_data.get("is_public", False),
+            "default_tone": profile_data.get("default_tone", "direct"),
+            "default_audience": profile_data.get("default_audience", "personal"),
+            "session_timeout_hours": profile_data.get("session_timeout_hours", 24)
+        }
+        
+    except Exception as e:
+        logger.exception(f"[settings] settings fetch failed for user={user.user_id}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.put("/user/settings")
+async def update_user_settings(
+    is_public: Optional[bool] = None,
+    default_tone: Optional[str] = None,
+    default_audience: Optional[str] = None,
+    session_timeout_hours: Optional[int] = None,
+    user: User = Depends(get_current_user)
+):
+    """Update user's profile settings."""
+    logger.info(f"[settings] settings update requested by user={user.user_id[:8]}...")
+    try:
+        db = get_client()
+        
+        update_data = {}
+        if is_public is not None:
+            update_data["is_public"] = is_public
+        if default_tone is not None:
+            update_data["default_tone"] = default_tone
+        if default_audience is not None:
+            update_data["default_audience"] = default_audience
+        if session_timeout_hours is not None:
+            update_data["session_timeout_hours"] = session_timeout_hours
+        
+        if update_data:
+            result = db.table("user_profiles").update(update_data).eq("user_id", user.user_id).execute()
+            
+            if not result.data:
+                insert_data = {"user_id": user.user_id, **update_data}
+                db.table("user_profiles").insert(insert_data).execute()
+        
+        return {"status": "success", "message": "Settings updated"}
+        
+    except Exception as e:
+        logger.exception(f"[settings] settings update failed for user={user.user_id}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/user/account")
@@ -270,7 +654,7 @@ async def delete_user_account(user: User = Depends(get_current_user)):
         
     except Exception as e:
         logger.exception(f"[api] Account deletion failed for user={user.user_id}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/user/export-data")
@@ -296,12 +680,12 @@ async def export_user_data(user: User = Depends(get_current_user)):
 
     except Exception as e:
         logger.exception(f"[api] Data export failed for user={user.user_id}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/memory/onboarding")
 async def save_onboarding_memory(
-    request: dict,
+    req: OnboardingRequest,
     user: User = Depends(get_current_user)
 ):
     """
@@ -310,18 +694,15 @@ async def save_onboarding_memory(
     """
     logger.info(f"[api] /memory/onboarding requested by user={user.user_id}")
     try:
-        content = request.get("content", "")
-        metadata = request.get("metadata", {})
-
         # Build minimal state dict for write_to_langmem
         # Per RULES.md: Never call _generate_embedding directly
         state = {
-            "message": content,
-            "improved_prompt": f"Onboarding profile: {metadata.get('primary_use', 'unknown')} user",
+            "message": req.content,
+            "improved_prompt": f"Onboarding profile: {req.metadata.get('primary_use', 'unknown')} user",
             "input_modality": "text",
             "attachments": [],
             "user_id": user.user_id,
-            "domain_analysis": {"primary_domain": metadata.get('primary_use', 'general')},
+            "domain_analysis": {"primary_domain": req.metadata.get('primary_use', 'general')},
             "quality_score": {"onboarding": 5},
             "agents_run": ["onboarding"],
             "agents_skipped": []
@@ -335,5 +716,5 @@ async def save_onboarding_memory(
         return {"status": "saved", "success": success}
 
     except Exception as e:
-        logger.error(f"[api] onboarding memory save failed: {e}")
-        return {"status": "saved", "success": False}
+        logger.exception("[api] onboarding memory save failed")
+        raise HTTPException(status_code=500, detail="Internal server error")

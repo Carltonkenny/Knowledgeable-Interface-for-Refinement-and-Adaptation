@@ -1,17 +1,21 @@
-// app/app/history/page.tsx
-// History page
-
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ROUTES } from '@/lib/constants'
 import { useToken } from '@/hooks/useToken'
+import { apiHistoryBulkDelete, apiHistoryRenameSession } from '@/lib/api' // New bulk API
 import HistoryList from '@/features/history/components/HistoryList'
 import HistorySearchBar from '@/features/history/components/HistorySearchBar'
 import HistoryAnalyticsDashboard from '@/features/history/components/HistoryAnalyticsDashboard'
 import { useHistory } from '@/features/history/hooks/useHistory'
 import { useHistoryAnalytics } from '@/features/history/hooks/useHistoryAnalytics'
+
+// Standard fallback for notifications since sonner is not installed
+const toast = {
+  success: (msg: string) => alert(`✅ ${msg}`),
+  error: (msg: string) => alert(`❌ ${msg}`)
+}
 
 export default function HistoryPage() {
   const router = useRouter()
@@ -21,8 +25,10 @@ export default function HistoryPage() {
   const {
     items,
     isLoading: isLoadingHistory,
+    isLoadingMore,
+    hasMore,
+    loadMore,
     isSearching,
-    groupedByDate,
     searchQuery,
     setSearchQuery,
     useRag,
@@ -35,6 +41,10 @@ export default function HistoryPage() {
     setDateFrom,
     dateTo,
     setDateTo,
+    selectedIds,
+    toggleSelect,
+    selectAll,
+    clearSelection
   } = useHistory({ token: token! })
 
   const {
@@ -42,26 +52,97 @@ export default function HistoryPage() {
     isLoading: isLoadingAnalytics
   } = useHistoryAnalytics(token, days)
 
-  // Show loading state while token initializes
-  if (!token) {
-    return (
-      <div className="h-screen flex items-center justify-center">
-        <div className="w-12 h-12 rounded-lg border border-kira bg-[var(--kira-dim)] flex items-center justify-center animate-pulse">
-          <span className="text-kira font-bold font-mono text-xl">K</span>
-        </div>
-      </div>
+  // Extract top domains dynamically from live analytics
+  const availableDomains = Object.keys(analytics?.domain_distribution || {})
+    .sort((a, b) => (analytics?.domain_distribution?.[b]?.count || 0) - (analytics?.domain_distribution?.[a]?.count || 0))
+    .slice(0, 8) // Top 8 most active domains
+
+  // ── DATA EXPORT SYSTEM ──────────────────────────────────────────────
+  const handleExport = (format: 'json' | 'csv') => {
+    const exportData = items.filter(item => 
+      selectedIds.length === 0 || selectedIds.includes(item.id)
     )
+
+    if (format === 'json') {
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `PromptForge_Export_${new Date().toISOString().split('T')[0]}.json`
+      a.click()
+    } else {
+      const headers = ['id', 'session_id', 'raw_prompt', 'improved_prompt', 'domain', 'score_spec', 'score_clar', 'score_act', 'created_at']
+      const csvContent = [
+        headers.join(','),
+        ...exportData.map(item => [
+          item.id,
+          item.session_id,
+          `"${item.raw_prompt.replace(/"/g, '""')}"`,
+          `"${item.improved_prompt.replace(/"/g, '""')}"`,
+          item.domain,
+          item.quality_score?.specificity ?? 0,
+          item.quality_score?.clarity ?? 0,
+          item.quality_score?.actionability ?? 0,
+          item.created_at
+        ].join(','))
+      ].join('\n')
+      
+      const blob = new Blob([csvContent], { type: 'text/csv' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `PromptForge_Export_${new Date().toISOString().split('T')[0]}.csv`
+      a.click()
+    }
+    toast.success(`Exported ${exportData.length} items to ${format.toUpperCase()}`)
   }
 
+  useEffect(() => {
+    const handleRename = async (e: any) => {
+      const { sessionId, title } = e.detail
+      try {
+        await apiHistoryRenameSession(token!, sessionId, title)
+        toast.success('Session renamed in Palace index')
+        window.location.reload() // Simple sync
+      } catch (err) {
+        toast.error('Failed to update session title')
+      }
+    }
+    window.addEventListener('rename-session', handleRename as EventListener)
+    return () => window.removeEventListener('rename-session', handleRename as EventListener)
+  }, [token])
+
+  // ── Handlers ───────────────────────────────────────────────────────────
+  
   function handleUseAgain(prompt: string) {
     router.push(`/app?prompt=${encodeURIComponent(prompt)}`)
   }
 
+  async function handleBulkDelete() {
+    if (!token || selectedIds.length === 0) return
+    if (!confirm(`Are you sure you want to permanently delete ${selectedIds.length} prompts? This cannot be undone.`)) return
+
+    try {
+      const deletedCount = await apiHistoryBulkDelete(token, selectedIds)
+      toast.success(`${deletedCount} prompts deleted successfully.`)
+      clearSelection()
+      // Note: useHistory hook will naturally re-sync on next load or we could locally filter
+      window.location.reload() // Quickest way to re-sync O(1) after massive batch delete
+    } catch (err) {
+      toast.error('Failed to delete prompts. Please try again.')
+    }
+  }
+
+  function handleClearSelection() {
+    clearSelection()
+  }
+
+  // Show loading state while token initializes
   if (!token) {
     return (
       <div className="h-screen flex items-center justify-center">
-        <div className="w-12 h-12 rounded-lg border border-kira bg-[var(--kira-dim)] flex items-center justify-center animate-pulse">
-          <span className="text-kira font-bold font-mono text-xl">K</span>
+        <div className="w-12 h-12 rounded-xl border border-kira/30 bg-kira/5 flex items-center justify-center animate-pulse shadow-[0_0_15px_rgba(46,196,182,0.2)]">
+          <span className="text-kira font-black font-mono text-xl tracking-tighter">K</span>
         </div>
       </div>
     )
@@ -70,13 +151,46 @@ export default function HistoryPage() {
   return (
     <div className="min-h-screen bg-bg p-6 md:p-8">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold font-mono text-text mb-8 tracking-tight">
-          Memory Palace
-        </h1>
+        <div className="flex items-end justify-between mb-8 border-b border-border/10 pb-6">
+          <div className="flex flex-col">
+            <h1 className="text-4xl font-black font-mono text-text tracking-tighter uppercase italic drop-shadow-md">
+              Memory Palace
+            </h1>
+            <p className="text-[10px] text-text-dim font-mono uppercase tracking-[0.3em] mt-1">
+              Automated Archival & Synthesis Engine
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-3">
+             <span className="text-[10px] font-bold text-kira bg-kira/10 px-3 py-1.5 rounded-xl border border-kira/20 uppercase tracking-widest shadow-[0_0_10px_rgba(46,196,182,0.15)] font-mono">
+              {items.length} Prompts Logged
+            </span>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => handleExport('json')}
+                className="text-[9px] font-bold text-text-dim hover:text-text bg-layer2/50 hover:bg-layer3 px-3 py-1 rounded-lg border border-border/50 uppercase tracking-widest transition-all"
+              >
+                Export JSON
+              </button>
+              <button 
+                onClick={() => handleExport('csv')}
+                className="text-[9px] font-bold text-text-dim hover:text-text bg-layer2/50 hover:bg-layer3 px-3 py-1 rounded-lg border border-border/50 uppercase tracking-widest transition-all"
+              >
+                Export CSV
+              </button>
+            </div>
+          </div>
+        </div>
         
         <HistoryAnalyticsDashboard 
           analytics={analytics} 
           isLoading={isLoadingAnalytics} 
+          onDomainSelect={(domain) => {
+            setDomains(prev => 
+              prev.includes(domain) 
+                ? prev.filter(d => d !== domain) 
+                : [...prev, domain]
+            )
+          }}
         />
         
         <HistorySearchBar 
@@ -87,6 +201,7 @@ export default function HistoryPage() {
           setUseRag={setUseRag}
           days={days}
           setDays={setDays}
+          availableDomains={availableDomains}
           domains={domains}
           setDomains={setDomains}
           minQuality={minQuality}
@@ -95,15 +210,22 @@ export default function HistoryPage() {
           setDateFrom={setDateFrom}
           dateTo={dateTo}
           setDateTo={setDateTo}
+          selectedIds={selectedIds}
+          onClearSelection={handleClearSelection}
+          onBulkDelete={handleBulkDelete}
+          onExport={handleExport}
+          onSelectAll={selectAll}
         />
         
         <HistoryList
           items={items}
-          groupedByDate={groupedByDate}
           isLoading={isLoadingHistory}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
+          isLoadingMore={isLoadingMore}
+          hasMore={hasMore}
+          loadMore={loadMore}
           onUseAgain={handleUseAgain}
+          selectedIds={selectedIds}
+          toggleSelect={toggleSelect}
         />
       </div>
     </div>

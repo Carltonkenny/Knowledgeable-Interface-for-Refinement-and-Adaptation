@@ -66,7 +66,7 @@ export default function OutputCard({ promptId, sessionId, result }: OutputCardPr
           {/* Header */}
           <div className="flex items-center gap-3 mb-3">
             <span className="font-mono text-[9px] tracking-wider uppercase text-text-dim">
-              Engineered prompt
+              Improved version
             </span>
             {result.memories_applied > 0 && (
               <Chip variant="memory">

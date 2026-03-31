@@ -4,15 +4,26 @@ import { useState } from 'react'
 import { User, Check, X, Edit2, Loader2 } from 'lucide-react'
 
 interface UsernameEditorProps {
-  initialUsername?: string
+  initialUsername?: string | null
   isUpdating: boolean
   onSave: (val: string) => Promise<boolean>
+  tier?: 'Bronze' | 'Silver' | 'Gold' | 'Kira'
+  trustLevel: number // 0, 1, 2
 }
 
-export default function UsernameEditor({ initialUsername, isUpdating, onSave }: UsernameEditorProps) {
+export default function UsernameEditor({ initialUsername, isUpdating, onSave, tier = 'Bronze', trustLevel }: UsernameEditorProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [value, setValue] = useState(initialUsername || '')
   const [error, setError] = useState<string | null>(null)
+
+  const trustLabels = ['COLD', 'WARM', 'HOT']
+  const trustColors = ['bg-blue-500', 'bg-purple-500', 'bg-kira']
+  const tierColors: Record<string, string> = {
+    Bronze: 'from-orange-400 to-orange-700',
+    Silver: 'from-slate-300 to-slate-500',
+    Gold: 'from-yellow-300 to-yellow-600',
+    Kira: 'from-kira to-kira-dim shadow-[0_0_10px_rgba(var(--color-kira),0.5)]'
+  }
 
   const handleSave = async () => {
     if (!value.trim()) {
@@ -59,6 +70,8 @@ export default function UsernameEditor({ initialUsername, isUpdating, onSave }: 
             {isEditing ? (
               <div className="relative">
                 <input
+                  id="username-input"
+                  name="username"
                   type="text"
                   value={value}
                   onChange={(e) => {
@@ -68,6 +81,7 @@ export default function UsernameEditor({ initialUsername, isUpdating, onSave }: 
                   onKeyDown={handleKeyDown}
                   disabled={isUpdating}
                   autoFocus
+                  autoComplete="username"
                   className="bg-layer2 border border-kira/50 text-text-bright text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-kira/20 w-48 font-mono placeholder:text-text-dim"
                   placeholder="Enter username..."
                   style={{ color: 'var(--color-text-bright)' }}
@@ -79,9 +93,27 @@ export default function UsernameEditor({ initialUsername, isUpdating, onSave }: 
                 )}
               </div>
             ) : (
-              <h3 className="text-base font-medium text-text-bright flex items-center gap-2">
-                {initialUsername ? `@${initialUsername}` : 'Set Username'}
-              </h3>
+              <div className="flex flex-col">
+                <h3 className="text-base font-medium text-text-bright flex items-center gap-2 group-hover:text-kira transition-colors">
+                  {initialUsername ? `@${initialUsername}` : 'Set Username'}
+                  <div className={`text-[9px] px-1.5 py-0.5 rounded font-bold text-white bg-gradient-to-br ${tierColors[tier]}`}>
+                    {tier.toUpperCase()}
+                  </div>
+                </h3>
+                
+                {/* Trust Level Indicator */}
+                <div className="mt-2 flex items-center gap-2">
+                  <div className="w-24 h-1 bg-layer3 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all duration-1000 ${trustColors[trustLevel]}`} 
+                      style={{ width: `${((trustLevel + 1) / 3) * 100}%` }}
+                    />
+                  </div>
+                  <span className={`text-[8px] font-mono font-bold ${trustLevel === 2 ? 'text-kira animate-pulse' : 'text-text-dim'}`}>
+                    {trustLabels[trustLevel]} SYNC
+                  </span>
+                </div>
+              </div>
             )}
           </div>
         </div>
