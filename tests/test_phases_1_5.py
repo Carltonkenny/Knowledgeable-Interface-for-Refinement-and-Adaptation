@@ -259,8 +259,13 @@ class TestPhase5QualityHeatmap:
     def test_heatmap_includes_avg_quality(self):
         """Verify heatmap response includes avg_quality field"""
         import inspect
+        import os
+        # Set dummy env vars to prevent auth.py from raising RuntimeError
+        os.environ.setdefault("SUPABASE_URL", "https://test.supabase.co")
+        os.environ.setdefault("SUPABASE_ANON_KEY", "test-anon-key")
+        os.environ.setdefault("SUPABASE_KEY", "test-service-key")
         from routes import analytics
-        
+
         source = inspect.getsource(analytics.get_activity_heatmap)
         
         # Check for quality aggregation

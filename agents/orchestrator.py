@@ -114,7 +114,7 @@ AGENT SELECTION LOGIC:
 - Always run "intent" unless message is crystal clear.
 - "context" ALWAYS runs — it extracts from the current message alone when no history exists.
 - "domain" MUST run even for CONVERSATION and FOLLOWUP to ensure User Identity tracking (unless it's a simple greeting like "Hi").
-- Skip "domain" ONLY if user_profile.domain_confidence > 0.95 and the topic is clearly identical.
+- Skip "domain" ONLY if user_profile.domain_confidence > 0.85 and the topic is clearly identical.
 - "prompt_engineer" ALWAYS runs during SWARM mode.
 
 TONE ADAPTATION:

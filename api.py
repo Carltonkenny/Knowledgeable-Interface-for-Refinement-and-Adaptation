@@ -39,6 +39,7 @@ sentry_sdk.init(
 )
 
 import logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 # ── LANGSMITH INITIALIZATION ──────────────────────────────
@@ -57,6 +58,10 @@ if os.getenv("OTEL_ENABLED", "false").lower() == "true":
     logger.info("[otel] OpenTelemetry initialized")
 
 # ── Standard Imports ──────────────────────────
+
+# ═══ CRITICAL STARTUP VALIDATION ═══
+if not os.getenv("SUPABASE_JWT_SECRET"):
+    raise RuntimeError("SUPABASE_JWT_SECRET is required for MCP token signing")
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

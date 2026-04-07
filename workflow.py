@@ -139,10 +139,8 @@ def build_graph() -> StateGraph:
     # Prompt engineer ALWAYS runs (never skipped)
     # It waits for ALL selected agents to complete (LangGraph handles this automatically)
     # When Send() is used, LangGraph automatically joins at the next common node
-    graph.add_edge("intent_agent", "prompt_engineer")
-    graph.add_edge("context_agent", "prompt_engineer")
-    graph.add_edge("domain_agent", "prompt_engineer")
-    
+    # (Edges already declared above — no duplicates needed)
+
     # ═══ EXIT ═══
     graph.add_edge("prompt_engineer", END)
     

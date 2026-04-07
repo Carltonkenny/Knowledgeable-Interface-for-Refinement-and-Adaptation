@@ -21,13 +21,52 @@ from database import (
     get_conversation_history, update_session_activity, get_last_activity,
     get_conversation_count,
 )
+from agents.handlers.unified import kira_unified_handler
 from memory.langmem import write_to_langmem
 from memory.profile_updater import should_trigger_update, update_user_profile
 from utils import calculate_overall_quality
+from xp_engine import calculate_forge_xp, get_tier_from_xp
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Prompts"])
+
+
+def award_forge_xp(
+    user_id: str,
+    domain_analysis: dict,
+    quality_score: dict,
+    user_profile: dict,
+    is_clarification_resolved: bool = False,
+) -> None:
+    """
+    Background task: calculate and award XP for prompt engineering.
+    Wraps xp_engine.calculate_forge_xp and persists to database.
+    """
+    try:
+        from xp_engine import calculate_forge_xp, get_tier_from_xp
+        from database import update_user_xp, save_user_profile
+
+        domain = domain_analysis.get("primary_domain", "general")
+        dominant_domains = user_profile.get("dominant_domains", [])
+        current_xp = user_profile.get("xp_total", 0)
+
+        xp_result = calculate_forge_xp(
+            quality_score=quality_score or {"overall": 3.0},
+            domain=domain,
+            user_dominant_domains=dominant_domains,
+            current_streak=0,
+            is_clarification_resolved=is_clarification_resolved,
+        )
+
+        earned = xp_result.get("earned_xp", 0)
+        if earned > 0:
+            new_tier = get_tier_from_xp(current_xp + earned)
+            update_user_xp(user_id, earned, new_tier)
+            logger.info(f"[xp] awarded {earned} XP to user {user_id[:8]}... (tier: {new_tier})")
+
+    except Exception as e:
+        logger.error(f"[xp] award_forge_xp failed: {e}")
 
 
 # ── Schemas ───────────────────────────────────
@@ -354,6 +393,16 @@ async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks, user:
                 write_to_langmem,
                 user_id=user.user_id,
                 session_result=final_state
+            )
+
+            # ═══ BACKGROUND TASK: Award XP ═══
+            background_tasks.add_task(
+                award_forge_xp,
+                user_id=user.user_id,
+                domain_analysis=final_state.get("domain_analysis", {}),
+                quality_score=final_state.get("quality_score", {}),
+                user_profile=user_profile,
+                is_clarification_resolved=False
             )
 
             # Trigger profile update if threshold reached
