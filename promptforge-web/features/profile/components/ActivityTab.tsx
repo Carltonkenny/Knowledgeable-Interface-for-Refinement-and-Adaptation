@@ -5,9 +5,17 @@ import { Activity, Award, TrendingUp, Clock } from 'lucide-react'
 import PromptTimeline from './PromptTimeline'
 import AchievementBadges from './AchievementBadges'
 import ActivityStats from './ActivityStats'
+import PromptHeatmap from './PromptHeatmap'
+import NeuralExpertiseRadar from './NeuralExpertiseRadar'
+import { DomainStat, UsageStats, apiGetAnalyticsHeatmap, apiGetAchievements } from '@/lib/api'
+import { logger } from '@/lib/logger'
 
 interface ActivityTabProps {
   token: string
+  stats: UsageStats | null
+  domains: DomainStat[]
+  tier: string
+  xpTotal: number
 }
 
 interface Achievement {
@@ -17,31 +25,31 @@ interface Achievement {
   description: string
 }
 
-export default function ActivityTab({ token }: ActivityTabProps) {
+export default function ActivityTab({ token, stats, domains, tier, xpTotal }: ActivityTabProps) {
   const [achievements, setAchievements] = useState<Achievement[]>([])
+  const [heatmapData, setHeatmapData] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     loadAchievements()
+    loadHeatmap()
   }, [token])
+
+  const loadHeatmap = async () => {
+    try {
+      const data = await apiGetAnalyticsHeatmap(token)
+      setHeatmapData(data.heatmap || [])
+    } catch (error) {
+      logger.error('Failed to load heatmap', { error })
+    }
+  }
 
   const loadAchievements = async () => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/user/achievements`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.detail || 'Failed to load achievements')
-      }
-
+      const data = await apiGetAchievements(token)
       setAchievements(data.achievements || [])
-    } catch (error: any) {
-      console.error('Failed to load achievements:', error)
+    } catch (error) {
+      logger.error('Failed to load achievements', { error })
     } finally {
       setIsLoading(false)
     }
@@ -64,6 +72,14 @@ export default function ActivityTab({ token }: ActivityTabProps) {
 
       {/* Stats Overview */}
       <ActivityStats token={token} />
+
+      {/* 365-Day Activity Heatmap */}
+      <PromptHeatmap data={heatmapData} isLoading={isLoading} />
+      
+      {/* ── HIGH FIDELITY IDENTITY TOPOLOGY ── */}
+      <div className="h-[400px]">
+        <NeuralExpertiseRadar xpTotal={xpTotal} tier={tier} domains={domains} />
+      </div>
 
       {/* Two Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

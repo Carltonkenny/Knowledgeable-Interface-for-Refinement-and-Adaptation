@@ -2,6 +2,7 @@
 // Chat page — main app interface
 
 'use client'
+import { logger } from '@/lib/logger'
 
 import { useState, useEffect } from 'react'
 import { getSession } from '@/lib/auth'
@@ -50,7 +51,7 @@ export default function ChatPage() {
           router.push(`/app/chat/${newSession.id}`)
         }
       } catch (err) {
-        console.error('Failed to initialize chat session', err)
+        logger.error('Failed to initialize chat session', { error: err })
         setLoading(false)
       }
     }

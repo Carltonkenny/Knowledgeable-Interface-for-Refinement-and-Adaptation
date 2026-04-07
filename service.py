@@ -28,6 +28,7 @@ from fastapi import HTTPException
 from workflow import workflow
 from state import PromptForgeState
 from utils import get_cached_result, set_cached_result
+from middleware.langfuse_instrumentation import trace_swarm_run
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,23 @@ def _run_swarm(prompt: str, user_id: str, input_modality: str = "text",
             result = future.result(timeout=GRAPH_TIMEOUT)
             # Store in cache for next time (with user_id for personalization)
             set_cached_result(prompt, result, user_id)
+
+            # ── LangFuse: track swarm execution ──
+            try:
+                trace_swarm_run(
+                    original_prompt=prompt,
+                    improved_prompt=result.get("improved_prompt", ""),
+                    agents_run=result.get("agents_run", []),
+                    agents_skipped=result.get("agents_skipped", []),
+                    agent_latencies=result.get("agent_latencies", {}),
+                    quality_score=result.get("quality_score", {}),
+                    domain=result.get("domain_analysis", {}).get("primary_domain", "general"),
+                    session_id=result.get("session_id", "default"),
+                    user_id=user_id,
+                )
+            except Exception as e:
+                logger.warning(f"[service] LangFuse tracking failed: {e}")
+
             return result
         except TimeoutError:
             raise HTTPException(status_code=504, detail="Request timed out — please retry")
@@ -165,8 +183,27 @@ async def _astream_swarm(prompt: str, user_id: str, input_modality: str = "text"
     )
 
     # Natively offloads to LangGraph's background threadpool, solving the block!
+    final_state = None
     async for chunk in workflow.astream(initial_state):
+        final_state = chunk
         yield chunk
+
+    # ── LangFuse: track swarm execution (after stream completes) ──
+    if final_state:
+        try:
+            trace_swarm_run(
+                original_prompt=prompt,
+                improved_prompt=final_state.get("improved_prompt", ""),
+                agents_run=final_state.get("agents_run", []),
+                agents_skipped=final_state.get("agents_skipped", []),
+                agent_latencies=final_state.get("agent_latencies", {}),
+                quality_score=final_state.get("quality_score", {}),
+                domain=final_state.get("domain_analysis", {}).get("primary_domain", "general"),
+                session_id=final_state.get("session_id", "default"),
+                user_id=user_id,
+            )
+        except Exception as e:
+            logger.warning(f"[service] LangFuse tracking failed in _astream_swarm: {e}")
 
 
 def _run_swarm_with_clarification(

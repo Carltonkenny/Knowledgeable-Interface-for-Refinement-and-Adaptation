@@ -23,8 +23,22 @@ from state import AgentState
 from utils import parse_json_response
 from memory.langmem import get_style_reference
 from agents.quality_gate import evaluate_prompt_quality
+from agents.domain import DISCIPLINE_PERSONA_MAP
 
 logger = logging.getLogger(__name__)
+
+# ── OpenTelemetry Tracing ────────────────────
+try:
+    from middleware.otel_tracing import get_tracer
+except ImportError:
+    def get_tracer(name="promptforge"):
+        class _NoopSpan:
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+            def set_attribute(self, k, v): pass
+        class _NoopTracer:
+            def start_as_current_span(self, name): return _NoopSpan()
+        return _NoopTracer()
 
 # ═══ SYSTEM PROMPT ════════════════════════════
 
@@ -130,6 +144,30 @@ def prompt_engineer_agent(state: AgentState) -> Dict[str, Any]:
 
     # ═══ PREPARE CONTEXT FOR LLM ═══
     try:
+        tracer = get_tracer("promptforge.agent")
+        with tracer.start_as_current_span("agent.prompt_engineer") as span:
+            span.set_attribute("agent.prompt_length", len(prompt))
+
+            return _prompt_engineer_impl(state, start_time, prompt, span)
+
+    except Exception as e:
+        logger.error(f"[prompt_engineer] failed: {e}", exc_info=True)
+        latency_ms = int((time.time() - start_time) * 1000)
+        return {
+            "improved_prompt": state.get("raw_prompt", state.get("message", "")),
+            "quality_score": {"specificity": 1, "clarity": 1, "actionability": 1},
+            "changes_made": [f"Error: {str(e)}"],
+            "prompt_diff": [{"type": "keep", "text": state.get("raw_prompt", state.get("message", ""))}],
+            "was_skipped": False,
+            "skip_reason": None,
+            "latency_ms": latency_ms,
+            "agent_latencies": {"prompt_engineer": latency_ms},
+        }
+
+
+def _prompt_engineer_impl(state: AgentState, start_time: float, prompt: str, span=None) -> Dict[str, Any]:
+    """Internal prompt engineer implementation, called within OTel span."""
+    try:
         llm = get_llm()
 
         # Get user's best past prompts for style reference
@@ -184,8 +222,19 @@ def prompt_engineer_agent(state: AgentState) -> Dict[str, Any]:
         if audience_constraint:
             logger.debug(f"[prompt_engineer] audience constraint added: {audience}")
 
+        # ═══ NEURAL PERSONA OVERLAY ═══
+        domain_analysis = state.get('domain_analysis') or {}
+        primary_domain = domain_analysis.get('primary_domain', '')
+        
+        # If domain_agent skipped, fallback to the user's most dominant domain
+        if not primary_domain and user_profile.get('dominant_domains'):
+            primary_domain = user_profile['dominant_domains'][0]
+            
+        persona_overlay = DISCIPLINE_PERSONA_MAP.get(primary_domain.lower(), '') if primary_domain else ''
+        persona_constraint = f"\n\nNEURAL TONE OVERLAY (MANDATORY): {persona_overlay}" if persona_overlay else ""
+
         # Combine all context
-        personalization_context = frustration_constraint + audience_constraint
+        personalization_context = frustration_constraint + audience_constraint + persona_constraint
 
         # Format all upstream analysis
         analysis_context = f"""Original prompt: {prompt}
@@ -202,9 +251,15 @@ Rewrite the prompt based on this comprehensive analysis. Match the user's establ
             SystemMessage(content=SYSTEM_PROMPT),
             HumanMessage(content=analysis_context)
         ]
-        
+
         # ═══ FIRST LLM CALL ═══
-        response = llm.invoke(messages)
+        response = llm.invoke(
+            messages,
+            config={
+                "tags": ["prompt_engineer", "swarm", "final_synthesis"],
+                "metadata": {"agent": "prompt_engineer", "is_retry": False},
+            },
+        )
         result = parse_json_response(response.content, agent_name="prompt_engineer")
 
         # Debug: Log what LLM returned for quality_score
@@ -255,10 +310,16 @@ Rewrite the prompt with substantially higher quality addressing all feedback abo
                 HumanMessage(content=retry_context)
             ]
 
-            response = llm.invoke(messages)
+            response = llm.invoke(
+                messages,
+                config={
+                    "tags": ["prompt_engineer", "swarm", "final_synthesis"],
+                    "metadata": {"agent": "prompt_engineer", "is_retry": True},
+                },
+            )
             result = parse_json_response(response.content, agent_name="prompt_engineer")
             improved = result.get("improved_prompt", "")
-            
+
             # Re-evaluate after retry (for logging)
             quality_report_retry = evaluate_prompt_quality(
                 original=prompt,
@@ -287,7 +348,13 @@ Rewrite the prompt with substantially more detail and specificity."""
                 HumanMessage(content=retry_context)
             ]
 
-            response = llm.invoke(messages)
+            response = llm.invoke(
+                messages,
+                config={
+                    "tags": ["prompt_engineer", "swarm", "final_synthesis"],
+                    "metadata": {"agent": "prompt_engineer", "is_retry": True},
+                },
+            )
             result = parse_json_response(response.content, agent_name="prompt_engineer")
             improved = result.get("improved_prompt", "")
 
@@ -316,20 +383,10 @@ Rewrite the prompt with substantially more detail and specificity."""
             "agent_latencies": {"prompt_engineer": latency_ms},
             "agents_run": ["prompt_engineer"],
         }
-        
+
     except Exception as e:
-        logger.error(f"[prompt_engineer] failed: {e}", exc_info=True)
-        latency_ms = int((time.time() - start_time) * 1000)
-        return {
-            "improved_prompt": state.get("raw_prompt", state.get("message", "")),
-            "quality_score": {"specificity": 1, "clarity": 1, "actionability": 1},
-            "changes_made": [f"Error: {str(e)}"],
-            "prompt_diff": [{"type": "keep", "text": state.get("raw_prompt", state.get("message", ""))}],
-            "was_skipped": False,
-            "skip_reason": None,
-            "latency_ms": latency_ms,
-            "agent_latencies": {"prompt_engineer": latency_ms},
-        }
+        logger.error(f"[prompt_engineer] impl failed: {e}", exc_info=True)
+        raise  # Re-raise to prompt_engineer_agent's except for fallback handling
 
 
 # ═══ VALIDATION FUNCTION ═════════════════════

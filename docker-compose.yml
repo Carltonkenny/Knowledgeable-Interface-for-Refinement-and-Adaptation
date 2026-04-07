@@ -49,10 +49,76 @@ services:
     logging:
       driver: "json-file"
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "20m"
+        max-file: "10"
+
+  # ── LangFuse (Self-hosted LLM Observability) ─────
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: promptforge-langfuse
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
+      SALT: "my-salt-string-for-hashing"
+      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      NEXTAUTH_URL: http://localhost:3001
+      NEXTAUTH_SECRET: my-nextauth-secret
+      LANGFUSE_INIT_ORG_ID: promptforge
+      LANGFUSE_INIT_ORG_NAME: PromptForge
+      LANGFUSE_INIT_PROJECT_ID: kira
+      LANGFUSE_INIT_PROJECT_NAME: Kira
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-kira
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-kira
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/public/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  langfuse-db:
+    image: postgres:16-alpine
+    container_name: promptforge-langfuse-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Jaeger (OpenTelemetry UI) ──────────────
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: promptforge-jaeger
+    restart: unless-stopped
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+      - LOG_LEVEL=info
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 # ── Volumes ───────────────────────────────────
 volumes:
   redis_data:
+    driver: local
+  langfuse_db_data:
     driver: local

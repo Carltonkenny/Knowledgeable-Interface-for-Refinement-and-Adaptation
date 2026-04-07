@@ -134,10 +134,37 @@ def kira_unified_handler(
         result["memories_applied"] = len(langmem_context) if langmem_context else 0
         result["memory_summary"] = memory_summary # Inject for thought stream extraction
 
+        # ═══ PERSONALITY ADAPTATION & VALIDATION ═══
+        # Adapt Kira's tone to user's communication style
+        try:
+            from agents.orchestration.personality import adapt_kira_personality
+            
+            adaptation = adapt_kira_personality(
+                message=message,
+                user_profile=user_profile,
+                response_text=result["response"]
+            )
+            
+            # Add adaptation data to result for frontend/analytics
+            result["personality_adaptation"] = {
+                "detected_formality": adaptation.detected_user_style.get("formality", 0.5),
+                "detected_technical": adaptation.detected_user_style.get("technical", 0.5),
+                "adaptation_notes": adaptation.adaptation_guidance,
+                "violations": adaptation.forbidden_phrases_detected,
+            }
+            
+            # Log violations if any (for monitoring personality consistency)
+            if adaptation.forbidden_phrases_detected:
+                logger.warning(f"[kira_unified] forbidden phrases detected: {adaptation.forbidden_phrases_detected}")
+                
+        except Exception as e:
+            logger.debug(f"[kira_unified] personality adaptation skipped: {e}")
+            result["personality_adaptation"] = None
+
         logger.info(f"[kira_unified] intent={result['intent']} latency={latency_ms}ms memories={result['memories_applied']}")
 
         return result
-        
+
     except Exception as e:
         logger.error(f"[kira_unified] failed: {e}")
         # Fallback to existing handlers

@@ -1,6 +1,6 @@
 'use client'
 
-import { Award, CheckCircle2 } from 'lucide-react'
+import { Award, CheckCircle2, ArrowRight } from 'lucide-react'
 
 interface ProfileCompletenessProps {
   profile: {
@@ -15,6 +15,18 @@ interface ProfileCompletenessProps {
     avatar_url?: string | null
     phone?: string | null
   }
+}
+
+const guidanceMessages: Record<string, string> = {
+  bio: "🎯 Start with your bio — it's the fastest way to level up",
+  location: "📍 Add your location for regional prompt patterns",
+  job_title: "💼 What's your role? Kira adapts to your expertise level",
+  company: "🏢 Where do you work? Helps with industry-specific prompts",
+  website: "🌐 Got a portfolio? Link it for brand-aligned outputs",
+  github: "💻 Connect GitHub so Kira learns your coding style",
+  twitter: "🐦 Add Twitter for tone & communication preferences",
+  linkedin: "🔗 LinkedIn helps Kira understand your professional context",
+  avatar_url: "👤 Add a profile picture to personalize your experience",
 }
 
 export default function ProfileCompleteness({ profile }: ProfileCompletenessProps) {
@@ -37,6 +49,9 @@ export default function ProfileCompleteness({ profile }: ProfileCompletenessProp
   }, 0)
   const percentage = Math.round((currentScore / totalScore) * 100)
 
+  const emptyFields = fields.filter(field => !profile[field.key as keyof typeof profile])
+  const nextAction = emptyFields[0]
+
   const getLevel = (pct: number) => {
     if (pct >= 90) return { label: 'All-Star', color: 'text-kira', bg: 'bg-kira/10' }
     if (pct >= 70) return { label: 'Professional', color: 'text-yellow-400', bg: 'bg-yellow-400/10' }
@@ -45,6 +60,17 @@ export default function ProfileCompleteness({ profile }: ProfileCompletenessProp
   }
 
   const level = getLevel(percentage)
+
+  const getGuidanceMessage = () => {
+    if (percentage === 0) return guidanceMessages.bio
+    if (percentage < 50 && nextAction) {
+      return guidanceMessages[nextAction.key] || "⚡ Add more fields to reach full sync"
+    }
+    if (percentage < 90 && nextAction) {
+      return `✨ Almost there! Add your ${nextAction.label?.toLowerCase()} to level up`
+    }
+    return "🎉 Profile fully synced! Kira knows everything about you"
+  }
 
   return (
     <div className="bg-layer2 rounded-2xl border border-border-subtle p-5 mb-6">
@@ -65,12 +91,20 @@ export default function ProfileCompleteness({ profile }: ProfileCompletenessProp
       </div>
 
       {/* Progress Bar */}
-      <div className="h-2 bg-layer3 rounded-full overflow-hidden mb-4">
+      <div className="h-2 bg-layer3 rounded-full overflow-hidden mb-3">
         <div
           className={`h-full bg-gradient-to-r from-kira to-purple-500 transition-all duration-1000`}
           style={{ width: `${percentage}%` }}
         />
       </div>
+
+      {/* Guidance Message */}
+      {percentage < 100 && (
+        <div className="mb-4 px-3 py-2 rounded-lg bg-kira/5 border border-kira/20 text-xs text-kira flex items-start gap-2">
+          <ArrowRight size={14} className="mt-0.5 flex-shrink-0" />
+          <span>{getGuidanceMessage()}</span>
+        </div>
+      )}
 
       {/* Field Checklist */}
       <div className="grid grid-cols-2 gap-2">

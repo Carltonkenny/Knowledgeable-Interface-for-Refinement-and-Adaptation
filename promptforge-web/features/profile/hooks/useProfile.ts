@@ -3,7 +3,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import {
   apiUpdateUsername,
-  apiGetProfile,
   apiGetDomains,
   apiGetMemories,
   apiGetQualityTrend,
@@ -19,6 +18,7 @@ import {
   apiGetAnalyticsHeatmap,
   ActivityHeatmap
 } from '@/lib/api'
+import { logger } from '@/lib/logger'
 
 export function useProfile(token: string | null) {
   const [isInitializing, setIsInitializing] = useState(true)
@@ -49,9 +49,9 @@ export function useProfile(token: string | null) {
       setDomains(domainsRes.domains)
       setMemories(memoriesRes.memories)
       setHeatmap(heatmapRes)
-    } catch (err: any) {
-      console.error('Failed to load profile data:', err)
-      setError(err.message || 'Failed to initialize profile.')
+    } catch (err) {
+      logger.error('Failed to load profile data', { error: err, hasToken: !!token })
+      setError('Failed to initialize profile.')
     } finally {
       setIsInitializing(false)
     }
@@ -66,12 +66,10 @@ export function useProfile(token: string | null) {
     setIsUpdatingAttr(true)
     try {
       await apiUpdateUsername(token, newUsername)
-      // Username update is stored in auth metadata - no need to refresh
       return true
-    } catch (err: any) {
-      console.error('Failed to update username:', err)
-      // Throw error to be caught by the component and shown to the user
-      throw new Error(err.message || 'Username taken or error occurred.')
+    } catch (err) {
+      logger.error('Failed to update username', { error: err })
+      throw new Error('Username taken or error occurred.')
     } finally {
       setIsUpdatingAttr(false)
     }
@@ -82,29 +80,30 @@ export function useProfile(token: string | null) {
     try {
       const data = await apiExportData(token)
       return data
-    } catch (err: any) {
-      console.error('Export failed:', err)
-      throw new Error(err.message || 'Failed to export data.')
+    } catch (err) {
+      logger.error('Export failed', { error: err })
+      throw new Error('Failed to export data.')
     }
   }
 
   const deleteAccount = async () => {
     if (!token) return false
     try {
-      const res = await apiDeleteAccount(token)
+      await apiDeleteAccount(token)
       return true
-    } catch (err: any) {
-      console.error('Delete failed:', err)
-      throw new Error(err.message || 'Failed to delete account.')
+    } catch (err) {
+      logger.error('Delete failed', { error: err })
+      throw new Error('Failed to delete account.')
     }
   }
 
   const calculateTier = () => {
     if (!stats) return 'Bronze'
+    if (stats.loyalty_tier) return stats.loyalty_tier
     const count = stats.total_prompts_engineered
     const quality = stats.average_quality_score
-    
-    if (count >= 1000 && quality >= 4.5) return 'Kira'
+
+    if (count >= 1000 && quality >= 4.5) return 'Kira-Class (Forge-Master)'
     if (count >= 500 && quality >= 4.0) return 'Gold'
     if (count >= 100) return 'Silver'
     return 'Bronze'
@@ -125,6 +124,7 @@ export function useProfile(token: string | null) {
     refreshStats: loadProfileData,
     trustLevel: stats?.trust_level ?? 0,
     tier: calculateTier(),
-    username: profile?.username ?? stats ? 'User' : null  // Fallback to 'User' if no profile
+    xpTotal: stats?.xp_total ?? 0,
+    username: profile?.username ?? (stats ? 'User' : null)
   }
 }

@@ -19,6 +19,7 @@
 
 import { useCallback } from 'react';
 import { ENV } from '@/lib/env';
+import { logger } from '@/lib/logger';
 
 interface FeedbackPayload {
   session_id: string;
@@ -89,10 +90,10 @@ export function useImplicitFeedback(
       });
 
       if (!response.ok) {
-        console.warn('[feedback] failed to send:', response.statusText);
+        logger.warn('[feedback] failed to send', { statusText: response.statusText });
       }
     } catch (error) {
-      console.warn('[feedback] network error:', error);
+      logger.warn('[feedback] network error', { error });
       // Silent fail - feedback is non-critical
     }
   }, []);

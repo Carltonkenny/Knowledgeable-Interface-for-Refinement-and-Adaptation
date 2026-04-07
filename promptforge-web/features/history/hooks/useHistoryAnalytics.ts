@@ -1,5 +1,6 @@
 // features/history/hooks/useHistoryAnalytics.ts
 'use client'
+import { logger } from '@/lib/logger'
 
 import { useState, useEffect } from 'react'
 import { apiHistoryAnalytics } from '@/lib/api'
@@ -10,27 +11,36 @@ export function useHistoryAnalytics(token: string | null, days: number = 30) {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
+  async function loadAnalytics() {
     if (!token) return
-
-    async function loadAnalytics() {
-      try {
-        setIsLoading(true)
-        const data = await apiHistoryAnalytics(token!, days)
-        setAnalytics(data)
-      } catch (err) {
-        setError('Failed to load analytics')
-      } finally {
-        setIsLoading(false)
-      }
+    try {
+      setIsLoading(true)
+      const data = await apiHistoryAnalytics(token!, days)
+      setAnalytics(data)
+    } catch (err) {
+      setError('Failed to load analytics')
+    } finally {
+      setIsLoading(false)
     }
+  }
 
+  useEffect(() => {
     loadAnalytics()
+  }, [token, days])
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      logger.debug('[history-analytics] Real-time sync triggered by domain update')
+      loadAnalytics()
+    }
+    window.addEventListener('update-domain', handleUpdate)
+    return () => window.removeEventListener('update-domain', handleUpdate)
   }, [token, days])
 
   return {
     analytics,
     isLoading,
     error,
+    refresh: loadAnalytics
   }
 }

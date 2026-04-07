@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
+import { apiChangePassword } from '@/lib/api'
+import { logger } from '@/lib/logger'
 
 interface PasswordChangeFormProps {
   token: string
@@ -52,28 +54,12 @@ export default function PasswordChangeForm({ token }: PasswordChangeFormProps) {
     setIsLoading(true)
 
     try {
-      const form = new FormData()
-      form.append('current_password', formData.current_password)
-      form.append('new_password', formData.new_password)
-
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/user/change-password`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: form
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.detail || 'Failed to change password')
-      }
-
+      await apiChangePassword(token, formData.current_password, formData.new_password)
       setMessage({ type: 'success', text: 'Password updated successfully' })
       setFormData({ current_password: '', new_password: '', confirm_password: '' })
-    } catch (error: any) {
-      setMessage({ type: 'error', text: error.message || 'Failed to change password' })
+    } catch (error) {
+      logger.error('Failed to change password', { error })
+      setMessage({ type: 'error', text: 'Failed to change password' })
     } finally {
       setIsLoading(false)
     }

@@ -1,15 +1,18 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { FileText, Star, Clock, Target } from 'lucide-react'
-import { apiToggleFavorite } from '@/lib/api'
+import { FileText, Star, Clock, Target, Edit2, Check, X } from 'lucide-react'
+import { apiToggleFavorite, apiUpdatePromptDomain, apiGetActivity, type QualityScore } from '@/lib/api'
+import { logger } from '@/lib/logger'
+import { motion, AnimatePresence } from 'framer-motion'
 
 interface Prompt {
   id: string
   raw_prompt: string
   improved_prompt: string
   domain: string
-  quality_score: number
+  sub_domain?: string | null
+  quality_score: QualityScore | null
   created_at: string
   is_favorite?: boolean
 }
@@ -21,6 +24,7 @@ interface PromptTimelineProps {
 export default function PromptTimeline({ token }: PromptTimelineProps) {
   const [prompts, setPrompts] = useState<Prompt[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   useEffect(() => {
     loadPrompts()
@@ -28,21 +32,10 @@ export default function PromptTimeline({ token }: PromptTimelineProps) {
 
   const loadPrompts = async () => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/user/activity?limit=10`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.detail || 'Failed to load activity')
-      }
-
+      const data = await apiGetActivity(token, 10)
       setPrompts(data.prompts || [])
-    } catch (error: any) {
-      console.error('Failed to load prompts:', error)
+    } catch (error) {
+      logger.error('Failed to load prompts', { error })
     } finally {
       setIsLoading(false)
     }
@@ -50,16 +43,36 @@ export default function PromptTimeline({ token }: PromptTimelineProps) {
 
   const handleToggleFavorite = async (id: string, currentStatus: boolean) => {
     const newStatus = !currentStatus
-    // Optimistic visual update
     setPrompts(prev => prev.map(p => p.id === id ? { ...p, is_favorite: newStatus } : p))
     try {
       await apiToggleFavorite(token, id, newStatus)
     } catch (e) {
-      console.error('Failed to toggle favorite:', e)
-      // Revert on failure
+      logger.error('Failed to toggle favorite', { error: e, id })
       setPrompts(prev => prev.map(p => p.id === id ? { ...p, is_favorite: currentStatus } : p))
     }
   }
+
+  const handleUpdateDomain = async (id: string, newDomain: string) => {
+    const originalPrompt = prompts.find(p => p.id === id)
+    if (!originalPrompt) return
+
+    setPrompts(prev => prev.map(p => p.id === id ? { ...p, domain: newDomain } : p))
+    setEditingId(null)
+
+    try {
+      await apiUpdatePromptDomain(token, id, newDomain)
+    } catch (e) {
+      logger.error('Failed to update domain', { error: e, id })
+      setPrompts(prev => prev.map(p => p.id === id ? { ...p, domain: originalPrompt.domain } : p))
+    }
+  }
+
+  const disciplines = [
+    'Technical Architecture', 'Full-Stack Development', 'Data Intelligence',
+    'Creative Synthesis', 'Strategic Business', 'Instructional Design',
+    'Persona Engineering', 'Security & Research', 'Legal & Compliance',
+    'Project Management', 'Scientific Computing', 'Meta-Prompting'
+  ]
 
   const formatTimeAgo = (isoString: string) => {
     const date = new Date(isoString)
@@ -77,12 +90,19 @@ export default function PromptTimeline({ token }: PromptTimelineProps) {
   }
 
   const domainColors: Record<string, string> = {
-    python: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
-    javascript: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
-    business: 'bg-green-500/10 text-green-400 border-green-500/30',
-    creative: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
-    technical: 'bg-orange-500/10 text-orange-400 border-orange-500/30',
-    general: 'bg-layer3 text-text-dim border-border-subtle'
+    'technical architecture': 'bg-orange-500/10 text-orange-400 border-orange-500/30',
+    'full-stack development': 'bg-blue-500/10 text-blue-400 border-blue-500/30',
+    'data intelligence': 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
+    'creative synthesis': 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+    'strategic business': 'bg-green-500/10 text-green-400 border-green-500/30',
+    'instructional design': 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30',
+    'persona engineering': 'bg-pink-500/10 text-pink-400 border-pink-500/30',
+    'security & research': 'bg-red-500/10 text-red-400 border-red-500/30',
+    'legal & compliance': 'bg-slate-500/10 text-slate-400 border-slate-500/30',
+    'project management': 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+    'scientific computing': 'bg-teal-500/10 text-teal-400 border-teal-500/30',
+    'meta-prompting': 'bg-kira/10 text-kira border-kira/30',
+    'general': 'bg-layer3 text-text-dim border-border-subtle'
   }
 
   if (isLoading) {
@@ -137,19 +157,61 @@ export default function PromptTimeline({ token }: PromptTimelineProps) {
                   >
                     <Star size={14} className={prompt.is_favorite ? "fill-yellow-400" : ""} />
                   </button>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${
-                    domainColors[prompt.domain.toLowerCase()] || domainColors.general
-                  }`}>
-                    {prompt.domain}
-                  </span>
+                  <div className="relative">
+                      <span 
+                        onClick={(e) => { e.stopPropagation(); setEditingId(editingId === prompt.id ? null : prompt.id); }}
+                        className={`group/tag flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded-full font-medium border cursor-pointer hover:border-kira/60 transition-all uppercase tracking-tight ${
+                          domainColors[prompt.domain.toLowerCase()] || domainColors.general
+                        }`}
+                      >
+                        <span className="opacity-90">{prompt.domain}</span>
+                        {prompt.sub_domain && (
+                          <>
+                            <span className="opacity-30 mx-0.5 text-[8px]">›</span>
+                            <span className="font-bold tracking-normal opacity-80">{prompt.sub_domain}</span>
+                          </>
+                        )}
+                        <Edit2 size={8} className="opacity-0 group-hover/tag:opacity-100 transition-opacity ml-1" />
+                      </span>
+
+                    <AnimatePresence>
+                      {editingId === prompt.id && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                          className="absolute z-20 top-full left-0 mt-2 p-2 bg-layer2 border border-kira/30 rounded-xl shadow-2xl min-w-[220px]"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="text-[10px] uppercase tracking-wider font-bold text-text-dim px-2 mb-2 flex justify-between">
+                            Change Discipline
+                            <X size={10} className="cursor-pointer hover:text-kira" onClick={() => setEditingId(null)} />
+                          </div>
+                          <div className="grid grid-cols-1 gap-1 max-h-[250px] overflow-y-auto no-scrollbar">
+                            {disciplines.map(d => (
+                              <button
+                                key={d}
+                                onClick={() => handleUpdateDomain(prompt.id, d)}
+                                className={`text-left px-3 py-1.5 rounded-lg text-[10px] transition-colors ${
+                                  prompt.domain === d ? 'bg-kira/20 text-kira' : 'hover:bg-layer3 text-text-bright'
+                                }`}
+                              >
+                                {d}
+                              </button>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                   <span className="flex items-center gap-1 text-[10px] text-text-dim font-mono">
                     <Clock size={10} />
                     {formatTimeAgo(prompt.created_at).toUpperCase()}
                   </span>
                 </div>
                 <div className="flex items-center gap-1 text-[10px] font-mono text-text-dim bg-layer2 px-2 py-0.5 rounded border border-border-default/50" title="LangSmith Quality Score">
-                  <Target size={10} className={prompt.quality_score >= 4 ? 'text-kira' : 'text-text-dim'} />
-                  <span>[Q: {prompt.quality_score.toFixed(1)}]</span>
+                  <Target size={10} className={prompt.quality_score ? ((prompt.quality_score.specificity + prompt.quality_score.clarity + prompt.quality_score.actionability) / 3) >= 4 ? 'text-kira' : 'text-text-dim' : 'text-text-dim'} />
+                  <span>[Q: {prompt.quality_score ? ((prompt.quality_score.specificity + prompt.quality_score.clarity + prompt.quality_score.actionability) / 3).toFixed(1) : '—'}]</span>
                 </div>
               </div>
               <p className="text-xs text-text-bright line-clamp-2 mb-1">

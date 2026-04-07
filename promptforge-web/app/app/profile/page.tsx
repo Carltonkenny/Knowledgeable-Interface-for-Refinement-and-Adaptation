@@ -2,10 +2,13 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { ROUTES } from '@/lib/constants'
 import { useToken } from '@/hooks/useToken'
 import { useProfile } from '@/features/profile/hooks/useProfile'
 import { apiUpdateProfile } from '@/lib/api'
+import { logger } from '@/lib/logger'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 import McpTokenSection from '@/features/profile/components/McpTokenSection'
 import ProfileHeader from '@/features/profile/components/ProfileHeader'
@@ -60,13 +63,42 @@ export default function ProfilePage() {
     avatar_url?: string | null
   }) => {
     if (!token) return
-    await apiUpdateProfile(token, data)
-    // Refresh profile data
-    profile.refreshStats()
+    
+    // Filter out null values - only send fields that actually have data
+    const cleaned = Object.fromEntries(
+      Object.entries(data).filter(([_, v]) => v !== null && v !== '')
+    ) as Record<string, string>
+    
+    if (Object.keys(cleaned).length === 0) {
+      toast.info('No changes to save')
+      return
+    }
+    
+    try {
+      await apiUpdateProfile(token, cleaned)
+      toast.success('Profile synced successfully')
+      await profile.refreshStats()
+    } catch (err) {
+      logger.error('Profile update failed', { err, fields: Object.keys(data) })
+      toast.error('Sync failed — your changes are safe. Try again.')
+    }
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8 animate-fade-in pb-20">
+    <ErrorBoundary fallback={
+      <div className="max-w-5xl mx-auto px-4 py-20 text-center">
+        <div className="text-4xl mb-4">⚠️</div>
+        <h2 className="text-xl font-bold text-text-error mb-2">Profile failed to load</h2>
+        <p className="text-text-dim mb-4">Your data is safe — this is a display issue</p>
+        <button 
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 bg-kira text-white rounded-lg hover:bg-kira/90 transition-colors"
+        >
+          Reload Profile
+        </button>
+      </div>
+    }>
+      <div className="max-w-5xl mx-auto px-4 py-8 animate-fade-in pb-20">
       {/* Profile Header */}
       <ProfileHeader
         email={profile.stats?.email || ''}
@@ -150,7 +182,13 @@ export default function ProfilePage() {
         )}
 
         {activeTab === 'activity' && (
-          <ActivityTab token={token} />
+          <ActivityTab 
+            token={token} 
+            stats={profile.stats} 
+            domains={profile.domains} 
+            tier={profile.tier} 
+            xpTotal={profile.xpTotal} 
+          />
         )}
 
         {activeTab === 'settings' && (
@@ -158,5 +196,6 @@ export default function ProfilePage() {
         )}
       </div>
     </div>
+    </ErrorBoundary>
   )
 }

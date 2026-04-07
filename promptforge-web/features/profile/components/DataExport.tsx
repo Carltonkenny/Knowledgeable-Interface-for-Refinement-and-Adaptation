@@ -1,4 +1,5 @@
 'use client'
+import { logger } from '@/lib/logger'
 
 import { useState } from 'react'
 import { Download, Loader2, CheckCircle2 } from 'lucide-react'
@@ -36,7 +37,7 @@ export default function DataExport({ onExport, isAuthorizing }: DataExportProps)
         setTimeout(() => setExportComplete(false), 3000)
       }
     } catch (error) {
-      console.error('Export failed:', error)
+      logger.error('Export failed:', { error: error })
     } finally {
       setIsExporting(false)
     }

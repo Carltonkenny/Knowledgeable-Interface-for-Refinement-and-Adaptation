@@ -20,26 +20,44 @@ interface AppLayoutProps {
 export default function AppLayout({ children }: AppLayoutProps) {
   const [loading, setLoading] = useState(true)
   const [token, setToken] = useState<string | null>(null)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [isOffline, setIsOffline] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
-  
+
   const isHistoryMode = pathname === '/app/history'
 
   useEffect(() => {
     async function checkSession() {
       const { data: { session } } = await (await import('@/lib/supabase')).getSupabaseClient().auth.getSession()
-      
+
       if (!session) {
         router.push(ROUTES.LOGIN)
         return
       }
 
       setToken(session.access_token)
+      setUserEmail(session.user?.email ?? null)
       setLoading(false)
     }
 
     checkSession()
   }, [router])
+
+  // Offline detection
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false)
+    const handleOffline = () => setIsOffline(true)
+
+    setIsOffline(!navigator.onLine)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
 
   if (loading || !token) {
     return (
@@ -53,6 +71,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <div className="min-h-screen flex flex-col bg-bg">
+      {/* Offline Banner */}
+      {isOffline && (
+        <div className="bg-intent/20 border-b border-intent/40 px-4 py-2 text-center text-xs text-intent font-mono">
+          ⚠️ You're offline — changes will sync when reconnected
+        </div>
+      )}
       {/* Top nav */}
       <nav className="border-b border-border-subtle bg-bg/90 backdrop-blur-md sticky top-0 z-50">
         <div className="mx-auto px-4 py-3 flex items-center justify-between">
@@ -67,13 +91,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
             {/* Nav links */}
             <div className="flex items-center gap-1">
-              <Link href="/app" className={`px-3 py-1.5 rounded-md text-sm ${pathname === '/app' ? 'text-text-bright bg-layer2' : 'text-text-dim hover:text-text-bright'}`}>
+              <Link href="/app" className={`px-3 py-1.5 rounded-md text-sm ${pathname.startsWith('/app/chat') || pathname === '/app' ? 'text-text-bright bg-layer2' : 'text-text-dim hover:text-text-bright'}`}>
                 Chat
               </Link>
               <Link href="/app/history" className={`px-3 py-1.5 rounded-md text-sm ${pathname === '/app/history' ? 'text-text-bright bg-layer2' : 'text-text-dim hover:text-text-bright'}`}>
                 History
               </Link>
-              <Link href="/app/profile" className="px-3 py-1.5 rounded-md text-sm text-text-dim hover:text-text-bright transition-colors">
+              <Link href="/app/profile" className={`px-3 py-1.5 rounded-md text-sm ${pathname === '/app/profile' ? 'text-text-bright bg-layer2' : 'text-text-dim hover:text-text-bright'} transition-colors`}>
                 Profile
               </Link>
             </div>
@@ -84,8 +108,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
               Ver 2.0.0-rc1
             </div>
             {/* Avatar */}
-            <div className="w-8 h-8 rounded-full bg-kira flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-kira/20 cursor-pointer hover:scale-105 transition-transform">
-              U
+            <div className="w-8 h-8 rounded-full bg-kira flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-kira/20 cursor-pointer hover:scale-105 transition-transform" title={userEmail || 'User'}>
+              {(userEmail || 'U')[0].toUpperCase()}
             </div>
           </div>
         </div>

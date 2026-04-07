@@ -59,6 +59,9 @@ def get_llm() -> ChatOpenAI:
         temperature=0.3,
         max_tokens=2048,
         max_retries=5,
+        # LangSmith tracing
+        tags=["prompt_engineer", "full_model"],
+        metadata={"agent": "prompt_engineer", "model_type": "full"},
     )
 
 @lru_cache(maxsize=1)
@@ -76,4 +79,7 @@ def get_fast_llm() -> ChatOpenAI:
         temperature=0.1,
         max_tokens=400,
         max_retries=5,
+        # LangSmith tracing
+        tags=["fast_model", "analysis_agent"],
+        metadata={"agent": "fast_analysis", "model_type": "fast"},
     )

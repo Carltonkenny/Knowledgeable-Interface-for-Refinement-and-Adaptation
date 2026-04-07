@@ -15,7 +15,7 @@
 import os
 import logging
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException, Depends, Form, Query
 from pydantic import BaseModel, Field
 from supabase import create_client
@@ -26,6 +26,10 @@ from collections import defaultdict
 
 class FavoriteUpdate(BaseModel):
     is_favorite: bool
+
+class DomainUpdate(BaseModel):
+    primary_domain: str
+    sub_domain: Optional[str] = "Manual Override"
 
 from utils import calculate_overall_quality
 from memory.langmem import write_to_langmem
@@ -281,6 +285,14 @@ async def get_user_stats(user: User = Depends(get_current_user)):
 
         avg_quality = sum(scores) / len(scores) if scores else 0.0
 
+        # fetch xp stuff
+        profile_res = db.table("user_profiles").select("xp_total", "loyalty_tier").eq("user_id", user.user_id).execute()
+        xp_total = 0
+        loyalty_tier = "Bronze"
+        if profile_res.data:
+            xp_total = profile_res.data[0].get("xp_total", 0)
+            loyalty_tier = profile_res.data[0].get("loyalty_tier", "Bronze")
+
         # FIX #2: Calculate real member_since from first activity
         first_activity_result = db.table("requests").select("created_at").eq("user_id", user.user_id).order("created_at", desc=False).limit(1).execute()
         member_since = first_activity_result.data[0]["created_at"] if first_activity_result.data else datetime.now(timezone.utc).isoformat()
@@ -288,7 +300,7 @@ async def get_user_stats(user: User = Depends(get_current_user)):
         # FIX #1: Calculate trust level using same logic as memory/supermemory.py:get_trust_level()
         conv_result = db.table("conversations").select("id", count="exact").eq("user_id", user.user_id).execute()
         session_count = conv_result.count if hasattr(conv_result, 'count') else len(conv_result.data)
-        
+
         if session_count < 10:
             trust_level = 0  # Cold
         elif session_count < 30:
@@ -296,12 +308,67 @@ async def get_user_stats(user: User = Depends(get_current_user)):
         else:
             trust_level = 2  # Tuned
 
+        # ═══ STREAK DATA FETCH ═══
+        # Fetch timestamps of recent prompts for streak calculation
+        stats_data_res = db.table("requests").select("created_at").eq("user_id", user.user_id).order("created_at", desc=True).limit(100).execute()
+        stats_data = stats_data_res.data if stats_data_res.data else []
+
+        # ═══ TIMEZONE-AWARE STREAK CALCULATION ═══
+        # Get user's timezone from profile (default: UTC)
+        profile = get_user_profile(user.user_id) or {}
+        user_tz_str = profile.get("user_timezone", "UTC")
+        
+        try:
+            from zoneinfo import ZoneInfo
+            user_tz = ZoneInfo(user_tz_str)
+        except Exception:
+            user_tz = ZoneInfo("UTC")  # Fallback to UTC if invalid timezone
+        
+        # Calculate streak using user's local timezone
+        today = datetime.now(user_tz).date()
+        yesterday = today - timedelta(days=1)
+        
+        # Build set of dates (in user's timezone) when prompts were created
+        dates_active = set()
+        for r in stats_data:
+            dt_str = r.get("created_at")
+            if dt_str:
+                # Parse UTC timestamp and convert to user's timezone
+                dt_utc = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+                dt_local = dt_utc.astimezone(user_tz)
+                dates_active.add(dt_local.date())
+        
+        # Calculate streak with 36-hour grace window
+        streak = 0
+        curr_d = today
+        
+        # Check if active today
+        if curr_d in dates_active:
+            streak = 1
+            curr_d -= timedelta(days=1)
+            # Count consecutive days backward
+            while curr_d in dates_active:
+                streak += 1
+                curr_d -= timedelta(days=1)
+        # Check if active yesterday (grace period)
+        elif yesterday in dates_active:
+            streak = 1
+            curr_d = yesterday - timedelta(days=1)
+            # Count consecutive days backward
+            while curr_d in dates_active:
+                streak += 1
+                curr_d -= timedelta(days=1)
+
         return {
             "total_prompts_engineered": total_prompts,
             "active_chat_sessions": total_sessions,
             "average_quality_score": round(avg_quality, 1),
             "member_since": member_since,
-            "trust_level": trust_level
+            "trust_level": trust_level,
+            "xp_total": xp_total,
+            "loyalty_tier": loyalty_tier,
+            "streak": streak,
+            "user_timezone": user_tz_str  # Return timezone for frontend display
         }
 
     except Exception as e:
@@ -451,11 +518,13 @@ async def get_user_activity(
         
         prompts = []
         for row in (prompts_result.data or []):
+            analysis = row.get("domain_analysis") or {}
             prompts.append({
                 "id": row.get("id"),
                 "raw_prompt": row.get("raw_prompt", "")[:100],
                 "improved_prompt": row.get("improved_prompt", "")[:100],
-                "domain": (row.get("domain_analysis") or {}).get("primary_domain", "general"),
+                "domain": analysis.get("primary_domain", "general"),
+                "sub_domain": analysis.get("sub_domain"),
                 "quality_score": (row.get("quality_score") or {}).get("overall", 0),
                 "created_at": row.get("created_at"),
                 "is_favorite": row.get("is_favorite", False)
@@ -524,6 +593,42 @@ async def toggle_favorite(request_id: str, update: FavoriteUpdate, user: User = 
         raise
     except Exception as e:
         logger.exception(f"[activity] favorite toggle failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.put("/user/activity/{request_id}/domain")
+async def update_domain(request_id: str, update: DomainUpdate, user: User = Depends(get_current_user)):
+    """
+    Manually update a prompt's domain.
+    Also resets user's domain_confidence to 0.5 to force AI re-learning.
+    """
+    logger.info(f"[activity] manual domain update to '{update.primary_domain}' for request={request_id}")
+    try:
+        db = get_client()
+        
+        # 1. Update the request with new domain metadata
+        analysis = {
+            "primary_domain": update.primary_domain,
+            "sub_domain": update.sub_domain or "Manual Override",
+            "confidence": 1.0,
+            "was_manual": True
+        }
+        
+        db.table("requests")\
+            .update({"domain_analysis": analysis})\
+            .eq("id", request_id)\
+            .eq("user_id", user.user_id)\
+            .execute()
+        
+        # 2. Reset profile confidence to trigger agent re-run on next turn
+        db.table("user_profiles")\
+            .update({"domain_confidence": 0.5})\
+            .eq("user_id", user.user_id)\
+            .execute()
+        
+        return {"status": "success", "domain": update.primary_domain}
+    except Exception as e:
+        logger.exception(f"[activity] domain update failed")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

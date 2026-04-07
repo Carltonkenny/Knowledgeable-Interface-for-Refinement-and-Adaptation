@@ -1,8 +1,8 @@
 // features/profile/components/McpTokenSection.tsx
 // MCP token generation, listing, and revocation
-// 'use client' — contains hooks, API calls, clipboard access
 
 'use client'
+import { logger } from '@/lib/logger'
 
 import { useState, useEffect } from 'react'
 import { Key, Copy, Check, Trash2, Loader2, ShieldAlert } from 'lucide-react'
@@ -42,7 +42,7 @@ export default function McpTokenSection({ sessionCount, trustLevel, authToken }:
       const data = await apiMcpListTokens(authToken)
       setTokens(data.tokens)
     } catch (err) {
-      console.error('[McpTokenSection] Failed to load tokens:', err)
+      logger.error('[McpTokenSection] Failed to load tokens:', { error: err })
       setError('Failed to load tokens — please refresh')
     } finally {
       setLoadingTokens(false)
@@ -57,7 +57,7 @@ export default function McpTokenSection({ sessionCount, trustLevel, authToken }:
       setGeneratedToken(data.mcp_token)
       await loadTokens()
     } catch (err) {
-      console.error('[McpTokenSection] Failed to generate token:', err)
+      logger.error('[McpTokenSection] Failed to generate token:', { error: err })
       setError('Failed to generate token. Please try again.')
     } finally {
       setGenerating(false)
@@ -74,7 +74,7 @@ export default function McpTokenSection({ sessionCount, trustLevel, authToken }:
         setGeneratedToken(null) // Clear after copy — won't be shown again
       }, 2000)
     } catch (err) {
-      console.error('[McpTokenSection] Clipboard write failed:', err)
+      logger.error('[McpTokenSection] Clipboard write failed:', { error: err })
     }
   }
 
@@ -85,7 +85,7 @@ export default function McpTokenSection({ sessionCount, trustLevel, authToken }:
       await apiMcpRevokeToken(authToken, tokenId)
       await loadTokens()
     } catch (err) {
-      console.error('[McpTokenSection] Failed to revoke token:', err)
+      logger.error('[McpTokenSection] Failed to revoke token:', { error: err })
       setError('Failed to revoke token. Please try again.')
     } finally {
       setRevokingId(null)

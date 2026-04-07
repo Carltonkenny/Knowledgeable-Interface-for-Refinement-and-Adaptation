@@ -2,8 +2,6 @@
 // SSE parser for /chat/stream. This is the only place that knows about SSE event shapes.
 // No component ever parses SSE directly.
 
-import { ENV } from './env'
-import { MOCK_SSE_SEQUENCE } from './mocks'
 import type { ChatResult } from './api'
 import type { StreamCallbacks } from './types'
 
@@ -68,26 +66,6 @@ export async function parseStream(
   callbacks: StreamCallbacks,
   signal?: AbortSignal
 ): Promise<void> {
-  // Mock mode — simulate SSE with timed callbacks
-  if (ENV.USE_MOCKS) {
-    for (const item of MOCK_SSE_SEQUENCE) {
-      await new Promise(r => setTimeout(r, item.delay))
-      if (signal?.aborted) return
-      
-      const e = item.event
-      if (e.type === 'status') {
-        callbacks.onStatus?.(e.data.message)
-      } else if (e.type === 'kira_message') {
-        callbacks.onKiraMessage?.(e.data.message, e.data.complete)
-      } else if (e.type === 'result') {
-        callbacks.onResult?.(e.data as ChatResult)
-      } else if (e.type === 'done') {
-        callbacks.onDone?.()
-      }
-    }
-    return
-  }
-
   // Real SSE stream
   const res = await fetch(url, {
     method: 'POST',

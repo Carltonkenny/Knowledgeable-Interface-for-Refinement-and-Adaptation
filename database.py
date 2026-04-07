@@ -33,6 +33,22 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+# ── OpenTelemetry Tracing ────────────────────
+try:
+    from middleware.otel_tracing import get_tracer
+    _otel_available = True
+except ImportError:
+    _otel_available = False
+    def get_tracer(name="promptforge"):
+        """Fallback no-op tracer when OTel not installed."""
+        class _NoopSpan:
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+            def set_attribute(self, k, v): pass
+        class _NoopTracer:
+            def start_as_current_span(self, name): return _NoopSpan()
+        return _NoopTracer()
+
 
 @lru_cache(maxsize=1)
 def get_client() -> Client:
@@ -75,74 +91,78 @@ def save_request(
     - Auto-creates chat_session if session_id provided but not found.
     """
     try:
-        db = get_client()
-        request_id = str(uuid.uuid4())
+        tracer = get_tracer("promptforge.database")
+        with tracer.start_as_current_span("db.save_request") as span:
+            span.set_attribute("db.table", "requests")
 
-        version_id = str(uuid.uuid4())
-        version_number = 1
-        parent_version_id = None
+            db = get_client()
+            request_id = str(uuid.uuid4())
 
-        # ═══ Phase 3: Auto-Versioning Logic ═══
-        if session_id and user_id:
-            logger.debug(f"[db] checking for previous versions in session {session_id[:8]}...")
-            
-            # RULES.md: Auto-create session if not exists (atomic upsert — no race condition)
-            now = datetime.now(timezone.utc).isoformat()
-            db.table("chat_sessions").upsert(
-                {
-                    "id": session_id,
-                    "user_id": user_id,
-                    "title": "Auto-created session",
-                    "created_at": now,
-                    "last_activity": now
-                },
-                on_conflict="id"
-            ).execute()
-            logger.debug(f"[db] session {session_id[:8]}... ensured via upsert")
-            
-            latest = db.table("requests")\
-                .select("id, version_id, version_number")\
-                .eq("session_id", session_id)\
-                .eq("user_id", user_id)\
-                .order("version_number", desc=True)\
-                .limit(1)\
-                .execute()
+            version_id = str(uuid.uuid4())
+            version_number = 1
+            parent_version_id = None
 
-            if latest.data:
-                # Group with existing version group
-                version_id = latest.data[0]["version_id"]
-                version_number = latest.data[0]["version_number"] + 1
-                parent_version_id = latest.data[0]["id"]
+            # ═══ Phase 3: Auto-Versioning Logic ═══
+            if session_id and user_id:
+                logger.debug(f"[db] checking for previous versions in session {session_id[:8]}...")
 
-                # Mark previous as not production
-                db.table("requests")\
-                    .update({"is_production": False})\
-                    .eq("id", parent_version_id)\
+                # RULES.md: Auto-create session if not exists (atomic upsert — no race condition)
+                now = datetime.now(timezone.utc).isoformat()
+                db.table("chat_sessions").upsert(
+                    {
+                        "id": session_id,
+                        "user_id": user_id,
+                        "title": "Auto-created session",
+                        "created_at": now,
+                        "last_activity": now
+                    },
+                    on_conflict="id"
+                ).execute()
+                logger.debug(f"[db] session {session_id[:8]}... ensured via upsert")
+
+                latest = db.table("requests")\
+                    .select("id, version_id, version_number")\
+                    .eq("session_id", session_id)\
+                    .eq("user_id", user_id)\
+                    .order("version_number", desc=True)\
+                    .limit(1)\
                     .execute()
 
-        insert_data = {
-            "id": request_id,
-            "user_id": user_id,
-            "raw_prompt": raw_prompt,
-            "improved_prompt": improved_prompt,
-            "session_id": session_id or "00000000-0000-0000-0000-000000000000",
-            "quality_score": quality_score,
-            "domain_analysis": domain_analysis,
-            "agents_used": agents_used,
-            "agents_skipped": agents_skipped,
-            "prompt_diff": prompt_diff,
-            # Version Control Columns
-            "version_id": version_id,
-            "version_number": version_number,
-            "parent_version_id": parent_version_id,
-            "change_summary": change_summary,
-            "is_production": True
-        }
+                if latest.data:
+                    # Group with existing version group
+                    version_id = latest.data[0]["version_id"]
+                    version_number = latest.data[0]["version_number"] + 1
+                    parent_version_id = latest.data[0]["id"]
 
-        db.table("requests").insert(insert_data).execute()
+                    # Mark previous as not production
+                    db.table("requests")\
+                        .update({"is_production": False})\
+                        .eq("id", parent_version_id)\
+                        .execute()
 
-        logger.info(f"[db] saved request {request_id[:8]}... (v{version_number}) version_id={version_id[:8]}...")
-        return request_id
+            insert_data = {
+                "id": request_id,
+                "user_id": user_id,
+                "raw_prompt": raw_prompt,
+                "improved_prompt": improved_prompt,
+                "session_id": session_id or "00000000-0000-0000-0000-000000000000",
+                "quality_score": quality_score,
+                "domain_analysis": domain_analysis,
+                "agents_used": agents_used,
+                "agents_skipped": agents_skipped,
+                "prompt_diff": prompt_diff,
+                # Version Control Columns
+                "version_id": version_id,
+                "version_number": version_number,
+                "parent_version_id": parent_version_id,
+                "change_summary": change_summary,
+                "is_production": True
+            }
+
+            db.table("requests").insert(insert_data).execute()
+
+            logger.info(f"[db] saved request {request_id[:8]}... (v{version_number}) version_id={version_id[:8]}...")
+            return request_id
 
     except Exception as e:
         logger.error(f"[db] save_request failed: {e}")
@@ -223,21 +243,25 @@ def save_conversation(
         user_id: User UUID from JWT (for RLS)
     """
     try:
-        db = get_client()
-        
-        insert_data = {
-            "session_id": session_id,
-            "role": role,
-            "message": message,
-            "message_type": message_type,
-            "improved_prompt": improved_prompt
-        }
-        
-        if user_id:
-            insert_data["user_id"] = user_id
-        
-        db.table("conversations").insert(insert_data).execute()
-        logger.info(f"[db] saved conversation turn role={role} session={session_id} user_id={user_id[:8] if user_id else 'None'}")
+        tracer = get_tracer("promptforge.database")
+        with tracer.start_as_current_span("db.save_conversation") as span:
+            span.set_attribute("db.table", "conversations")
+
+            db = get_client()
+
+            insert_data = {
+                "session_id": session_id,
+                "role": role,
+                "message": message,
+                "message_type": message_type,
+                "improved_prompt": improved_prompt
+            }
+
+            if user_id:
+                insert_data["user_id"] = user_id
+
+            db.table("conversations").insert(insert_data).execute()
+            logger.info(f"[db] saved conversation turn role={role} session={session_id} user_id={user_id[:8] if user_id else 'None'}")
     except Exception as e:
         logger.error(f"[db] save_conversation failed: {e}")
 
@@ -268,26 +292,30 @@ def get_conversation_history(session_id: str, limit: int = 6) -> list:
     breaking when state schema changes (latency_ms, memories_applied, etc.).
     """
     try:
-        db = get_client()
-        result = db.table("conversations")\
-            .select("role, message, message_type, improved_prompt")\
-            .eq("session_id", session_id)\
-            .order("created_at", desc=True)\
-            .limit(limit)\
-            .execute()
+        tracer = get_tracer("promptforge.database")
+        with tracer.start_as_current_span("db.get_conversation_history") as span:
+            span.set_attribute("db.table", "conversations")
 
-        # Reverse so oldest is first
-        history = list(reversed(result.data))
-        
-        # Schema migration guard: fill defaults for new fields
-        # This prevents "failed to load conversation" when old DB records
-        # are missing fields added by recent schema changes
-        for turn in history:
-            turn.setdefault("latency_ms", 0)
-            turn.setdefault("memories_applied", 0)
-        
-        logger.info(f"[db] fetched {len(history)} conversation turns for session={session_id}")
-        return history
+            db = get_client()
+            result = db.table("conversations")\
+                .select("role, message, message_type, improved_prompt")\
+                .eq("session_id", session_id)\
+                .order("created_at", desc=True)\
+                .limit(limit)\
+                .execute()
+
+            # Reverse so oldest is first
+            history = list(reversed(result.data))
+
+            # Schema migration guard: fill defaults for new fields
+            # This prevents "failed to load conversation" when old DB records
+            # are missing fields added by recent schema changes
+            for turn in history:
+                turn.setdefault("latency_ms", 0)
+                turn.setdefault("memories_applied", 0)
+
+            logger.info(f"[db] fetched {len(history)} conversation turns for session={session_id}")
+            return history
     except Exception as e:
         logger.error(f"[db] get_conversation_history failed: {e}")
         return []
@@ -346,22 +374,26 @@ def get_chat_sessions(user_id: str, limit: int = 20) -> list:
         List of session dicts found in chat_sessions.
     """
     try:
-        db = get_client()
-        logger.info(f"[db] fetching sessions for user_id={user_id[:8] if user_id else 'None'}...")
-        
-        # Build query - use is_ for null check
-        query = db.table("chat_sessions")\
-            .select("*")\
-            .eq("user_id", user_id)\
-            .is_("deleted_at", None)  # Use None instead of "null"
-        
-        result = query.order("is_pinned", desc=True)\
-            .order("last_activity", desc=True)\
-            .limit(limit)\
-            .execute()
-        
-        logger.info(f"[db] fetched {len(result.data) if result.data else 0} sessions")
-        return result.data or []
+        tracer = get_tracer("promptforge.database")
+        with tracer.start_as_current_span("db.get_chat_sessions") as span:
+            span.set_attribute("db.table", "chat_sessions")
+
+            db = get_client()
+            logger.info(f"[db] fetching sessions for user_id={user_id[:8] if user_id else 'None'}...")
+
+            # Build query - use is_ for null check
+            query = db.table("chat_sessions")\
+                .select("*")\
+                .eq("user_id", user_id)\
+                .is_("deleted_at", None)  # Use None instead of "null"
+
+            result = query.order("is_pinned", desc=True)\
+                .order("last_activity", desc=True)\
+                .limit(limit)\
+                .execute()
+
+            logger.info(f"[db] fetched {len(result.data) if result.data else 0} sessions")
+            return result.data or []
     except Exception as e:
         logger.error(f"[db] get_chat_sessions failed: {e}", exc_info=True)
         raise  # Re-raise so API endpoint sees the error
@@ -474,19 +506,23 @@ def get_user_profile(user_id: str) -> Optional[dict]:
             tone = profile.get("preferred_tone")
     """
     try:
-        db = get_client()
-        result = db.table("user_profiles")\
-            .select("*")\
-            .eq("user_id", user_id)\
-            .execute()
-        
-        if result.data and len(result.data) > 0:
-            logger.info(f"[db] fetched profile for user_id={user_id[:8]}...")
-            return result.data[0]
-        else:
-            logger.info(f"[db] no profile found for user_id={user_id[:8]}...")
-            return None
-            
+        tracer = get_tracer("promptforge.database")
+        with tracer.start_as_current_span("db.get_user_profile") as span:
+            span.set_attribute("db.table", "user_profiles")
+
+            db = get_client()
+            result = db.table("user_profiles")\
+                .select("*")\
+                .eq("user_id", user_id)\
+                .execute()
+
+            if result.data and len(result.data) > 0:
+                logger.info(f"[db] fetched profile for user_id={user_id[:8]}...")
+                return result.data[0]
+            else:
+                logger.info(f"[db] no profile found for user_id={user_id[:8]}...")
+                return None
+
     except Exception as e:
         logger.error(f"[db] get_user_profile failed: {e}")
         return None
@@ -526,6 +562,41 @@ def save_user_profile(user_id: str, profile_data: dict) -> bool:
         
     except Exception as e:
         logger.error(f"[db] save_user_profile failed: {e}")
+        return False
+
+
+def update_user_xp(user_id: str, xp_gained: int, new_tier: str) -> bool:
+    """
+    Atomically increment the user's XP and update their loyalty tier.
+    
+    Args:
+        user_id: User UUID
+        xp_gained: Amount of XP to add
+        new_tier: Evaluated tier based on total XP
+    """
+    try:
+        from database import get_client, get_user_profile
+        db = get_client()
+        
+        # Get current profile to safely increment
+        # Note: Proper atomic increments are tricky in Supabase basic REST, 
+        # so we fetch and update. In a heavy production env we'd use a Postgres RPC.
+        profile = get_user_profile(user_id)
+        current_xp = profile.get("xp_total", 0) if profile else 0
+        
+        db.table("user_profiles").upsert(
+            {
+                "user_id": user_id,
+                "xp_total": current_xp + xp_gained,
+                "loyalty_tier": new_tier
+            },
+            on_conflict="user_id"
+        ).execute()
+        
+        logger.info(f"[db] added {xp_gained} XP for user_id={user_id[:8]}... New Total: {current_xp + xp_gained} New Tier: {new_tier}")
+        return True
+    except Exception as e:
+        logger.error(f"[db] update_user_xp failed: {e}")
         return False
 
 

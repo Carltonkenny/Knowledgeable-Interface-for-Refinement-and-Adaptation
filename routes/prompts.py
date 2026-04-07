@@ -21,14 +21,52 @@ from auth import User, get_current_user
 from database import (
     save_request, save_agent_logs, save_conversation,
     get_conversation_history, update_session_activity, get_last_activity,
-    get_conversation_count,
+    get_conversation_count, update_user_xp
 )
 from agents.handlers.unified import kira_unified_handler
 from memory import write_to_langmem, update_user_profile, should_trigger_update
+from xp_engine import calculate_forge_xp, get_tier_from_xp
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Prompts"])
+
+
+def award_forge_xp(
+    user_id: str,
+    domain_analysis: dict,
+    quality_score: dict,
+    user_profile: dict,
+    is_clarification_resolved: bool = False,
+) -> None:
+    """
+    Background task: calculate and award XP for prompt engineering.
+    Wraps xp_engine.calculate_forge_xp and persists to database.
+    """
+    try:
+        from xp_engine import calculate_forge_xp, get_tier_from_xp
+        from database import update_user_xp, save_user_profile
+
+        domain = domain_analysis.get("primary_domain", "general")
+        dominant_domains = user_profile.get("dominant_domains", [])
+        current_xp = user_profile.get("xp_total", 0)
+
+        xp_result = calculate_forge_xp(
+            quality_score=quality_score or {"overall": 3.0},
+            domain=domain,
+            user_dominant_domains=dominant_domains,
+            current_streak=0,  # Streak tracking would need additional state
+            is_clarification_resolved=is_clarification_resolved,
+        )
+
+        earned = xp_result.get("earned_xp", 0)
+        if earned > 0:
+            new_tier = get_tier_from_xp(current_xp + earned)
+            update_user_xp(user_id, earned, new_tier)
+            logger.info(f"[xp] awarded {earned} XP to user {user_id[:8]}... (tier: {new_tier})")
+
+    except Exception as e:
+        logger.error(f"[xp] award_forge_xp failed: {e}")
 
 
 # ── Schemas ───────────────────────────────────
@@ -262,8 +300,18 @@ async def chat(
                 session_result=final_state
             )
             
+            # ═══ BACKGROUND TASK: Award XP ═══
+            background_tasks.add_task(
+                award_forge_xp,
+                user_id=user.user_id,
+                domain_analysis=final_state.get("domain_analysis", {}),
+                quality_score=final_state.get("quality_score", {}),
+                user_profile=user_profile,
+                is_clarification_resolved=False
+            )
+            
             interaction_count = get_conversation_count(req.session_id)
-            if should_trigger_update(interaction_count, last_activity):
+            if should_trigger_update(user.user_id, interaction_count):
                 background_tasks.add_task(
                     update_user_profile,
                     user_id=user.user_id,
@@ -349,12 +397,13 @@ async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks, user:
 
             if intent in ["CONVERSATION", "FOLLOWUP"]:
                 # Word-by-word streaming (natural cadence, ~6x fewer SSE events)
+                yield sse_format("status", {"message": "✨ Kira is responding..."})
                 words = reply.split(" ")
                 for i, word in enumerate(words):
                     chunk = word + (" " if i < len(words) - 1 else "")
                     yield sse_format("kira_message", {"message": chunk, "complete": False})
-                    await asyncio.sleep(0.02)
-            
+                    await asyncio.sleep(0.01)  # Reduced from 0.02 for faster cadence
+
             if intent == "CONVERSATION":
                 save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="conversation", user_id=user.user_id)
                 save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="conversation", user_id=user.user_id)
@@ -521,12 +570,13 @@ async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks, user:
             diff = compute_diff(previous_prompt, improved) if improved else []
             
             # Word-by-word streaming (natural cadence, ~6x fewer SSE events)
+            yield sse_format("status", {"message": "✨ Kira is responding..."})
             words = reply.split(" ")
             for i, word in enumerate(words):
                 chunk = word + (" " if i < len(words) - 1 else "")
                 yield sse_format("kira_message", {"message": chunk, "complete": False})
-                await asyncio.sleep(0.02)
-                    
+                await asyncio.sleep(0.01)  # Reduced from 0.02 for faster cadence
+
             yield sse_format("kira_message", {"message": "", "complete": True})
             
             yield sse_format("result", {
@@ -561,10 +611,22 @@ async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks, user:
                 session_result=final_state
             )
 
+            # ═══ BACKGROUND TASK: Award XP ═══
+            from database import get_user_profile
+            user_prof = get_user_profile(user.user_id) or {}
+            background_tasks.add_task(
+                award_forge_xp,
+                user_id=user.user_id,
+                domain_analysis=final_state.get("domain_analysis", {}),
+                quality_score=final_state.get("quality_score", {}),
+                user_profile=user_prof,
+                is_clarification_resolved=False
+            )
+
             # Trigger profile update if threshold reached
             interaction_count = get_conversation_count(req.session_id)
             last_activity = get_last_activity(user_id=user.user_id, session_id=req.session_id)
-            if should_trigger_update(interaction_count, last_activity):
+            if should_trigger_update(user.user_id, interaction_count):
                 background_tasks.add_task(
                     update_user_profile,
                     user_id=user.user_id,

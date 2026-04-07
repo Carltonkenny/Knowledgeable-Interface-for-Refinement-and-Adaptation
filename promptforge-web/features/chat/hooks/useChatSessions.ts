@@ -107,8 +107,12 @@ export function useChatSessions(token: string) {
     fetchDeletedSessions() // Pre-fetch for seamless Recycle Bin
   }, [token])
 
-  // Create new session
+  // Create new session (with debounce protection)
+  const [isCreating, setIsCreating] = useState(false)
+
   const createNewChat = async () => {
+    if (isCreating) return // Debounce
+    setIsCreating(true)
     try {
       const newSession = await apiCreateSession(token)
       setSessions(prev => [newSession, ...prev])
@@ -117,6 +121,8 @@ export function useChatSessions(token: string) {
     } catch (err) {
       logger.error('Failed to create new chat', { err })
       setError('Failed to start new chat')
+    } finally {
+      setIsCreating(false)
     }
   }
 
@@ -249,6 +255,7 @@ export function useChatSessions(token: string) {
     isRecycleBinLoading,
     error,
     currentSessionId,
+    isCreating,
     createNewChat,
     deleteSession,
     restoreSession,

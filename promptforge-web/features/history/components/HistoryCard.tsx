@@ -1,7 +1,11 @@
+'use client'
+
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Copy, Play, Check, Clock, Edit2, Star } from 'lucide-react'
+import { Copy, Play, Check, Clock, Edit2, Star, ChevronDown, X } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import type { HistoryItem } from '@/lib/api'
+import { logger } from '@/lib/logger'
 
 interface HistoryCardProps {
   item: HistoryItem
@@ -21,7 +25,7 @@ export default function HistoryCard({ item, onUseAgain, isSelected, onToggleSele
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
-      console.error('Failed to copy text: ', err)
+      logger.error('Failed to copy text', { error: err })
     }
   }
 
@@ -49,6 +53,22 @@ export default function HistoryCard({ item, onUseAgain, isSelected, onToggleSele
         detail: { sessionId: item.session_id, title: newTitle } 
       }))
     }
+  }
+
+  const [isEditingDomain, setIsEditingDomain] = useState(false)
+  const disciplines = [
+    'Technical Architecture', 'Full-Stack Development', 'Data Intelligence',
+    'Creative Synthesis', 'Strategic Business', 'Instructional Design',
+    'Persona Engineering', 'Security & Research', 'Legal & Compliance',
+    'Project Management', 'Scientific Computing', 'Meta-Prompting'
+  ]
+
+  const handleUpdateDomain = (e: React.MouseEvent, domain: string) => {
+    e.stopPropagation()
+    setIsEditingDomain(false)
+    window.dispatchEvent(new CustomEvent('update-domain', {
+      detail: { id: item.id, domain: domain }
+    }))
   }
 
   return (
@@ -83,9 +103,52 @@ export default function HistoryCard({ item, onUseAgain, isSelected, onToggleSele
               {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
             </span>
             <span className="w-1 h-1 rounded-full bg-border/30" />
-            <span className="text-[10px] font-mono text-text-dim bg-layer3 px-2 py-0.5 rounded-full border border-border">
-              {item.domain || 'general'}
-            </span>
+            <div className="relative">
+              <span 
+                onClick={(e) => { e.stopPropagation(); setIsEditingDomain(!isEditingDomain); }}
+                className="group/tag flex items-center gap-1.5 text-[10px] uppercase font-mono text-text-dim bg-layer3 px-2.5 py-1 rounded-full border border-border cursor-pointer hover:border-kira/50 transition-all tracking-tight"
+                title="Click to change discipline"
+              >
+                <span className="opacity-80">{item.domain || 'general'}</span>
+                {item.sub_domain && (
+                  <>
+                    <span className="opacity-20 mx-0.5 text-[8px]">›</span>
+                    <span className="font-bold opacity-100">{item.sub_domain}</span>
+                  </>
+                )}
+                <Edit2 size={8} className="opacity-0 group-hover/tag:opacity-100 transition-opacity ml-1" />
+              </span>
+
+              <AnimatePresence>
+                {isEditingDomain && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                    className="absolute z-30 top-full left-0 mt-2 p-2 bg-layer2 border border-kira/30 rounded-xl shadow-2xl min-w-[200px]"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="text-[10px] uppercase tracking-wider font-bold text-text-dim px-2 mb-2 flex justify-between">
+                      Categorize
+                      <X size={10} className="cursor-pointer hover:text-kira" onClick={() => setIsEditingDomain(false)} />
+                    </div>
+                    <div className="grid grid-cols-1 gap-0.5 max-h-[220px] overflow-y-auto no-scrollbar">
+                      {disciplines.map(d => (
+                        <button
+                          key={d}
+                          onClick={(e) => handleUpdateDomain(e, d)}
+                          className={`text-left px-3 py-2 rounded-lg text-[10px] transition-colors ${
+                            item.domain === d ? 'bg-kira/20 text-kira' : 'hover:bg-layer3 text-text-bright'
+                          }`}
+                        >
+                          {d}
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-1">

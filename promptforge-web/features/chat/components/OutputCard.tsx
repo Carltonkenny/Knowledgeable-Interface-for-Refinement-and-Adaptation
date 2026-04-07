@@ -7,7 +7,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { Chip } from '@/components/ui'
 import { History as HistoryIcon } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, formatDuration } from '@/lib/utils'
 import DiffView from './DiffView'
 import QualityScores from './QualityScores'
 import type { ChatResult } from '@/lib/api'
@@ -73,8 +73,8 @@ export default function OutputCard({ promptId, sessionId, result }: OutputCardPr
                 ● {result.memories_applied} memories
               </Chip>
             )}
-            <span className="font-mono text-[10px] text-teal">
-              {result.latency_ms / 1000}s
+            <span className="font-mono text-[10px] text-text-dim">
+              {formatDuration(result.latency_ms)}
             </span>
           </div>
 

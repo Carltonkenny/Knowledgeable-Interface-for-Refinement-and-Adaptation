@@ -74,6 +74,12 @@ export default function ThinkAccordion({ status }: ThinkAccordionProps) {
     0
   )
 
+  // Format latency for display
+  const formatLatency = (ms: number) => {
+    if (ms < 1000) return `${ms}ms`
+    return `${(ms / 1000).toFixed(1)}s`
+  }
+
   // Count completed agents
   const completedCount = Object.values(agentStates).filter(
     (s) => s.status === 'complete'
@@ -100,7 +106,7 @@ export default function ThinkAccordion({ status }: ThinkAccordionProps) {
             : status.state === 'clarification'
             ? 'Analysis Complete ✨'
             : isDone && totalLatency > 0
-            ? `Kira's Analysis (${totalLatency}ms total)`
+            ? `Kira's Analysis (${formatLatency(totalLatency)} total)`
             : 'Kira\'s Analysis'}
         </span>
         {isExpanded ? <ChevronDown className="w-4 h-4 ml-1" /> : <ChevronRight className="w-4 h-4 ml-1" />}
@@ -141,7 +147,7 @@ export default function ThinkAccordion({ status }: ThinkAccordionProps) {
               {isDone && totalLatency > 0 && (
                 <div className="absolute top-3 right-3 flex items-center gap-1 px-2 py-1 rounded-full bg-white/5 border border-white/10">
                   <Clock className="w-3 h-3 text-white/40" />
-                  <span className="text-xs text-white/60 font-mono">{totalLatency}ms</span>
+                  <span className="text-xs text-white/60 font-mono">{formatLatency(totalLatency)}</span>
                 </div>
               )}
 

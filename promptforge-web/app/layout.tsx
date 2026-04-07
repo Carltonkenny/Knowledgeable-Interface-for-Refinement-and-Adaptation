@@ -4,6 +4,7 @@
 
 import '@/styles/globals.css'
 import type { Metadata } from 'next'
+import { Toaster } from 'sonner'
 
 export const metadata: Metadata = {
   title: 'PromptForge — Prompt intelligence for serious work',
@@ -17,7 +18,24 @@ interface RootLayoutProps {
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth">
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        {children}
+        <Toaster 
+          position="bottom-right"
+          duration={4000}
+          closeButton
+          theme="dark"
+          toastOptions={{
+            style: {
+              background: 'var(--layer-2)',
+              border: '1px solid var(--border-subtle)',
+              color: 'var(--text-bright)',
+              fontFamily: 'monospace',
+              fontSize: '13px',
+            },
+          }}
+        />
+      </body>
     </html>
   )
 }

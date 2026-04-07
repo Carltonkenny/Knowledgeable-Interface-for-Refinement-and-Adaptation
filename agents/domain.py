@@ -26,31 +26,62 @@ from utils import parse_json_response
 
 logger = logging.getLogger(__name__)
 
+# ── OpenTelemetry Tracing ────────────────────
+try:
+    from middleware.otel_tracing import get_tracer
+except ImportError:
+    def get_tracer(name="promptforge"):
+        class _NoopSpan:
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+            def set_attribute(self, k, v): pass
+        class _NoopTracer:
+            def start_as_current_span(self, name): return _NoopSpan()
+        return _NoopTracer()
+
+# ═══ DISCIPLINE PERSONA MAPPING ═══════════════
+# This map transforms Kira's voice based on the detected domain.
+DISCIPLINE_PERSONA_MAP = {
+    "technical architecture": "Precision-Guided, High-Resolution, Low-Fluff. Focus on scalability, security, and clear system boundaries. Use structured bullet points.",
+    "full-stack development": "Pragmatic and execution-focused. Prioritize elegant code architecture and modern best practices.",
+    "data intelligence": "Analytical, statistical, and hyper-logical. Focus on data integrity, edge-case math, and clear query structures.",
+    "creative synthesis": "Exploratory, metaphoric, and narrative-driven. Encourage out-of-the-box conceptualization and fluid structures.",
+    "strategic business": "ROI-focused, concise, and executive. Speak in frameworks, KPIs, and actionable outcomes.",
+    "instructional design": "Clear, step-by-step, and empathetic. Focus on readability and preventing cognitive overload for the reader.",
+    "persona engineering": "Psychological and behavioral. Focus on underlying motivations, tone of voice, and character consistency.",
+    "security & research": "Paranoid, loophole-focused, and rigorous. Prioritize threat modeling, strict constraints, and edge-case testing.",
+    "legal & compliance": "Meticulous, risk-averse, and highly structured. Focus on exact definitions, edge cases, and strict liability constraints.",
+    "project management": "Organized, timeline-focused, and dependency-aware. Priority on unblocking resources and clear milestones.",
+    "scientific computing": "Rigorous, peer-review oriented, and objective. Focus on methodological soundness and variables.",
+    "meta-prompting": "Recursive, abstract, and highly analytical. Optimize for LLM attention decay, chain-of-thought, and few-shot efficiency."
+}
+
 # ═══ SYSTEM PROMPT ════════════════════════════
 
-SYSTEM_PROMPT = """You are an expert Domain Identifier who classifies requests with precision.
+SYSTEM_PROMPT = """You are a High-Fidelity Domain Architect. Your task is to classify engineering requests into a professional Discipline Taxonomy.
 
-Go beyond obvious labels — identify the specific craft, discipline, and patterns that apply.
+CHOOSE THE BEST FIT FROM THIS TAXONOMY:
+1.  Technical Architecture (Distributed systems, API Design, Cloud Infra)
+2.  Full-Stack Development (React, Next.js, Backend, Frameworks)
+3.  Data Intelligence (DS/ML, SQL, Data Engineering, Analytics)
+4.  Creative Synthesis (Copywriting, Brand Storytelling, Prose)
+5.  Strategic Business (Product GTM, SaaS Strategy, KPI Frameworks)
+6.  Instructional Design (SOPs, Tutorials, Technical Documentation)
+7.  Persona Engineering (Behavior simulation, Role-assignment)
+8.  Security & Research (Vulnerability analysis, Pentesting, Audit)
+9.  Legal & Compliance (GDPR, SOX, Contract logic)
+10. Project Management (Agile, Resource Allocation, Timelines)
+11. Scientific Computing (Bio-tech, Physics, Mathematical modeling)
+12. Meta-Prompting (System prompts, prompt chain optimization)
 
 Always respond with ONLY this JSON:
 {
-  "primary_domain": "precise field name",
-  "sub_domain": "specific discipline within that field",
-  "relevant_patterns": ["the prompt engineering patterns that will make this better"],
+  "primary_domain": "One of the 12 categories above",
+  "sub_domain": "A specific discipline (e.g. 'PostgreSQL Optimizer')",
+  "relevant_patterns": ["Patterns like role_assignment, chain_of_thought, etc."],
   "complexity": "simple or moderate or complex",
   "confidence": 0.0-1.0
 }
-
-Relevant patterns to consider:
-- role_assignment: give the AI a specific expert persona
-- output_format: specify exactly how the response should look
-- constraints: add quality guardrails
-- examples: include what good looks like
-- chain_of_thought: ask for reasoning steps
-- tone_matching: match the creative/technical register
-
-Example:
-- "sci-fi mystery story" → primary_domain: creative writing, patterns: [role_assignment, tone_matching, output_format]
 """
 
 
@@ -86,36 +117,52 @@ def domain_agent(state: AgentState) -> Dict[str, Any]:
     
     # ═══ RUN DOMAIN ANALYSIS ═══
     try:
-        llm = get_fast_llm()
-        
-        # Support both 'raw_prompt' and 'message' field names
-        prompt = state.get('raw_prompt', state.get('message', ''))
-        
-        # Extract dominant domains from profile for context
-        dominant_domains = user_profile.get("dominant_domains", [])
-        domains_context = f"User's past domains: {', '.join(dominant_domains)}" if dominant_domains else "No domain history available"
-        
-        messages = [
-            SystemMessage(content=SYSTEM_PROMPT),
-            HumanMessage(content=f"{domains_context}\n\nIdentify the domain of: {prompt}")
-        ]
-        
-        response = llm.invoke(messages)
-        result = parse_json_response(response.content, agent_name="domain")
-        
-        latency_ms = int((time.time() - start_time) * 1000)
-        result["latency_ms"] = latency_ms
-        logger.info(f"[domain] domain={result.get('primary_domain', 'unknown')} confidence={result.get('confidence', 0):.2f} latency={latency_ms}ms")
-        
-        return {
-            "domain_analysis": result,
-            "was_skipped": False,
-            "skip_reason": None,
-            "latency_ms": latency_ms,
-            "agents_run": ["domain"],
-            "agent_latencies": {"domain": latency_ms}
-        }
-        
+        tracer = get_tracer("promptforge.agent")
+        with tracer.start_as_current_span("agent.domain") as span:
+            span.set_attribute("agent.skip_checked", True)
+
+            llm = get_fast_llm()
+
+            # Support both 'raw_prompt' and 'message' field names
+            prompt = state.get('raw_prompt', state.get('message', ''))
+
+            # Extract dominant domains from profile for context
+            dominant_domains = user_profile.get("dominant_domains", [])
+            domains_context = f"User's past domains: {', '.join(dominant_domains)}" if dominant_domains else "No domain history available"
+
+            messages = [
+                SystemMessage(content=SYSTEM_PROMPT),
+                HumanMessage(content=f"{domains_context}\n\nIdentify the domain of: {prompt}")
+            ]
+
+            response = llm.invoke(
+                messages,
+                config={
+                    "tags": ["domain_agent", "swarm"],
+                    "metadata": {"agent": "domain"},
+                },
+            )
+            result = parse_json_response(response.content, agent_name="domain")
+
+            latency_ms = int((time.time() - start_time) * 1000)
+            result["latency_ms"] = latency_ms
+
+            # Inject the Persona Overlay based on primary_domain
+            primary_domain = result.get('primary_domain', 'general').lower()
+            persona_overlay = DISCIPLINE_PERSONA_MAP.get(primary_domain, "")
+            result["persona_overlay"] = persona_overlay
+
+            logger.info(f"[domain] domain={primary_domain} confidence={result.get('confidence', 0):.2f} latency={latency_ms}ms")
+
+            return {
+                "domain_analysis": result,
+                "was_skipped": False,
+                "skip_reason": None,
+                "latency_ms": latency_ms,
+                "agents_run": ["domain"],
+                "agent_latencies": {"domain": latency_ms}
+            }
+
     except Exception as e:
         logger.error(f"[domain] failed: {e}", exc_info=True)
         latency_ms = int((time.time() - start_time) * 1000)
@@ -144,7 +191,7 @@ def validate_domain_output(result: Dict[str, Any]) -> bool:
     Returns:
         True if passes quality gates, False otherwise
     """
-    generic_domains = ["tech", "software", "coding", "programming", "general"]
+    generic_domains = ["general", "unknown", "other", "generic", "chat", "misc"]
     
     # Gate 1: Domain is specific
     primary_domain = result.get("primary_domain", "").lower()

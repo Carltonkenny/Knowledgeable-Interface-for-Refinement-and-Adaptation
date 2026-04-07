@@ -5,6 +5,7 @@ import type { UsageStats as UsageStatsType } from '@/lib/api'
 import { signOut } from '@/lib/auth'
 import { useRouter } from 'next/navigation'
 import { ROUTES } from '@/lib/constants'
+import { logger } from '@/lib/logger'
 
 interface UsageStatsProps {
   stats: UsageStatsType | null
@@ -19,7 +20,7 @@ export default function UsageStats({ stats, isLoading }: UsageStatsProps) {
       await signOut()
       router.push(ROUTES.LOGIN)
     } catch (err) {
-      console.error('Logout failed:', err)
+      logger.error('Logout failed', { error: err })
     }
   }
 

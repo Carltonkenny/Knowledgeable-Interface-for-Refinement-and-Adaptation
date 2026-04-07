@@ -1,5 +1,6 @@
 // features/history/components/VersionHistory.tsx
 'use client'
+import { logger } from '@/lib/logger'
 
 import { useState, useEffect } from 'react'
 import { apiGetVersionHistory, apiRollbackVersion, type VersionData } from '@/lib/api'
@@ -34,7 +35,7 @@ export default function VersionHistory({
         setVersions(data.versions.reverse()) // Show latest first
         setCurrentVersionNumber(data.current_version)
       } catch (err) {
-        console.error('Failed to load version history', err)
+        logger.error('Failed to load version history', { error: err })
       } finally {
         setIsLoading(false)
       }

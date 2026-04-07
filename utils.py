@@ -31,6 +31,22 @@ from dotenv import load_dotenv
 load_dotenv()
 logger = logging.getLogger(__name__)
 
+# ── OpenTelemetry Tracing ────────────────────
+try:
+    from middleware.otel_tracing import get_tracer
+    _otel_available = True
+except ImportError:
+    _otel_available = False
+    def get_tracer(name="promptforge"):
+        """Fallback no-op tracer when OTel not installed."""
+        class _NoopSpan:
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+            def set_attribute(self, k, v): pass
+        class _NoopTracer:
+            def start_as_current_span(self, name): return _NoopSpan()
+        return _NoopTracer()
+
 
 # ═══ Redis Client ════════════════════════════
 
@@ -132,16 +148,26 @@ def get_cached_result(prompt: str, user_id: Optional[str] = None) -> Optional[Di
         return None
     
     try:
-        key = f"prompt:{get_cache_key(prompt, user_id)}"
-        cached = client.get(key)
-        
-        if cached:
-            logger.info(f"[cache] HIT for prompt: '{prompt[:50]}' user={user_id[:8] if user_id else 'anon'}")
-            return json.loads(cached)
-        else:
-            logger.debug(f"[cache] MISS for prompt: '{prompt[:50]}' user={user_id[:8] if user_id else 'anon'}")
-            return None
-    
+        tracer = get_tracer("promptforge.cache")
+        with tracer.start_as_current_span("cache.get_result") as span:
+            client = get_redis_client()
+
+            if not client:
+                logger.debug("[cache] Redis unavailable — skipping cache check")
+                return None
+
+            key = f"prompt:{get_cache_key(prompt, user_id)}"
+            cached = client.get(key)
+
+            if cached:
+                span.set_attribute("cache.hit", True)
+                logger.info(f"[cache] HIT for prompt: '{prompt[:50]}' user={user_id[:8] if user_id else 'anon'}")
+                return json.loads(cached)
+            else:
+                span.set_attribute("cache.hit", False)
+                logger.debug(f"[cache] MISS for prompt: '{prompt[:50]}' user={user_id[:8] if user_id else 'anon'}")
+                return None
+
     except redis.ConnectionError as e:
         logger.warning(f"[cache] Redis connection error: {e}")
         return None
@@ -175,18 +201,27 @@ def set_cached_result(prompt: str, result: Dict[str, Any], user_id: Optional[str
         return
     
     try:
-        key = f"prompt:{get_cache_key(prompt, user_id)}"
-        
-        # Store with 1-hour expiry (3600 seconds)
-        client.setex(key, 3600, json.dumps(result))
-        
-        logger.info(f"[cache] STORED result for prompt: '{prompt[:50]}' user={user_id[:8] if user_id else 'anon'} (expires in 1h)")
-        
-        # Track cache size for monitoring
-        cache_size = client.dbsize()
-        if cache_size > 100:
-            logger.warning(f"[cache] size={cache_size} — consider increasing capacity or reducing TTL")
-    
+        tracer = get_tracer("promptforge.cache")
+        with tracer.start_as_current_span("cache.set_result") as span:
+            client = get_redis_client()
+
+            if not client:
+                logger.debug("[cache] Redis unavailable — skipping cache write")
+                return
+
+            key = f"prompt:{get_cache_key(prompt, user_id)}"
+
+            # Store with 1-hour expiry (3600 seconds)
+            client.setex(key, 3600, json.dumps(result))
+            span.set_attribute("cache.ttl_seconds", 3600)
+
+            logger.info(f"[cache] STORED result for prompt: '{prompt[:50]}' user={user_id[:8] if user_id else 'anon'} (expires in 1h)")
+
+            # Track cache size for monitoring
+            cache_size = client.dbsize()
+            if cache_size > 100:
+                logger.warning(f"[cache] size={cache_size} — consider increasing capacity or reducing TTL")
+
     except redis.ConnectionError as e:
         logger.warning(f"[cache] Redis connection error on write: {e}")
     except (TypeError, json.JSONDecodeError) as e:

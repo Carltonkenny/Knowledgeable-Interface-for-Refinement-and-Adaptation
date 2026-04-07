@@ -38,17 +38,32 @@ sentry_sdk.init(
     send_default_pii=False,
 )
 
+import logging
+logger = logging.getLogger(__name__)
+
+# ── LANGSMITH INITIALIZATION ──────────────────────────────
+# LangGraph native integration: traces every LLM call automatically
+# Env vars: LANGCHAIN_TRACING_V2, LANGCHAIN_API_KEY, LANGCHAIN_PROJECT
+langsmith_enabled = os.getenv("LANGCHAIN_TRACING_V2", "false").lower() == "true"
+if langsmith_enabled:
+    logger.info(f"[langsmith] enabled — project: {os.getenv('LANGCHAIN_PROJECT', 'default')}")
+else:
+    logger.info("[langsmith] disabled — set LANGCHAIN_TRACING_V2=true to enable")
+
+# ── OPENTELEMETRY INITIALIZATION ───────────────────────────
+if os.getenv("OTEL_ENABLED", "false").lower() == "true":
+    from middleware.otel_tracing import init_otel_tracing
+    init_otel_tracing(app_name="promptforge-api")
+    logger.info("[otel] OpenTelemetry initialized")
+
 # ── Standard Imports ──────────────────────────
 
-import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from middleware.rate_limiter import RateLimiterMiddleware
 from middleware.metrics import MetricsMiddleware
 from routes import ALL_ROUTERS
-
-logger = logging.getLogger(__name__)
 
 
 # ── App Factory ───────────────────────────────
@@ -95,6 +110,12 @@ logger.info(f"[api] Registered {len(ALL_ROUTERS)} route modules")
 
 from routes.prompts import ChatRequest, ChatResponse, RefineRequest, RefineResponse
 from service import compute_diff as _compute_diff, sse_format as _sse
+
+
+# ── LangFuse Shutdown Hook ──────────────────────────────
+from middleware.langfuse_instrumentation import shutdown_langfuse
+import atexit
+atexit.register(shutdown_langfuse)
 
 
 # ── Test Route for Sentry (Development only) ─

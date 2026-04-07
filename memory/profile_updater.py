@@ -119,6 +119,22 @@ def update_user_profile(
         else:
             current_rate = max(0.0, current_rate - 0.05)
         
+        # ═══ DOMAIN CONFIDENCE TRACKING ═══
+        # Tracks how consistently the user stays in the same domain.
+        # When confidence > 0.85, the domain agent skips (saves ~200ms).
+        # When user switches domains, confidence drops and domain agent runs again.
+        current_domain = session_data.get("domain_analysis", {}).get("primary_domain", "general")
+        existing_confidence = existing_profile.get("domain_confidence", 0.5)  # Start at 0.5 for new users
+
+        if current_domain and current_domain in dominant_domains:
+            # User stayed in known domain → increase confidence (+0.1 per update)
+            # Takes ~4 updates to reach 0.85 skip threshold
+            new_confidence = min(1.0, existing_confidence + 0.1)
+        else:
+            # User drifted to new or unknown domain → decrease confidence (-0.15)
+            # Domain agent will run again to detect the drift
+            new_confidence = max(0.0, existing_confidence - 0.15)
+
         # ═══ BUILD UPDATED PROFILE ═══
         updated_profile = {
             "dominant_domains": dominant_domains,
@@ -127,16 +143,28 @@ def update_user_profile(
             "preferred_tone": existing_profile.get("preferred_tone", "direct"),
             "notable_patterns": existing_profile.get("notable_patterns", []),
             "total_sessions": existing_profile.get("total_sessions", 0) + 1,
+            "domain_confidence": new_confidence,  # NEW: Smart skipping for domain agent
         }
         
         # ═══ SAVE TO DATABASE ═══
         success = save_user_profile(user_id, updated_profile)
-        
+
         if success:
             logger.info(f"[profile] updated for user {user_id[:8]}... domains={dominant_domains}")
+            
+            # ═══ PHASE 4: TRACK SYNC TIMESTAMP ═══
+            # Update last_profile_sync for UI transparency
+            try:
+                db = get_client()
+                db.table("user_profiles").update({
+                    "last_profile_sync": datetime.now(timezone.utc).isoformat()
+                }).eq("user_id", user_id).execute()
+                logger.debug(f"[profile] last_profile_sync updated for user {user_id[:8]}...")
+            except Exception as e:
+                logger.debug(f"[profile] failed to update last_profile_sync: {e}")
         else:
             logger.warning(f"[profile] save failed for user {user_id[:8]}...")
-        
+
         return success
         
     except Exception as e:
@@ -148,8 +176,8 @@ def update_user_profile(
 # ═══ HELPER: CHECK IF UPDATE NEEDED ══════════
 
 def should_trigger_update(
-    interaction_count: int,
-    last_activity: Optional[datetime] = None
+    user_id: str,  # PHASE 3: Added user_id for cross-session check
+    interaction_count: int
 ) -> bool:
     """
     Check if profile update should be triggered.
@@ -157,25 +185,60 @@ def should_trigger_update(
     Call this at the end of each session to decide whether
     to add profile update to background tasks.
 
+    PHASE 3 UPDATE: Now checks ALL user sessions for inactivity,
+    not just the current session. This prevents premature updates
+    when users have multiple tabs open.
+
     Args:
+        user_id: User UUID from JWT (for cross-session query)
         interaction_count: Total interactions in session
-        last_activity: Last activity timestamp
 
     Returns:
         True if update should be triggered, False otherwise
+
+    Example:
+        >>> should_trigger_update("user-uuid", 5)
+        True  # Every 5th interaction
+        >>> should_trigger_update("user-uuid", 3)
+        False  # No trigger if user active in other tabs
     """
     # Trigger 1: Every 5th interaction
     if interaction_count % INTERACTION_THRESHOLD == 0:
+        logger.info(f"[profile] trigger: every {INTERACTION_THRESHOLD}th interaction ({interaction_count})")
         return True
 
-    # Trigger 2: 30 minutes inactivity
-    if last_activity:
-        # Use timezone-aware datetime
-        now = datetime.now(timezone.utc)
-        # Handle both timezone-aware and naive datetimes
-        if last_activity.tzinfo is None:
-            last_activity = last_activity.replace(tzinfo=timezone.utc)
-        if now - last_activity > timedelta(minutes=INACTIVITY_MINUTES):
-            return True
-
+    # Trigger 2: Check ALL sessions for inactivity (PHASE 3)
+    db = get_client()
+    sessions = db.table("chat_sessions").select("last_activity").eq("user_id", user_id).execute()
+    
+    if not sessions.data:
+        return False
+    
+    # Find MOST RECENT activity across ALL sessions
+    last_activities = []
+    for s in sessions.data:
+        last_activity_str = s.get("last_activity")
+        if last_activity_str:
+            try:
+                last_activity = datetime.fromisoformat(last_activity_str.replace('Z', '+00:00'))
+                if last_activity.tzinfo is None:
+                    last_activity = last_activity.replace(tzinfo=timezone.utc)
+                last_activities.append(last_activity)
+            except Exception as e:
+                logger.debug(f"[profile] failed to parse last_activity: {e}")
+    
+    if not last_activities:
+        return False
+    
+    # Get the most recent activity across all sessions
+    most_recent = max(last_activities)
+    now = datetime.now(timezone.utc)
+    
+    inactivity = now - most_recent
+    if inactivity > timedelta(minutes=INACTIVITY_MINUTES):
+        logger.info(f"[profile] trigger: {INACTIVITY_MINUTES}min inactivity (cross-session check)")
+        return True
+    
+    # User is still active in at least one tab
+    logger.debug(f"[profile] no trigger: user active {inactivity.total_seconds()/60:.1f}min ago in another tab")
     return False

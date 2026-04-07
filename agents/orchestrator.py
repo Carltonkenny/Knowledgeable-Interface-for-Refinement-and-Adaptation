@@ -34,10 +34,24 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from config import get_fast_llm
 from memory.langmem import query_langmem
 from agents.prompts.orchestrator import build_orchestrator_prompt
+from agents.domain import DISCIPLINE_PERSONA_MAP
 from dotenv import load_dotenv
 
 load_dotenv()
 logger = logging.getLogger(__name__)
+
+# ── OpenTelemetry Tracing ────────────────────
+try:
+    from middleware.otel_tracing import get_tracer
+except ImportError:
+    def get_tracer(name="promptforge"):
+        class _NoopSpan:
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+            def set_attribute(self, k, v): pass
+        class _NoopTracer:
+            def start_as_current_span(self, name): return _NoopSpan()
+        return _NoopTracer()
 
 # ═══ KIRA CHARACTER CONSTANTS — NEVER CHANGE ═══
 
@@ -97,10 +111,11 @@ ROUTING RULES (apply in order):
 4. Otherwise → SWARM (select agents based on confidence)
 
 AGENT SELECTION LOGIC:
-- Always run "intent" unless message is crystal clear
-- Skip "context" if no session history (conversation_history is empty)
-- Skip "domain" if user profile has domain at >85% confidence
-- "prompt_engineer" ALWAYS runs (never skip) — but handled in workflow, not here
+- Always run "intent" unless message is crystal clear.
+- "context" ALWAYS runs — it extracts from the current message alone when no history exists.
+- "domain" MUST run even for CONVERSATION and FOLLOWUP to ensure User Identity tracking (unless it's a simple greeting like "Hi").
+- Skip "domain" ONLY if user_profile.domain_confidence > 0.95 and the topic is clearly identical.
+- "prompt_engineer" ALWAYS runs during SWARM mode.
 
 TONE ADAPTATION:
 - If user_profile.preferred_tone = "casual" → use "casual"
@@ -262,7 +277,36 @@ def orchestrator_node(state: Dict[str, Any]) -> Dict[str, Any]:
         Exception: If LLM call fails after retries (fallback to CONVERSATION)
     """
     start_time = time.time()
-    
+
+    try:
+        tracer = get_tracer("promptforge.agent")
+        with tracer.start_as_current_span("agent.orchestrator") as span:
+            span.set_attribute("orchestrator.message_length", len(state.get("message", "")))
+
+            return _orchestrator_impl(state, start_time, span)
+
+    except Exception as e:
+        logger.error(f"[kira] orchestrator failed: {e}", exc_info=True)
+        # Hard fallback — treat as CONVERSATION
+        return {
+            "orchestrator_decision": {
+                "user_facing_message": "I'm here to help. What would you like to improve?",
+                "proceed_with_swarm": False,
+                "agents_to_run": [],
+                "clarification_needed": False,
+                "clarification_question": None,
+                "skip_reasons": {"orchestrator": str(e)},
+                "tone_used": "direct",
+                "profile_applied": False,
+            },
+            "user_facing_message": "I'm here to help. What would you like to improve?",
+            "proceed_with_swarm": False,
+            "latency_ms": 0,
+        }
+
+
+def _orchestrator_impl(state: Dict[str, Any], start_time: float, span=None) -> Dict[str, Any]:
+    """Internal orchestrator implementation, called within OTel span."""
     try:
         llm = get_fast_llm()
         
@@ -302,10 +346,10 @@ def orchestrator_node(state: Dict[str, Any]) -> Dict[str, Any]:
                 "orchestrator_decision": {
                     "user_facing_message": "Hey! What would you like to improve today?",
                     "proceed_with_swarm": False,
-                    "agents_to_run": [],
+                    "agents_to_run": [], # Greetings don't need domain tracking
                     "clarification_needed": False,
                     "clarification_question": None,
-                    "skip_reasons": {},
+                    "skip_reasons": {"domain": "greeting"},
                     "tone_used": "direct",
                     "profile_applied": False,
                 },
@@ -323,7 +367,7 @@ def orchestrator_node(state: Dict[str, Any]) -> Dict[str, Any]:
                 "orchestrator_decision": {
                     "user_facing_message": "Got it — refining now.",
                     "proceed_with_swarm": True,
-                    "agents_to_run": ["intent"],
+                    "agents_to_run": ["intent", "domain"], # Run domain to keep identity updated
                     "clarification_needed": False,
                     "clarification_question": None,
                     "skip_reasons": {},
@@ -356,6 +400,12 @@ def orchestrator_node(state: Dict[str, Any]) -> Dict[str, Any]:
         ]) if conversation_history else "No previous conversation"
 
         profile_context = f"User's preferred tone: {user_profile.get('preferred_tone', 'not set')}" if user_profile else "No profile available"
+        
+        if user_profile and user_profile.get('dominant_domains'):
+            top_domain = user_profile['dominant_domains'][0]
+            persona = DISCIPLINE_PERSONA_MAP.get(top_domain.lower(), "")
+            if persona:
+                profile_context += f"\nDomain Persona Overlay (Adopt this Tone): {persona}"
 
         # ═══ FR-2: MEMORY CONTENT FOR KIRA (SPEC V1) ═══
         # Show Kira actual memory content, not just count
@@ -408,10 +458,17 @@ Analysis:
 Decide routing and return JSON."""
 
         # ═══ CALL LLM ═══
-        response = llm.invoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=context)
-        ])
+        response = llm.invoke(
+            [SystemMessage(content=system_prompt), HumanMessage(content=context)],
+            config={
+                "tags": ["orchestrator", "kira", "routing_decision"],
+                "metadata": {
+                    "agent": "kira_orchestrator",
+                    "message_length": len(message),
+                    "ambiguity_score": ambiguity,
+                },
+            },
+        )
         
         # ═══ PARSE JSON RESPONSE ═══
         try:
@@ -488,25 +545,10 @@ Decide routing and return JSON."""
             "memories_applied": len(langmem_context) if langmem_context else 0,
             "user_id": langmem_user_id, # Ensure it persists
         }
-        
+
     except Exception as e:
-        logger.error(f"[kira] orchestrator failed: {e}", exc_info=True)
-        # Hard fallback — treat as CONVERSATION
-        return {
-            "orchestrator_decision": {
-                "user_facing_message": "I'm here to help. What would you like to improve?",
-                "proceed_with_swarm": False,
-                "agents_to_run": [],
-                "clarification_needed": False,
-                "clarification_question": None,
-                "skip_reasons": {"orchestrator": str(e)},
-                "tone_used": "direct",
-                "profile_applied": False,
-            },
-            "user_facing_message": "I'm here to help. What would you like to improve?",
-            "proceed_with_swarm": False,
-            "latency_ms": 0,
-        }
+        logger.error(f"[kira] orchestrator impl failed: {e}", exc_info=True)
+        raise  # Re-raise to orchestrator_node's except for fallback handling
 
 
 __all__ = [

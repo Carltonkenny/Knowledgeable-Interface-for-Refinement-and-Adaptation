@@ -67,6 +67,7 @@ export default function ChatContainer({
     clarificationOptions,
     historyLoadError,
     historyLoading,
+    queuedMessage,
     send,
     retry,
     clearError,
@@ -206,6 +207,13 @@ export default function ChatContainer({
 
       {/* Input bar */}
       <div className="p-4 border-t border-border-subtle">
+        {/* Queued message indicator */}
+        {queuedMessage && (
+          <div className="mb-2 px-3 py-1.5 rounded-lg bg-kira/10 border border-kira/30 text-xs text-kira flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-kira animate-pulse" />
+            Message queued — will send after Kira finishes
+          </div>
+        )}
         <InputBar
           value={input}
           onChange={setInput}
@@ -214,7 +222,15 @@ export default function ChatContainer({
           onVoice={handleVoice}
           disabled={isStreaming || isRateLimited}
           personaDotColor={personaDotColor}
-          placeholder={clarificationPending ? "Reply to Kira..." : "Type your prompt..."}
+          placeholder={
+            queuedMessage
+              ? "Message queued..."
+              : isStreaming
+              ? "Kira is thinking..."
+              : clarificationPending
+              ? "Reply to Kira..."
+              : "Type your prompt..."
+          }
           isRecording={isRecording}
           attachment={attachment}
           onRemoveAttachment={clearAttachment}

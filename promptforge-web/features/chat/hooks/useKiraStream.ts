@@ -30,6 +30,7 @@ interface UseKiraStreamReturn {
   clarificationOptions: string[]
   historyLoadError: string | null  // Separate error for history loading
   historyLoading: boolean  // Whether history is currently loading
+  queuedMessage: { message: string; attachment?: File } | null  // Message waiting to be sent
   send: (message: string, attachment?: File) => void
   retry: () => void
   clearError: () => void
@@ -60,6 +61,7 @@ export function useKiraStream({
   const [clarificationPending, setClarificationPending] = useState(false)
   const [clarificationOptions, setClarificationOptions] = useState<string[]>([])
   const [historyLoadError, setHistoryLoadError] = useState<string | null>(null)
+  const [queuedMessage, setQueuedMessage] = useState<{ message: string; attachment?: File } | null>(null)
 
   // Store last message for retry
   const lastMessageRef = useRef<{ message: string; attachment?: File } | null>(null)
@@ -219,7 +221,13 @@ export function useKiraStream({
    */
   const send = useCallback(
     async (message: string, attachment?: File) => {
-      if (isStreaming || isRateLimited) return
+      // Queue message if already streaming
+      if (isStreaming) {
+        setQueuedMessage({ message, attachment })
+        return
+      }
+
+      if (isRateLimited) return
 
       // Store for retry
       lastMessageRef.current = { message, attachment }
@@ -444,9 +452,17 @@ export function useKiraStream({
           state: prev.state === 'complete' ? 'complete' : 'idle',
           isStreaming: false,
         }))
+
+        // Process queued message after current completes
+        if (queuedMessage) {
+          const { message, attachment } = queuedMessage
+          setQueuedMessage(null)
+          // Small delay to ensure state is fully reset
+          setTimeout(() => send(message, attachment), 100)
+        }
       }
     },
-    [sessionId, token, apiUrl, isRateLimited]  // Removed isStreaming from deps (causes re-creation)
+    [sessionId, token, apiUrl, isRateLimited, isStreaming, queuedMessage]
   )
 
   /**
@@ -534,6 +550,7 @@ export function useKiraStream({
     clarificationOptions,
     historyLoadError,
     historyLoading,
+    queuedMessage,
     send,
     retry,
     clearError,

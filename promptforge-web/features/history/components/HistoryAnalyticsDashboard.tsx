@@ -61,7 +61,7 @@ export default function HistoryAnalyticsDashboard({
     .map(([name, data]) => {
       const maxCount = Math.max(...Object.values(currentAnalytics.domain_distribution).map(d => d.count), 1)
       return {
-        name: name.length > 15 ? name.substring(0, 15) + '...' : name,
+        name: name,
         full_name: name,
         volume: (data.count / maxCount) * 100,
         skill: (data.avg_quality / 5) * 100,
@@ -71,21 +71,8 @@ export default function HistoryAnalyticsDashboard({
       }
     })
 
-  // Prepare chart data: Inject placeholders if 1 or 2 domains so the single domain heavily bulges out
+  // Prepare chart data: Used domains only
   const chartDomainData = [...rawDomainData]
-  
-  if (chartDomainData.length === 1) {
-    chartDomainData.push(
-      { name: 'Creative', full_name: 'Creative', volume: 15, skill: 15, raw_count: 0, raw_quality: 0, isReal: false },
-      { name: 'Technical', full_name: 'Technical', volume: 15, skill: 15, raw_count: 0, raw_quality: 0, isReal: false },
-      { name: 'Business', full_name: 'Business', volume: 15, skill: 15, raw_count: 0, raw_quality: 0, isReal: false }
-    )
-  } else if (chartDomainData.length === 2) {
-    chartDomainData.push(
-      { name: 'Creative', full_name: 'Creative', volume: 15, skill: 15, raw_count: 0, raw_quality: 0, isReal: false },
-      { name: 'General', full_name: 'General', volume: 15, skill: 15, raw_count: 0, raw_quality: 0, isReal: false }
-    )
-  }
 
   return (
     <div className="space-y-6 mb-10 relative">

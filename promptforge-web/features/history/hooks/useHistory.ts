@@ -2,10 +2,11 @@
 // Fetch + group history by date
 
 'use client'
+import { logger } from '@/lib/logger'
 
 import { useState, useEffect } from 'react'
-import { apiHistory, apiHistorySearch, apiToggleFavorite } from '@/lib/api'
-import type { HistoryItem } from '@/lib/api'
+import { apiHistory, apiHistorySearch, apiToggleFavorite, apiUpdatePromptDomain } from '@/lib/api'
+import type { HistoryItem, SearchQuery } from '@/lib/api'
 
 interface UseHistoryProps {
   token: string
@@ -136,22 +137,38 @@ export function useHistory({ token }: UseHistoryProps) {
   useEffect(() => {
     const handleToggleFavorite = async (e: any) => {
       const { id, is_favorite } = e.detail
-      
-      // Optimistic update
       setItems(prev => prev.map(item => item.id === id ? { ...item, is_favorite } : item))
-      
       try {
         await apiToggleFavorite(token, id, is_favorite)
       } catch (err) {
-        console.error('Failed to toggle favorite', err)
-        // Revert
+        logger.error('Failed to toggle favorite', { error: err })
         setItems(prev => prev.map(item => item.id === id ? { ...item, is_favorite: !is_favorite } : item))
+      }
+    }
+
+    const handleUpdateDomain = async (e: any) => {
+      const { id, domain } = e.detail
+      const originalItem = items.find(i => i.id === id)
+      
+      setItems(prev => prev.map(item => item.id === id ? { ...item, domain } : item))
+      
+      try {
+        await apiUpdatePromptDomain(token, id, domain)
+      } catch (err) {
+        logger.error('Failed to update domain', { error: err })
+        if (originalItem) {
+          setItems(prev => prev.map(item => item.id === id ? { ...item, domain: originalItem.domain } : item))
+        }
       }
     }
     
     window.addEventListener('toggle-favorite', handleToggleFavorite)
-    return () => window.removeEventListener('toggle-favorite', handleToggleFavorite)
-  }, [token])
+    window.addEventListener('update-domain', handleUpdateDomain)
+    return () => {
+      window.removeEventListener('toggle-favorite', handleToggleFavorite)
+      window.removeEventListener('update-domain', handleUpdateDomain)
+    }
+  }, [token, items])
 
   // Group by date - updated for "Today", "Yesterday" etc later in UI
   const groupedByDate = (items || []).reduce((acc, item) => {

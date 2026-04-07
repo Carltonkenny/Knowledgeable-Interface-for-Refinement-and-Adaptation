@@ -117,11 +117,13 @@ async def search_history(
             
             # Map memory objects to unified SearchResult shape
             for m in memories:
+                analysis = m.get("domain_analysis") or {}
                 results.append({
                     "id": m.get("id"),
                     "raw_prompt": m.get("content", ""),
                     "improved_prompt": m.get("improved_content", ""),
                     "domain": m.get("domain", "general"),
+                    "sub_domain": m.get("sub_domain") or analysis.get("sub_domain"),
                     "quality_score": m.get("quality_score", {}),
                     "created_at": m.get("created_at"),
                     "search_score": m.get("similarity_score", 0),
@@ -153,13 +155,15 @@ async def search_history(
             
             db_res = query_obj.execute()
             for r in (db_res.data or []):
+                analysis = r.get("domain_analysis") or {}
                 # Map DB row to unified SearchResult shape
                 results.append({
                     "id": r.get("id"),
                     "raw_prompt": r.get("raw_prompt", ""),
                     "improved_prompt": r.get("improved_prompt", ""),
                     # FIX: Handle None domain_analysis safely
-                    "domain": (r.get("domain_analysis") or {}).get("primary_domain", "general"),
+                    "domain": analysis.get("primary_domain", "general"),
+                    "sub_domain": analysis.get("sub_domain"),
                     "quality_score": r.get("quality_score", {}),
                     "created_at": r.get("created_at"),
                     "search_score": 1.0,

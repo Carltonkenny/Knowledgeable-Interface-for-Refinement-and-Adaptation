@@ -125,11 +125,12 @@ async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks, user:
 
             if intent in ["CONVERSATION", "FOLLOWUP"]:
                 # Word-by-word streaming (natural cadence, ~6x fewer SSE events)
+                yield sse_format("status", {"message": "✨ Kira is responding..."})
                 words = reply.split(" ")
                 for i, word in enumerate(words):
                     chunk = word + (" " if i < len(words) - 1 else "")
                     yield sse_format("kira_message", {"message": chunk, "complete": False})
-                    await asyncio.sleep(0.02)
+                    await asyncio.sleep(0.01)  # Reduced from 0.02 for faster cadence
 
             if intent == "CONVERSATION":
                 save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="conversation", user_id=user.user_id)
@@ -298,13 +299,31 @@ async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks, user:
             diff = compute_diff(previous_prompt, improved) if improved else []
 
             # Word-by-word streaming (natural cadence, ~6x fewer SSE events)
+            yield sse_format("status", {"message": "✨ Kira is responding..."})
             words = reply.split(" ")
             for i, word in enumerate(words):
                 chunk = word + (" " if i < len(words) - 1 else "")
                 yield sse_format("kira_message", {"message": chunk, "complete": False})
-                await asyncio.sleep(0.02)
+                await asyncio.sleep(0.01)  # Reduced from 0.02 for faster cadence
 
             yield sse_format("kira_message", {"message": "", "complete": True})
+
+            # ═══ SAVE CONVERSATION TURNS (matching /chat non-streaming) ═══
+            save_conversation(
+                session_id=req.session_id,
+                role="user",
+                message=req.message,
+                message_type="new_prompt",
+                user_id=user.user_id
+            )
+            save_conversation(
+                session_id=req.session_id,
+                role="assistant",
+                message=reply,
+                message_type="prompt_improved",
+                improved_prompt=improved,
+                user_id=user.user_id
+            )
 
             yield sse_format("result", {
                 "type": "prompt_improved",
@@ -340,7 +359,7 @@ async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks, user:
             # Trigger profile update if threshold reached
             interaction_count = get_conversation_count(req.session_id)
             last_activity = get_last_activity(user_id=user.user_id, session_id=req.session_id)
-            if should_trigger_update(interaction_count, last_activity):
+            if should_trigger_update(user.user_id, interaction_count):
                 background_tasks.add_task(
                     update_user_profile,
                     user_id=user.user_id,

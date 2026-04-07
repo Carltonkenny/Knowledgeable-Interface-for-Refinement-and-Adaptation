@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { MapPin, Link as LinkIcon, Edit2, Check, X, Github, Twitter, Linkedin } from 'lucide-react'
+import { MapPin, Link as LinkIcon, Edit2, Check, X, Github, Twitter, Linkedin, Camera } from 'lucide-react'
 import { motion } from 'framer-motion'
+import AvatarPicker from '@/components/AvatarPicker'
 
 interface ProfileHeaderProps {
   email: string
@@ -47,6 +48,8 @@ export default function ProfileHeader({
   onSave
 }: ProfileHeaderProps) {
   const [editMode, setEditMode] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false)
   const [editData, setEditData] = useState({
     bio: bio || '',
     location: location || '',
@@ -59,9 +62,18 @@ export default function ProfileHeader({
 
   const handleSave = async () => {
     if (onSave) {
-      await onSave(editData)
+      setIsSaving(true)
+      try {
+        // Convert empty strings to null so backend ignores them
+        const cleaned = Object.fromEntries(
+          Object.entries(editData).map(([k, v]) => [k, v === '' ? null : v])
+        )
+        await onSave(cleaned)
+        setEditMode(false)
+      } finally {
+        setIsSaving(false)
+      }
     }
-    setEditMode(false)
   }
 
   const handleCancel = () => {
@@ -77,7 +89,7 @@ export default function ProfileHeader({
     setEditMode(false)
   }
 
-  const trustLabels = ['COLD', 'WARM', 'NEURAL']
+  const trustLabels = ['Building Context', 'Learning Patterns', 'Fully Synced']
   const trustColors = ['bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.6)]', 'bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.6)]', 'bg-kira shadow-[0_0_15px_rgba(var(--color-kira),1)]']
 
   return (
@@ -92,13 +104,19 @@ export default function ProfileHeader({
       <div className="px-6 pb-6 relative">
         {/* Avatar & Basic Info */}
         <div className="flex items-end gap-4 -mt-16 mb-4">
-          <div className="relative z-10">
-            <div className="w-28 h-28 rounded-2xl border border-border-default/50 bg-layer1/60 backdrop-blur-md flex items-center justify-center text-4xl font-bold text-text-bright shadow-[0_0_30px_rgba(0,0,0,0.8)] overflow-hidden">
+          <div className="relative z-10 group">
+            <div className="w-28 h-28 rounded-2xl border border-border-default/50 bg-layer1/60 backdrop-blur-md flex items-center justify-center text-4xl font-bold text-text-bright shadow-[0_0_30px_rgba(0,0,0,0.8)] overflow-hidden cursor-pointer hover:border-kira/50 transition-all"
+              onClick={() => setShowAvatarPicker(true)}
+            >
               {avatar_url ? (
                 <img src={avatar_url} alt={username || 'User'} className="w-full h-full object-cover rounded-2xl" />
               ) : (
                 <span className="bg-gradient-to-br from-text-bright to-text-dim bg-clip-text text-transparent">{(username || email || 'U')[0].toUpperCase()}</span>
               )}
+              {/* Camera Overlay */}
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                <Camera size={24} className="text-white" />
+              </div>
             </div>
             <div className={`absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-gradient-to-br ${tierColors[tier]} border border-layer1 flex items-center justify-center`} />
           </div>
@@ -120,10 +138,11 @@ export default function ProfileHeader({
           {!editMode && onSave && (
             <button
               onClick={() => setEditMode(true)}
-              className="p-2 rounded-lg hover:bg-layer3 text-text-dim hover:text-text-bright transition-colors"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-kira/40 bg-kira/10 text-kira font-bold text-sm hover:bg-kira/20 hover:border-kira/60 hover:shadow-[0_0_15px_rgba(var(--color-kira),0.3)] transition-all"
               title="Edit profile"
             >
-              <Edit2 size={16} />
+              <Edit2 size={14} />
+              EDIT
             </button>
           )}
         </div>
@@ -135,7 +154,7 @@ export default function ProfileHeader({
             value={editData.bio}
             onChange={(e) => setEditData({ ...editData, bio: e.target.value })}
             className="w-full h-24 bg-layer1/50 border border-kira/30 rounded-xl p-3 text-sm text-kira font-mono shadow-[inset_0_0_15px_rgba(0,0,0,0.5)] resize-none focus:outline-none focus:border-kira focus:ring-1 focus:ring-kira/50 backdrop-blur-sm transition-all placeholder:text-kira/30"
-            placeholder="[Enter biological or synthetic description...]"
+            placeholder="Tell users what you do, your expertise, and what drives your work..."
             maxLength={500}
           />
         ) : (
@@ -152,13 +171,13 @@ export default function ProfileHeader({
                 value={editData.location}
                 onChange={(e) => setEditData({ ...editData, location: e.target.value })}
                 className="bg-layer1/50 border border-kira/30 rounded-md px-3 py-1.5 text-xs text-kira font-mono shadow-[inset_0_0_10px_rgba(0,0,0,0.5)] focus:outline-none focus:border-kira focus:ring-1 focus:ring-kira/50 w-32 placeholder:text-kira/30"
-                placeholder="[SYS_LOC]"
+                placeholder="City, Country"
               />
               <input
                 value={editData.job_title}
                 onChange={(e) => setEditData({ ...editData, job_title: e.target.value })}
                 className="bg-layer1/50 border border-kira/30 rounded-md px-3 py-1.5 text-xs text-kira font-mono shadow-[inset_0_0_10px_rgba(0,0,0,0.5)] focus:outline-none focus:border-kira focus:ring-1 focus:ring-kira/50 w-40 placeholder:text-kira/30"
-                placeholder="[PRIMARY_ROLE]"
+                placeholder="e.g. Software Engineer"
               />
             </motion.div>
           ) : (
@@ -187,19 +206,19 @@ export default function ProfileHeader({
                 value={editData.github}
                 onChange={(e) => setEditData({ ...editData, github: e.target.value })}
                 className="bg-layer1/50 border border-kira/30 rounded-md px-3 py-1.5 text-xs text-kira font-mono shadow-[inset_0_0_10px_rgba(0,0,0,0.5)] focus:outline-none focus:border-kira focus:ring-1 focus:ring-kira/50 w-40 placeholder:text-kira/30"
-                placeholder="[GITHUB_ID]"
+                placeholder="github-username"
               />
               <input
                 value={editData.twitter}
                 onChange={(e) => setEditData({ ...editData, twitter: e.target.value })}
                 className="bg-layer1/50 border border-kira/30 rounded-md px-3 py-1.5 text-xs text-kira font-mono shadow-[inset_0_0_10px_rgba(0,0,0,0.5)] focus:outline-none focus:border-kira focus:ring-1 focus:ring-kira/50 w-40 placeholder:text-kira/30"
-                placeholder="[TWITTER_ID]"
+                placeholder="@handle"
               />
               <input
                 value={editData.linkedin}
                 onChange={(e) => setEditData({ ...editData, linkedin: e.target.value })}
                 className="bg-layer1/50 border border-kira/30 rounded-md px-3 py-1.5 text-xs text-kira font-mono shadow-[inset_0_0_10px_rgba(0,0,0,0.5)] focus:outline-none focus:border-kira focus:ring-1 focus:ring-kira/50 w-40 placeholder:text-kira/30"
-                placeholder="[LINKEDIN_URL]"
+                placeholder="linkedin.com/in/yourname"
               />
             </motion.div>
           ) : (
@@ -229,7 +248,7 @@ export default function ProfileHeader({
             <div className="flex items-center gap-1">
               <div className={`w-2 h-2 rounded-full ${trustColors[trustLevel]} ${trustLevel === 2 ? 'animate-pulse' : ''}`} />
               <span className={`text-[10px] font-mono font-bold ${trustLevel === 2 ? 'text-kira' : 'text-text-dim'}`}>
-                {trustLabels[trustLevel]} SYNC
+                {trustLabels[trustLevel]}
               </span>
             </div>
             <span className="text-[10px] text-text-dim">•</span>
@@ -240,14 +259,25 @@ export default function ProfileHeader({
             <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-3">
               <button
                 onClick={handleSave}
-                className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-kira/20 border border-kira text-kira text-xs font-bold hover:bg-kira hover:text-white hover:shadow-[0_0_15px_rgba(var(--color-kira),0.8)] transition-all uppercase tracking-wider"
+                disabled={isSaving}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-kira/20 border border-kira text-kira text-xs font-bold hover:bg-kira hover:text-white hover:shadow-[0_0_15px_rgba(var(--color-kira),0.8)] transition-all uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Check size={14} />
-                CONFIRM
+                {isSaving ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-kira/30 border-t-kira rounded-full animate-spin" />
+                    SYNCING
+                  </>
+                ) : (
+                  <>
+                    <Check size={14} />
+                    CONFIRM
+                  </>
+                )}
               </button>
               <button
                 onClick={handleCancel}
-                className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-layer3/50 text-text-dim text-xs font-bold hover:bg-layer3 hover:text-text-bright transition-all uppercase tracking-wider"
+                disabled={isSaving}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-layer3/50 text-text-dim text-xs font-bold hover:bg-layer3 hover:text-text-bright transition-all uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <X size={14} />
                 ABORT
@@ -256,6 +286,20 @@ export default function ProfileHeader({
           )}
         </div>
       </div>
+
+      {/* Avatar Picker Modal */}
+      {showAvatarPicker && (
+        <AvatarPicker
+          currentAvatar={avatar_url}
+          onSelect={(url) => {
+            if (onSave) {
+              onSave({ avatar_url: url })
+            }
+            setShowAvatarPicker(false)
+          }}
+          onClose={() => setShowAvatarPicker(false)}
+        />
+      )}
     </div>
   )
 }

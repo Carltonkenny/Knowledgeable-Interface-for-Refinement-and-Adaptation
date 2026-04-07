@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { Activity, TrendingUp, Award, Target, Zap } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { apiGetActivity } from '@/lib/api'
+import { logger } from '@/lib/logger'
 
 interface ActivityStatsProps {
   token: string
@@ -17,28 +19,15 @@ export default function ActivityStats({ token }: ActivityStatsProps) {
   })
   const [isLoading, setIsLoading] = useState(true)
 
-  useEffect(() => {
-    loadStats()
-  }, [token])
-
   const loadStats = async () => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/user/activity`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.detail || 'Failed to load activity')
-      }
+      setIsLoading(true)
+      const data = await apiGetActivity(token)
 
       // Calculate stats from prompts
       const prompts = data.prompts || []
       const domainCount: Record<string, number> = {}
-      
+
       prompts.forEach((p: any) => {
         domainCount[p.domain] = (domainCount[p.domain] || 0) + 1
       })
@@ -51,12 +40,25 @@ export default function ActivityStats({ token }: ActivityStatsProps) {
         best_domain: bestDomain,
         streak: data.streak || 0
       })
-    } catch (error: any) {
-      console.error('Failed to load stats:', error)
+    } catch (error) {
+      logger.error('Failed to load activity stats', { error })
     } finally {
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    loadStats()
+  }, [token])
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      logger.debug('Activity stats: real-time sync triggered by domain update')
+      loadStats()
+    }
+    window.addEventListener('update-domain', handleUpdate)
+    return () => window.removeEventListener('update-domain', handleUpdate)
+  }, [token])
 
   const statCards = [
     {

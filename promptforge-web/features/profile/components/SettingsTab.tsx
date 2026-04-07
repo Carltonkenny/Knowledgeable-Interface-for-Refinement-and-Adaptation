@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { Settings, Globe, Lock, Clock, CheckCircle2, Loader2, AlertCircle } from 'lucide-react'
+import { apiGetSettings, apiUpdateSettings } from '@/lib/api'
+import { logger } from '@/lib/logger'
 
 interface SettingsTabProps {
   token: string
@@ -31,21 +33,10 @@ export default function SettingsTab({ token }: SettingsTabProps) {
 
   const loadSettings = async () => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/user/settings`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.detail || 'Failed to load settings')
-      }
-
+      const data = await apiGetSettings(token)
       setSettings(data)
-    } catch (error: any) {
-      console.error('Failed to load settings:', error)
+    } catch (error) {
+      logger.error('Failed to load settings', { error })
     } finally {
       setIsLoading(false)
     }
@@ -56,24 +47,11 @@ export default function SettingsTab({ token }: SettingsTabProps) {
     setMessage(null)
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/user/settings`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(settings)
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.detail || 'Failed to save settings')
-      }
-
+      await apiUpdateSettings(token, settings)
       setMessage({ type: 'success', text: 'Settings saved successfully' })
-    } catch (error: any) {
-      setMessage({ type: 'error', text: error.message || 'Failed to save settings' })
+    } catch (error) {
+      logger.error('Failed to save settings', { error })
+      setMessage({ type: 'error', text: 'Failed to save settings' })
     } finally {
       setIsSaving(false)
     }

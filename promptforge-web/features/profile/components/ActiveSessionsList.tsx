@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { LogOut, Monitor, Smartphone, Globe, MapPin, Clock, CheckCircle2, Loader2, AlertCircle } from 'lucide-react'
+import { apiGetUserSessions, apiRevokeUserSession } from '@/lib/api'
+import { logger } from '@/lib/logger'
 
 interface Session {
   id: string
@@ -28,21 +30,10 @@ export default function ActiveSessionsList({ token }: ActiveSessionsListProps) {
 
   const loadSessions = async () => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/user/sessions`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.detail || 'Failed to load sessions')
-      }
-
+      const data = await apiGetUserSessions(token)
       setSessions(data.sessions || [])
-    } catch (error: any) {
-      console.error('Failed to load sessions:', error)
+    } catch (error) {
+      logger.error('Failed to load sessions', { error })
     } finally {
       setIsLoading(false)
     }
@@ -50,28 +41,17 @@ export default function ActiveSessionsList({ token }: ActiveSessionsListProps) {
 
   const handleRevoke = async (sessionId: string) => {
     if (sessionId === 'current') return
-    
+
     setRevokingId(sessionId)
     setMessage(null)
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/user/sessions/${sessionId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.detail || 'Failed to revoke session')
-      }
-
+      await apiRevokeUserSession(token, sessionId)
       setMessage({ type: 'success', text: 'Session revoked successfully' })
       setSessions(sessions.filter(s => s.id !== sessionId))
-    } catch (error: any) {
-      setMessage({ type: 'error', text: error.message || 'Failed to revoke session' })
+    } catch (error) {
+      logger.error('Failed to revoke session', { error })
+      setMessage({ type: 'error', text: 'Failed to revoke session' })
     } finally {
       setRevokingId(null)
     }

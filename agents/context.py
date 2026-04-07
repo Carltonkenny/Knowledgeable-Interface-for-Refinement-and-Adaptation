@@ -26,6 +26,19 @@ from utils import parse_json_response
 
 logger = logging.getLogger(__name__)
 
+# ── OpenTelemetry Tracing ────────────────────
+try:
+    from middleware.otel_tracing import get_tracer
+except ImportError:
+    def get_tracer(name="promptforge"):
+        class _NoopSpan:
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+            def set_attribute(self, k, v): pass
+        class _NoopTracer:
+            def start_as_current_span(self, name): return _NoopSpan()
+        return _NoopTracer()
+
 # ═══ SYSTEM PROMPT ════════════════════════════
 
 SYSTEM_PROMPT = """You are an expert Context Extractor who reads between the lines.
@@ -63,54 +76,62 @@ def context_agent(state: AgentState) -> Dict[str, Any]:
         Dict with context_analysis, was_skipped, skip_reason, latency_ms
     """
     start_time = time.time()
-    
-    # ═══ CHECK SKIP CONDITION ═══
+
+    # ═══ CONTEXT AGENT RUNS ON EVERY MESSAGE (with or without history) ═══
+    # The context agent analyzes the CURRENT MESSAGE even without history.
+    # The system prompt is designed for single-message analysis:
+    # "Word choice reveals expertise", "Specificity reveals clarity of thinking"
+    # History is helpful but NOT required.
+
     conversation_history = state.get("conversation_history", [])
-    
-    if len(conversation_history) == 0:
-        latency_ms = int((time.time() - start_time) * 1000)
-        logger.info(f"[context] skipped — no conversation history")
-        return {
-            "context_analysis": None,  # None for skipped/failed, merge_dict will ignore
-            "was_skipped": True,
-            "skip_reason": "no conversation history available",
-            "latency_ms": latency_ms,
-        }
-    
-    # ═══ RUN CONTEXT ANALYSIS ═══
-    try:
-        llm = get_fast_llm()
-        
-        # Support both 'raw_prompt' and 'message' field names
-        prompt = state.get('raw_prompt', state.get('message', ''))
-        
-        # Format history for context
+    prompt = state.get('raw_prompt', state.get('message', ''))
+
+    if len(conversation_history) > 0:
         history_context = "\n".join([
             f"{t.get('role', 'USER').upper()}: {t.get('message', '')[:100]}"
             for t in conversation_history[-3:]
         ])
-        
         messages = [
             SystemMessage(content=SYSTEM_PROMPT),
             HumanMessage(content=f"Conversation history:\n{history_context}\n\nExtract context from: {prompt}")
         ]
-        
-        response = llm.invoke(messages)
-        result = parse_json_response(response.content, agent_name="context")
-        
-        latency_ms = int((time.time() - start_time) * 1000)
-        result["latency_ms"] = latency_ms
-        logger.info(f"[context] skill={result.get('skill_level', 'unknown')} tone={result.get('tone', 'unknown')} latency={latency_ms}ms")
-        
-        return {
-            "context_analysis": result,
-            "was_skipped": False,
-            "skip_reason": None,
-            "latency_ms": latency_ms,
-            "agents_run": ["context"],
-            "agent_latencies": {"context": latency_ms}
-        }
-        
+    else:
+        # Single-message context extraction
+        messages = [
+            SystemMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=f"Extract context from this message alone: {prompt}")
+        ]
+
+    # ═══ RUN CONTEXT ANALYSIS ═══
+    try:
+        tracer = get_tracer("promptforge.agent")
+        with tracer.start_as_current_span("agent.context") as span:
+            span.set_attribute("agent.skip_checked", True)
+
+            llm = get_fast_llm()
+
+            response = llm.invoke(
+                messages,
+                config={
+                    "tags": ["context_agent", "swarm"],
+                    "metadata": {"agent": "context"},
+                },
+            )
+            result = parse_json_response(response.content, agent_name="context")
+
+            latency_ms = int((time.time() - start_time) * 1000)
+            result["latency_ms"] = latency_ms
+            logger.info(f"[context] skill={result.get('skill_level', 'unknown')} tone={result.get('tone', 'unknown')} latency={latency_ms}ms")
+
+            return {
+                "context_analysis": result,
+                "was_skipped": False,
+                "skip_reason": None,
+                "latency_ms": latency_ms,
+                "agents_run": ["context"],
+                "agent_latencies": {"context": latency_ms}
+            }
+
     except Exception as e:
         logger.error(f"[context] failed: {e}", exc_info=True)
         latency_ms = int((time.time() - start_time) * 1000)

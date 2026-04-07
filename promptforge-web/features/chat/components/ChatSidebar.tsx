@@ -124,20 +124,33 @@ interface ChatSidebarProps {
 }
 
 export default function ChatSidebar({ token, mode = 'chat' }: ChatSidebarProps) {
-  const { 
-    sessions, 
-    isLoading, 
-    currentSessionId, 
-    createNewChat, 
-    deleteSession, 
+  const {
+    sessions,
+    isLoading,
+    currentSessionId,
+    createNewChat,
+    isCreating,
+    deleteSession,
     switchSession,
     togglePin,
     toggleFavorite
   } = useChatSessions(token)
-  
-  const [isCollapsed, setIsCollapsed] = useState(false)
+
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('pf_sidebar_collapsed') === 'true'
+    }
+    return false
+  })
   const [showRecycleBin, setShowRecycleBin] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
+  const toggleCollapse = (value: boolean) => {
+    setIsCollapsed(value)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pf_sidebar_collapsed', String(value))
+    }
+  }
 
   const pinnedSessions = sessions.filter(s => s.is_pinned)
   const recentSessions = sessions.filter(s => !s.is_pinned)
@@ -166,7 +179,7 @@ export default function ChatSidebar({ token, mode = 'chat' }: ChatSidebarProps) 
     >
       {/* Collapse Toggle */}
       <button 
-        onClick={() => setIsCollapsed(!isCollapsed)}
+        onClick={() => toggleCollapse(!isCollapsed)}
         className="absolute -right-3 top-20 w-6 h-6 rounded-full border border-border-strong bg-layer-2 flex items-center justify-center text-text-dim hover:text-text-bright z-10 shadow-sm"
       >
         {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
@@ -181,8 +194,9 @@ export default function ChatSidebar({ token, mode = 'chat' }: ChatSidebarProps) 
 
       {/* New Action Button */}
       <div className="p-4 pt-2">
-        <button 
+        <button
           onClick={() => createNewChat()}
+          disabled={isCreating}
           className={cn(
             "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-kira/20 bg-kira/5 text-text-bright hover:bg-kira/10 hover:border-kira/40 transition-all group shadow-sm shadow-kira/5",
             isCollapsed && "justify-center px-0"

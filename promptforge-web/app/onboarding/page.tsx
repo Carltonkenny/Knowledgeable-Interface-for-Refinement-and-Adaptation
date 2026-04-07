@@ -2,6 +2,7 @@
 // Onboarding page - T&C + 3-step wizard
 
 'use client'
+import { logger } from '@/lib/logger'
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
@@ -52,7 +53,7 @@ export default function OnboardingPage() {
       await acceptTerms()
       setStep('onboarding')
     } catch (error) {
-      console.error('Failed to accept terms:', error)
+      logger.error('Failed to accept terms:', { error: error })
     }
   }
 
@@ -78,7 +79,7 @@ export default function OnboardingPage() {
       // Redirect to app
       router.push('/app')
     } catch (error) {
-      console.error('Failed to complete onboarding:', error)
+      logger.error('Failed to complete onboarding:', { error: error })
     }
   }
 

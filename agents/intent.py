@@ -26,6 +26,19 @@ from utils import parse_json_response
 
 logger = logging.getLogger(__name__)
 
+# ── OpenTelemetry Tracing ────────────────────
+try:
+    from middleware.otel_tracing import get_tracer
+except ImportError:
+    def get_tracer(name="promptforge"):
+        class _NoopSpan:
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+            def set_attribute(self, k, v): pass
+        class _NoopTracer:
+            def start_as_current_span(self, name): return _NoopSpan()
+        return _NoopTracer()
+
 # ═══ SYSTEM PROMPT ════════════════════════════
 
 SYSTEM_PROMPT = """You are an expert Intent Analyzer specializing in understanding what people truly want to accomplish.
@@ -83,32 +96,42 @@ def intent_agent(state: AgentState) -> Dict[str, Any]:
     
     # ═══ RUN INTENT ANALYSIS ═══
     try:
-        llm = get_fast_llm()
-        
-        # Support both 'raw_prompt' and 'message' field names
-        prompt = state.get('raw_prompt', state.get('message', ''))
-        
-        messages = [
-            SystemMessage(content=SYSTEM_PROMPT),
-            HumanMessage(content=f"Analyze this prompt: {prompt}")
-        ]
-        
-        response = llm.invoke(messages)
-        result = parse_json_response(response.content, agent_name="intent")
-        
-        latency_ms = int((time.time() - start_time) * 1000)
-        result["latency_ms"] = latency_ms
-        logger.info(f"[intent] clarity={result.get('goal_clarity', 'unknown')} latency={latency_ms}ms")
-        
-        return {
-            "intent_analysis": result,
-            "was_skipped": False,
-            "skip_reason": None,
-            "latency_ms": latency_ms,
-            "agents_run": ["intent"],
-            "agent_latencies": {"intent": latency_ms}
-        }
-        
+        tracer = get_tracer("promptforge.agent")
+        with tracer.start_as_current_span("agent.intent") as span:
+            span.set_attribute("agent.skip_checked", True)
+
+            llm = get_fast_llm()
+
+            # Support both 'raw_prompt' and 'message' field names
+            prompt = state.get('raw_prompt', state.get('message', ''))
+
+            messages = [
+                SystemMessage(content=SYSTEM_PROMPT),
+                HumanMessage(content=f"Analyze this prompt: {prompt}")
+            ]
+
+            response = llm.invoke(
+                messages,
+                config={
+                    "tags": ["intent_agent", "swarm"],
+                    "metadata": {"agent": "intent", "raw_prompt_length": len(prompt)},
+                },
+            )
+            result = parse_json_response(response.content, agent_name="intent")
+
+            latency_ms = int((time.time() - start_time) * 1000)
+            result["latency_ms"] = latency_ms
+            logger.info(f"[intent] clarity={result.get('goal_clarity', 'unknown')} latency={latency_ms}ms")
+
+            return {
+                "intent_analysis": result,
+                "was_skipped": False,
+                "skip_reason": None,
+                "latency_ms": latency_ms,
+                "agents_run": ["intent"],
+                "agent_latencies": {"intent": latency_ms}
+            }
+
     except Exception as e:
         logger.error(f"[intent] failed: {e}", exc_info=True)
         latency_ms = int((time.time() - start_time) * 1000)

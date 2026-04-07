@@ -2,9 +2,6 @@
 // ALL backend calls go through here. No component, hook, or feature file
 // ever calls fetch() directly. This is non-negotiable.
 
-import { ENV } from './env'
-import { MOCK_CHAT_RESULT, MOCK_HISTORY } from './mocks'
-
 const API_BASE = process.env.NEXT_PUBLIC_API_URL!
 const DEMO_API_BASE = process.env.NEXT_PUBLIC_DEMO_API_URL!
 
@@ -50,6 +47,7 @@ export interface HistoryItem {
   raw_prompt: string
   improved_prompt: string
   domain: string
+  sub_domain?: string | null
   quality_score: QualityScore | null
   domain_analysis: Record<string, unknown> | null
   created_at: string
@@ -138,7 +136,8 @@ export interface UsageStats {
   average_quality_score: number
   member_since: string
   trust_level: 0 | 1 | 2
-  loyalty_tier?: 'Bronze' | 'Silver' | 'Gold' | 'Kira'
+  xp_total?: number
+  loyalty_tier?: 'Bronze' | 'Silver' | 'Gold' | 'Kira' | 'Kira-Class (Forge-Master)' | string
   email?: string | null
   phone?: string | null
   company?: string | null
@@ -193,10 +192,6 @@ async function handleResponseError(res: Response): Promise<never> {
 // ── Endpoints ──────────────────────────────────────────────────────────────
 
 export async function apiHealth(): Promise<boolean> {
-  if (ENV.USE_MOCKS) {
-    await new Promise(r => setTimeout(r, 100))
-    return true
-  }
   try {
     const res = await fetch(`${API_BASE}/health`, { method: 'GET' })
     return res.ok
@@ -209,10 +204,6 @@ export async function apiChat(
   req: ChatRequest,
   token: string
 ): Promise<ChatResult> {
-  if (ENV.USE_MOCKS) {
-    await new Promise(r => setTimeout(r, 1200))
-    return MOCK_CHAT_RESULT
-  }
   const res = await fetch(`${API_BASE}/chat`, {
     method: 'POST',
     headers: await authHeaders(token),
@@ -256,14 +247,24 @@ export async function apiToggleFavorite(
   requestId: string,
   isFavorite: boolean
 ): Promise<{ status: string; is_favorite: boolean }> {
-  if (ENV.USE_MOCKS) {
-    await new Promise(r => setTimeout(r, 200))
-    return { status: 'success', is_favorite: isFavorite }
-  }
   const res = await fetch(`${API_BASE}/user/activity/${requestId}/favorite`, {
     method: 'PUT',
     headers: await authHeaders(token),
     body: JSON.stringify({ is_favorite: isFavorite }),
+  })
+  if (!res.ok) await handleResponseError(res)
+  return res.json()
+}
+
+export async function apiUpdatePromptDomain(
+  token: string,
+  requestId: string,
+  primaryDomain: string
+): Promise<{ status: string; domain: string }> {
+  const res = await fetch(`${API_BASE}/user/activity/${requestId}/domain`, {
+    method: 'PUT',
+    headers: await authHeaders(token),
+    body: JSON.stringify({ primary_domain: primaryDomain }),
   })
   if (!res.ok) await handleResponseError(res)
   return res.json()
@@ -421,20 +422,15 @@ export async function apiConversation(
   sessionId: string,
   signal?: AbortSignal
 ): Promise<ConversationTurn[]> {
-  if (ENV.USE_MOCKS) {
-    await new Promise(r => setTimeout(r, 300))
-    return []
-  }
   const res = await fetch(
     `${API_BASE}/conversation?session_id=${sessionId}`,
-    { 
+    {
       headers: await authHeaders(token),
       signal
     }
   )
   if (!res.ok) await handleResponseError(res)
   const data = await res.json()
-  // Backend returns {count, conversation}
   return data.conversation || []
 }
 
@@ -442,10 +438,6 @@ export async function apiTranscribe(
   audioBlob: Blob,
   token: string
 ): Promise<{ transcript: string }> {
-  if (ENV.USE_MOCKS) {
-    await new Promise(r => setTimeout(r, 500))
-    return { transcript: 'This is a mock transcript for development.' }
-  }
   const form = new FormData()
   form.append('audio', audioBlob, 'recording.webm')
   const res = await fetch(`${API_BASE}/transcribe`, {
@@ -472,7 +464,6 @@ export async function apiUpdateProfile(
     phone?: string | null
   }
 ): Promise<{ status: string }> {
-  if (ENV.USE_MOCKS) return { status: 'success' }
   const res = await fetch(`${API_BASE}/user/profile`, {
     method: 'POST',
     headers: await authHeaders(token),
@@ -486,10 +477,6 @@ export async function apiSaveProfile(
   profile: UserProfile,
   token: string
 ): Promise<void> {
-  if (ENV.USE_MOCKS) {
-    await new Promise(r => setTimeout(r, 200))
-    return
-  }
   const res = await fetch(`${API_BASE}/user/profile`, {
     method: 'POST',
     headers: await authHeaders(token),
@@ -502,10 +489,6 @@ export async function apiRefine(
   prompt: string,
   token: string
 ): Promise<ChatResult> {
-  if (ENV.USE_MOCKS) {
-    await new Promise(r => setTimeout(r, 1000))
-    return MOCK_CHAT_RESULT
-  }
   const res = await fetch(`${API_BASE}/refine`, {
     method: 'POST',
     headers: await authHeaders(token),
@@ -516,7 +499,6 @@ export async function apiRefine(
 }
 
 export async function apiListSessions(token: string): Promise<ChatSession[]> {
-  if (ENV.USE_MOCKS) return []
   const res = await fetch(`${API_BASE}/sessions`, {
     headers: await authHeaders(token),
   })
@@ -525,7 +507,6 @@ export async function apiListSessions(token: string): Promise<ChatSession[]> {
 }
 
 export async function apiCreateSession(token: string): Promise<ChatSession> {
-  if (ENV.USE_MOCKS) throw new Error('Mocks not implemented for session creation')
   const res = await fetch(`${API_BASE}/sessions`, {
     method: 'POST',
     headers: await authHeaders(token),
@@ -535,7 +516,6 @@ export async function apiCreateSession(token: string): Promise<ChatSession> {
 }
 
 export async function apiDeleteSession(token: string, sessionId: string): Promise<void> {
-  if (ENV.USE_MOCKS) return
   const res = await fetch(`${API_BASE}/sessions/${sessionId}`, {
     method: 'DELETE',
     headers: await authHeaders(token),
@@ -548,7 +528,6 @@ export async function apiPatchSession(
   sessionId: string,
   updates: Partial<Pick<ChatSession, 'title' | 'is_pinned' | 'is_favorite'>>
 ): Promise<ChatSession> {
-  if (ENV.USE_MOCKS) throw new Error('Mocks not implemented')
   const res = await fetch(`${API_BASE}/sessions/${sessionId}`, {
     method: 'PATCH',
     headers: await authHeaders(token),
@@ -559,7 +538,6 @@ export async function apiPatchSession(
 }
 
 export async function apiRestoreSession(token: string, sessionId: string): Promise<void> {
-  if (ENV.USE_MOCKS) return
   const res = await fetch(`${API_BASE}/sessions/${sessionId}/restore`, {
     method: 'POST',
     headers: await authHeaders(token),
@@ -568,7 +546,6 @@ export async function apiRestoreSession(token: string, sessionId: string): Promi
 }
 
 export async function apiPurgeSession(token: string, sessionId: string): Promise<void> {
-  if (ENV.USE_MOCKS) return
   const res = await fetch(`${API_BASE}/sessions/${sessionId}/purge`, {
     method: 'DELETE',
     headers: await authHeaders(token),
@@ -577,7 +554,6 @@ export async function apiPurgeSession(token: string, sessionId: string): Promise
 }
 
 export async function apiListDeletedSessions(token: string): Promise<ChatSession[]> {
-  if (ENV.USE_MOCKS) return []
   const res = await fetch(`${API_BASE}/sessions/deleted`, {
     headers: await authHeaders(token),
   })
@@ -589,10 +565,6 @@ export async function apiListDeletedSessions(token: string): Promise<ChatSession
 export async function apiDemoChat(
   message: string
 ): Promise<ChatResult> {
-  if (ENV.USE_MOCKS) {
-    await new Promise(r => setTimeout(r, 1200))
-    return MOCK_CHAT_RESULT
-  }
   const res = await fetch(`${DEMO_API_BASE}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -615,15 +587,10 @@ export interface UserProfile {
 }
 
 export async function apiGetProfile(token: string): Promise<UserProfile> {
-  // Profile data is fetched from stats endpoint which includes member_since
-  // Username comes from JWT token decoded on frontend or passed from parent
-  if (ENV.USE_MOCKS) return { username: null, email: 'demo@example.com', created_at: new Date().toISOString() }
-  // For now, return placeholder - username is managed via auth metadata
   return { username: null, email: '', created_at: new Date().toISOString() }
 }
 
 export async function apiUpdateUsername(token: string, username: string): Promise<{ status: string, username: string }> {
-  if (ENV.USE_MOCKS) return { status: 'success', username }
   const res = await fetch(`${API_BASE}/user/username`, {
     method: 'PATCH',
     headers: await authHeaders(token),
@@ -634,7 +601,6 @@ export async function apiUpdateUsername(token: string, username: string): Promis
 }
 
 export async function apiGetDomains(token: string): Promise<{ domains: DomainStat[] }> {
-  if (ENV.USE_MOCKS) return { domains: [] }
   const res = await fetch(`${API_BASE}/user/domains`, {
     headers: await authHeaders(token),
   })
@@ -643,7 +609,6 @@ export async function apiGetDomains(token: string): Promise<{ domains: DomainSta
 }
 
 export async function apiGetMemories(token: string): Promise<{ memories: MemoryPreview[] }> {
-  if (ENV.USE_MOCKS) return { memories: [] }
   const res = await fetch(`${API_BASE}/user/memories`, {
     headers: await authHeaders(token),
   })
@@ -652,7 +617,6 @@ export async function apiGetMemories(token: string): Promise<{ memories: MemoryP
 }
 
 export async function apiGetQualityTrend(token: string): Promise<{ trend: QualityTrendPoint[] }> {
-  if (ENV.USE_MOCKS) return { trend: [] }
   const res = await fetch(`${API_BASE}/user/quality-trend`, {
     headers: await authHeaders(token),
   })
@@ -661,7 +625,6 @@ export async function apiGetQualityTrend(token: string): Promise<{ trend: Qualit
 }
 
 export async function apiGetStats(token: string): Promise<UsageStats> {
-  if (ENV.USE_MOCKS) return { total_prompts_engineered: 0, active_chat_sessions: 0, average_quality_score: 0, member_since: '', trust_level: 0 }
   const res = await fetch(`${API_BASE}/user/stats`, {
     headers: await authHeaders(token),
   })
@@ -670,7 +633,6 @@ export async function apiGetStats(token: string): Promise<UsageStats> {
 }
 
 export async function apiDeleteAccount(token: string): Promise<{ status: string, message: string }> {
-  if (ENV.USE_MOCKS) return { status: 'success', message: 'MOCK' }
   const res = await fetch(`${API_BASE}/user/account`, {
     method: 'DELETE',
     headers: await authHeaders(token),
@@ -680,8 +642,119 @@ export async function apiDeleteAccount(token: string): Promise<{ status: string,
 }
 
 export async function apiExportData(token: string): Promise<ExportData> {
-  if (ENV.USE_MOCKS) throw new Error('Mocks not implemented')
   const res = await fetch(`${API_BASE}/user/export-data`, {
+    headers: await authHeaders(token),
+  })
+  if (!res.ok) await handleResponseError(res)
+  return res.json()
+}
+
+// ── Profile Settings ─────────────────────────────────────────────────────
+
+export interface UserSettings {
+  is_public: boolean
+  default_tone: string
+  default_audience: string
+  session_timeout_hours: number
+}
+
+export async function apiGetSettings(token: string): Promise<UserSettings> {
+  const res = await fetch(`${API_BASE}/user/settings`, {
+    headers: await authHeaders(token),
+  })
+  if (!res.ok) await handleResponseError(res)
+  return res.json()
+}
+
+export async function apiUpdateSettings(token: string, settings: Partial<UserSettings>): Promise<UserSettings> {
+  const res = await fetch(`${API_BASE}/user/settings`, {
+    method: 'PUT',
+    headers: await authHeaders(token),
+    body: JSON.stringify(settings),
+  })
+  if (!res.ok) await handleResponseError(res)
+  return res.json()
+}
+
+export async function apiChangePassword(
+  token: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<{ status: string; message: string }> {
+  const res = await fetch(`${API_BASE}/user/change-password`, {
+    method: 'POST',
+    headers: await authHeaders(token),
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  })
+  if (!res.ok) await handleResponseError(res)
+  return res.json()
+}
+
+// ── User Activity & Achievements ──────────────────────────────────────────
+
+export interface Achievement {
+  id: string
+  name: string
+  icon: string
+  description: string
+  unlocked: boolean
+  unlocked_at?: string
+}
+
+export interface ActivityStats {
+  prompts: Array<{
+    id: string
+    raw_prompt: string
+    improved_prompt: string
+    quality_score: QualityScore | null
+    domain: string
+    created_at: string
+    is_favorite: boolean
+  }>
+  total_prompts: number
+  avg_quality: number
+  streak: number
+}
+
+export interface UserSession {
+  id: string
+  device: string
+  browser: string
+  location: string
+  last_active: string
+  is_current: boolean
+}
+
+export async function apiGetAchievements(token: string): Promise<{ achievements: Achievement[] }> {
+  const res = await fetch(`${API_BASE}/user/achievements`, {
+    headers: await authHeaders(token),
+  })
+  if (!res.ok) await handleResponseError(res)
+  return res.json()
+}
+
+export async function apiGetActivity(token: string, limit: number = 10): Promise<ActivityStats> {
+  const res = await fetch(`${API_BASE}/user/activity?limit=${limit}`, {
+    headers: await authHeaders(token),
+  })
+  if (!res.ok) await handleResponseError(res)
+  return res.json()
+}
+
+export async function apiGetUserSessions(token: string): Promise<{ sessions: UserSession[] }> {
+  const res = await fetch(`${API_BASE}/user/sessions`, {
+    headers: await authHeaders(token),
+  })
+  if (!res.ok) await handleResponseError(res)
+  return res.json()
+}
+
+export async function apiRevokeUserSession(token: string, sessionId: string): Promise<{ status: string }> {
+  const res = await fetch(`${API_BASE}/user/sessions/${sessionId}`, {
+    method: 'DELETE',
     headers: await authHeaders(token),
   })
   if (!res.ok) await handleResponseError(res)

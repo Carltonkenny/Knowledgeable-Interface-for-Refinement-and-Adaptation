@@ -1,5 +1,6 @@
 // features/history/components/VersionComparison.tsx
 'use client'
+import { logger } from '@/lib/logger'
 
 import { useState, useEffect } from 'react'
 import { apiCompareVersions, type VersionData, type DiffItem } from '@/lib/api'
@@ -34,7 +35,7 @@ export default function VersionComparison({
         const result = await apiCompareVersions(token, versionId, v1, v2)
         setData(result)
       } catch (err) {
-        console.error('Failed to compare versions', err)
+        logger.error('Failed to compare versions', { error: err })
       } finally {
         setIsLoading(false)
       }

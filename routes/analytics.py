@@ -71,6 +71,7 @@ async def get_analytics_summary(
                 "avg_quality": round(stats["total_quality"] / stats["quality_count"], 2) if stats["quality_count"] > 0 else 0
             }
             for d, stats in domain_data.items()
+            if stats["count"] > 0  # Only show used domains
         }
 
         # Optimized unique domains count
@@ -93,34 +94,69 @@ async def get_analytics_summary(
 async def get_activity_heatmap(user: User = Depends(get_current_user)):
     """
     High-Performance Activity Aggregator for 365-day contributions.
-    Fact: Only fetches created_at to minimize data transfer.
+    PHASE 5 UPDATE: Now includes average quality score per day for intensity coloring.
+    
+    Returns:
+        {
+            "heatmap": [
+                {"date": "2026-03-31", "count": 5, "avg_quality": 4.2},
+                ...
+            ],
+            "total_year_prompts": 150,
+            "max_daily": 12
+        }
     """
     try:
         logger.info(f"[api] /analytics/heatmap user_id={user.user_id[:8]}...")
-        
+
         db = get_client()
         # Fetch only what is needed for the heatmap (last 365 days)
         cutoff = datetime.now(timezone.utc) - timedelta(days=365)
-        
+
         result = db.table("requests")\
-            .select("created_at")\
+            .select("created_at, quality_score")\
             .eq("user_id", user.user_id)\
             .gte("created_at", cutoff.isoformat())\
             .execute()
-        
-        daily_activity = {}
+
+        # PHASE 5: Aggregate both count AND quality per day
+        daily_data = {}
         for row in result.data:
             date = row["created_at"][:10]
-            daily_activity[date] = daily_activity.get(date, 0) + 1
+            if date not in daily_data:
+                daily_data[date] = {"count": 0, "quality_sum": 0.0, "quality_count": 0}
             
-        heatmap_data = [{"date": d, "count": c} for d, c in sorted(daily_activity.items())]
-        
+            daily_data[date]["count"] += 1
+            
+            # Aggregate quality scores
+            qs = row.get("quality_score")
+            if qs:
+                quality = calculate_overall_quality(qs)
+                daily_data[date]["quality_sum"] += quality
+                daily_data[date]["quality_count"] += 1
+
+        # Build response with avg_quality per day
+        heatmap_data = []
+        for date, data in sorted(daily_data.items()):
+            avg_quality = (
+                round(data["quality_sum"] / data["quality_count"], 2)
+                if data["quality_count"] > 0 else 0.0
+            )
+            heatmap_data.append({
+                "date": date,
+                "count": data["count"],
+                "avg_quality": avg_quality  # PHASE 5: New field
+            })
+
         return {
             "heatmap": heatmap_data,
-            "total_year_prompts": sum(daily_activity.values()),
-            "max_daily": max(daily_activity.values()) if daily_activity else 0
+            "total_year_prompts": sum(d["count"] for d in heatmap_data),
+            "max_daily": max(d["count"] for d in heatmap_data) if heatmap_data else 0,
+            "avg_quality_overall": round(
+                sum(d["avg_quality"] for d in heatmap_data) / len(heatmap_data), 2
+            ) if heatmap_data else 0.0
         }
-        
+
     except Exception as e:
         logger.exception(f"[api] /analytics/heatmap failed")
         raise HTTPException(status_code=500, detail="Failed to load activity heatmap")
