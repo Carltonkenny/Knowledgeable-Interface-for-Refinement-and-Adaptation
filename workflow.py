@@ -130,7 +130,11 @@ def build_graph() -> StateGraph:
             "prompt_engineer": "prompt_engineer"
         }
     )
-    
+    # Direct edge for prompt_engineer fallback (when agents are skipped)
+    graph.add_edge("intent_agent", "prompt_engineer")
+    graph.add_edge("context_agent", "prompt_engineer")
+    graph.add_edge("domain_agent", "prompt_engineer")
+
     # ═══ JOIN NODE ═══
     # Prompt engineer ALWAYS runs (never skipped)
     # It waits for ALL selected agents to complete (LangGraph handles this automatically)
