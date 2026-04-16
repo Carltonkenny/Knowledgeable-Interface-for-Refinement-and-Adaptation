@@ -29,6 +29,17 @@ export interface ChatResult {
   type?: string
   reply?: string
   suggestions?: string[]
+  // Clarification options from backend
+  clarification_key?: string
+  clarification_options?: string[]
+  // Memory citations from backend (enterprise-style source references)
+  memory_citations?: Array<{
+    id: string
+    content: string
+    domain: string
+    quality_score: number
+    created_at: string
+  }>
 }
 
 export interface DiffItem {
@@ -200,6 +211,10 @@ export async function apiHealth(): Promise<boolean> {
   }
 }
 
+/**
+ * @deprecated Use SSE streaming via `parseStream` from `@/lib/stream` instead.
+ * This non-streaming endpoint is kept for backward compatibility with demo/legacy code.
+ */
 export async function apiChat(
   req: ChatRequest,
   token: string
@@ -439,11 +454,116 @@ export async function apiTranscribe(
   token: string
 ): Promise<{ transcript: string }> {
   const form = new FormData()
-  form.append('audio', audioBlob, 'recording.webm')
+  // Use the blob's actual MIME type for better compatibility
+  const fileName = audioBlob.type.includes('mp4') ? 'recording.mp4' : 'recording.webm'
+  form.append('audio', audioBlob, fileName)
   const res = await fetch(`${API_BASE}/transcribe`, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${token}` },
     body: form,
+  })
+  if (!res.ok) await handleResponseError(res)
+  const data = await res.json()
+  if (!data.transcript) {
+    throw new ApiError(res.status, 'Empty transcript received')
+  }
+  return data
+}
+
+// ── TTS (Text-to-Speech) ───────────────────────────────────────────────────
+
+export interface TTSSpeakOptions {
+  voiceId?: string
+  model?: string
+  speed?: number  // Pollinations only: 0.25 to 4.0
+  signal?: AbortSignal
+}
+
+/**
+ * Convert text to speech via ElevenLabs TTS endpoint.
+ * Returns an audio blob that can be played with the Audio API.
+ *
+ * @param text - Text to synthesize
+ * @param options - Optional voice ID, model, and abort signal
+ * @param options.token - Auth token (required)
+ * @returns Audio blob (audio/mpeg)
+ */
+export async function apiTTS(
+  text: string,
+  options: TTSSpeakOptions & { token: string }
+): Promise<Blob> {
+  const { token, voiceId, model, speed, signal } = options
+
+  const res = await fetch(`${API_BASE}/tts`, {
+    method: 'POST',
+    headers: await authHeaders(token),
+    body: JSON.stringify({
+      text,
+      voice_id: voiceId,
+      model: model,
+      speed: speed,
+    }),
+    signal,
+  })
+
+  if (!res.ok) await handleResponseError(res)
+
+  const contentType = res.headers.get('Content-Type') || ''
+  if (!contentType.includes('audio/')) {
+    // If response is not audio, it's likely an error
+    const errorText = await res.text()
+    throw new ApiError(res.status, errorText || 'TTS returned non-audio response')
+  }
+
+  return res.blob()
+}
+
+/**
+ * Fetch available ElevenLabs voices from the backend.
+ * Returns a list of voice objects with voice_id, name, category, preview_url.
+ */
+export async function apiTTSCVoices(token: string): Promise<{
+  voices: Array<{
+    voice_id: string
+    name: string
+    category: string
+    preview_url: string
+  }>
+}> {
+  const res = await fetch(`${API_BASE}/tts/voices`, {
+    headers: await authHeaders(token),
+  })
+  if (!res.ok) await handleResponseError(res)
+  return res.json()
+}
+
+export async function apiGetProfileInfo(
+  token: string
+): Promise<{
+  // Personal info fields
+  email: string | null
+  phone: string | null
+  company: string | null
+  location: string | null
+  bio: string | null
+  job_title: string | null
+  website: string | null
+  github: string | null
+  twitter: string | null
+  linkedin: string | null
+  avatar_url: string | null
+  // Kira's learned profile analysis fields
+  dominant_domains: string[]
+  preferred_tone: string
+  clarification_rate: number
+  domain_confidence: number
+  prompt_quality_trend: string
+  notable_patterns: string[]
+  xp_total: number
+  loyalty_tier: string
+}> {
+  const res = await fetch(`${API_BASE}/user/profile-info`, {
+    headers: await authHeaders(token),
   })
   if (!res.ok) await handleResponseError(res)
   return res.json()
@@ -581,13 +701,29 @@ export async function apiDemoChat(
 // ── Phase 4: Profile ─────────────────────────────────────────────────────────
 
 export interface UserProfile {
-  username: string | null
-  email: string
-  created_at: string
-}
-
-export async function apiGetProfile(token: string): Promise<UserProfile> {
-  return { username: null, email: '', created_at: new Date().toISOString() }
+  username?: string | null
+  email: string | null
+  created_at?: string
+  // Personal info fields
+  bio?: string | null
+  location?: string | null
+  job_title?: string | null
+  company?: string | null
+  website?: string | null
+  github?: string | null
+  twitter?: string | null
+  linkedin?: string | null
+  avatar_url?: string | null
+  phone?: string | null
+  // Kira's learned profile analysis fields
+  dominant_domains?: string[]
+  preferred_tone?: string
+  clarification_rate?: number
+  domain_confidence?: number
+  prompt_quality_trend?: string
+  notable_patterns?: string[]
+  xp_total?: number
+  loyalty_tier?: string
 }
 
 export async function apiUpdateUsername(token: string, username: string): Promise<{ status: string, username: string }> {

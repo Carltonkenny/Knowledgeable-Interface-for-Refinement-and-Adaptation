@@ -134,8 +134,14 @@ export async function parseStream(
             callbacks.onDone?.()
             break
         }
-      } catch {
-        // Malformed JSON from stream — skip silently
+      } catch (err) {
+        // Malformed JSON from stream — surface error instead of silent catch
+        const raw = dataStr.trim();
+        if (typeof window !== 'undefined') {
+          // Only log in browser context
+          console.warn('[stream] SSE parse failed', { raw });
+        }
+        callbacks.onError?.('Stream parse error');
       }
     }
   }

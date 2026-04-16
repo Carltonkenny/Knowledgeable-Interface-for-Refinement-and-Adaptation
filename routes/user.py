@@ -16,13 +16,11 @@ import os
 import logging
 from typing import Optional
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, HTTPException, Depends, Form, Query
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
-from supabase import create_client
 
 from auth import User, get_current_user
-from database import get_client
-from collections import defaultdict
+from database import get_client, get_user_profile
 
 class FavoriteUpdate(BaseModel):
     is_favorite: bool
@@ -78,6 +76,12 @@ class OnboardingRequest(BaseModel):
     company: Optional[str] = Field(None, max_length=100, description="Company/organization name")
     location: Optional[str] = Field(None, max_length=100, description="User's location/timezone")
     bio: Optional[str] = Field(None, max_length=500, description="Short bio or description")
+
+
+class ChangePasswordRequest(BaseModel):
+    """Schema for changing user password."""
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8, max_length=100)
 
 
 # ── Endpoints ─────────────────────────────────
@@ -378,16 +382,20 @@ async def get_user_stats(user: User = Depends(get_current_user)):
 
 @router.get("/user/profile-info")
 async def get_user_profile_info(user: User = Depends(get_current_user)):
-    """Get user's profile information including email and personal details."""
+    """Get user's profile information including email, personal details, and Kira's learned profile."""
     logger.info(f"[api] /user/profile-info requested by user={user.user_id}")
     try:
         db = get_client()
-        
-        # Get user profile info
-        profile_result = db.table("user_profiles").select("phone, company, location, bio, job_title, website, github, twitter, linkedin, avatar_url").eq("user_id", user.user_id).execute()
+
+        # Get user profile info — include both personal fields AND analysis fields
+        profile_result = db.table("user_profiles").select(
+            "phone, company, location, bio, job_title, website, github, twitter, linkedin, avatar_url, "
+            "dominant_domains, preferred_tone, clarification_rate, domain_confidence, "
+            "prompt_quality_trend, notable_patterns, xp_total, loyalty_tier"
+        ).eq("user_id", user.user_id).execute()
         profile_data = profile_result.data[0] if profile_result.data else {}
-        
-        # Get email from Supabase auth
+
+        # Get email and username from Supabase auth
         try:
             supabase_admin = create_client(
                 os.getenv("SUPABASE_URL"),
@@ -395,11 +403,17 @@ async def get_user_profile_info(user: User = Depends(get_current_user)):
             )
             user_data = supabase_admin.auth.admin.get_user_by_id(user.user_id)
             email = user_data.user.email
-        except:
+            # Username is stored in user metadata
+            username = user_data.user.user_metadata.get("username") if user_data.user.user_metadata else None
+        except Exception:
             email = None
+            username = None
 
         return {
+            # Identity fields
+            "username": username,
             "email": email,
+            # Personal info fields
             "phone": profile_data.get("phone"),
             "company": profile_data.get("company"),
             "location": profile_data.get("location"),
@@ -409,7 +423,16 @@ async def get_user_profile_info(user: User = Depends(get_current_user)):
             "github": profile_data.get("github"),
             "twitter": profile_data.get("twitter"),
             "linkedin": profile_data.get("linkedin"),
-            "avatar_url": profile_data.get("avatar_url")
+            "avatar_url": profile_data.get("avatar_url"),
+            # Kira's learned profile analysis fields
+            "dominant_domains": profile_data.get("dominant_domains", []),
+            "preferred_tone": profile_data.get("preferred_tone", "direct"),
+            "clarification_rate": profile_data.get("clarification_rate", 0.0),
+            "domain_confidence": profile_data.get("domain_confidence", 0.5),
+            "prompt_quality_trend": profile_data.get("prompt_quality_trend", "stable"),
+            "notable_patterns": profile_data.get("notable_patterns", []),
+            "xp_total": profile_data.get("xp_total", 0),
+            "loyalty_tier": profile_data.get("loyalty_tier", "Bronze"),
         }
 
     except Exception as e:
@@ -419,8 +442,7 @@ async def get_user_profile_info(user: User = Depends(get_current_user)):
 
 @router.post("/user/change-password")
 async def change_password(
-    current_password: str = Form(...),
-    new_password: str = Form(..., min_length=8, max_length=100),
+    req: ChangePasswordRequest,
     user: User = Depends(get_current_user)
 ):
     """Change user's password. Requires current password for verification."""
@@ -430,20 +452,20 @@ async def change_password(
             os.getenv("SUPABASE_URL"),
             os.getenv("SUPABASE_SERVICE_KEY")
         )
-        
+
         # Sign in with current password to verify
         try:
             supabase_admin.auth.sign_in_with_password({
                 "email": user.email,
-                "password": current_password
+                "password": req.current_password
             })
         except Exception:
             raise HTTPException(status_code=401, detail="Current password is incorrect")
-        
+
         # Update to new password
         supabase_admin.auth.admin.update_user_by_id(
             user.user_id,
-            {"password": new_password}
+            {"password": req.new_password}
         )
         
         logger.info(f"[security] password updated for user={user.user_id[:8]}...")
@@ -462,22 +484,19 @@ async def get_active_sessions(user: User = Depends(get_current_user)):
     logger.info(f"[security] sessions list requested by user={user.user_id[:8]}...")
     try:
         # Supabase doesn't expose session list via API
-        # Return current session info + mock data for demo
-        # In production, implement custom session tracking table
-        
+        # Return current session info from JWT (not mock data)
+
         return {
-            "sessions": [
-                {
-                    "id": "current",
-                    "device": "Desktop",
-                    "browser": "Chrome",
-                    "location": "Current Location",
-                    "last_active": datetime.now(timezone.utc).isoformat(),
-                    "is_current": True
-                }
-            ]
+            "sessions": [{
+                "id": "current",
+                "device": "Current Session",
+                "browser": "Active now",
+                "location": "Authenticated",
+                "last_active": datetime.now(timezone.utc).isoformat(),
+                "is_current": True
+            }]
         }
-        
+
     except Exception as e:
         logger.exception(f"[security] sessions list failed for user={user.user_id}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -489,10 +508,10 @@ async def revoke_session(session_id: str, user: User = Depends(get_current_user)
     logger.info(f"[security] session revoke requested by user={user.user_id[:8]}... session={session_id}")
     try:
         # Supabase doesn't expose session revocation via API
-        # In production, implement custom session tracking table
-        
-        return {"status": "success", "message": "Session revoked"}
-        
+        # This endpoint reserved for future implementation
+        logger.info(f"[security] session revoke requested but not yet implemented for user={user.user_id[:8]}...")
+        return {"status": "info", "message": "Session management not yet fully implemented. Please sign out and back in."}
+
     except Exception as e:
         logger.exception(f"[security] session revoke failed for user={user.user_id}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -748,15 +767,34 @@ async def delete_user_account(user: User = Depends(get_current_user)):
     logger.info(f"[api] GDPR ACCOUNT DELETION requested by user={user.user_id}")
     try:
         db = get_client()
-        
+
+        # Delete from ALL tables with user_id
+        db.table("mcp_tokens").delete().eq("user_id", user.user_id).execute()
+        db.table("usage_logs").delete().eq("user_id", user.user_id).execute()
+
+        # agent_logs has no user_id column — delete via request_id linkage
+        request_ids_result = db.table("requests").select("id").eq("user_id", user.user_id).execute()
+        request_ids = [r["id"] for r in request_ids_result.data]
+        if request_ids:
+            db.table("agent_logs").in_("request_id", request_ids).delete().execute()
+
         db.table("requests").delete().eq("user_id", user.user_id).execute()
         db.table("chat_sessions").delete().eq("user_id", user.user_id).execute()
         db.table("conversations").delete().eq("user_id", user.user_id).execute()
         db.table("user_profiles").delete().eq("user_id", user.user_id).execute()
         db.table("langmem_memories").delete().eq("user_id", user.user_id).execute()
-        
-        return {"status": "deleted", "message": "Account data scheduled for permanent deletion."}
-        
+
+        # Delete auth user via Supabase Admin API
+        from supabase import create_client
+        supabase_admin = create_client(
+            os.getenv("SUPABASE_URL"),
+            os.getenv("SUPABASE_SERVICE_KEY")
+        )
+        supabase_admin.auth.admin.delete_user(user.user_id)
+
+        logger.info(f"[api] GDPR deletion complete for user={user.user_id}")
+        return {"status": "deleted", "message": "Account and all associated data permanently deleted."}
+
     except Exception as e:
         logger.exception(f"[api] Account deletion failed for user={user.user_id}")
         raise HTTPException(status_code=500, detail="Internal server error")

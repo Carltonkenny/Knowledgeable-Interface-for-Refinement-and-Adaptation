@@ -1,15 +1,21 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { ROUTES } from '@/lib/constants'
 import { useToken } from '@/hooks/useToken'
-import { apiHistoryBulkDelete, apiHistoryRenameSession } from '@/lib/api' // New bulk API
+import { apiHistoryBulkDelete, apiHistoryRenameSession } from '@/lib/api'
+import { logger } from '@/lib/logger'
 import HistoryList from '@/features/history/components/HistoryList'
 import HistorySearchBar from '@/features/history/components/HistorySearchBar'
 import HistoryAnalyticsDashboard from '@/features/history/components/HistoryAnalyticsDashboard'
 import { useHistory } from '@/features/history/hooks/useHistory'
 import { useHistoryAnalytics } from '@/features/history/hooks/useHistoryAnalytics'
+
+interface RenameSessionEvent {
+  sessionId: string
+  title: string
+}
 
 // Standard fallback for notifications since sonner is not installed
 const toast = {
@@ -98,13 +104,15 @@ export default function HistoryPage() {
   }
 
   useEffect(() => {
-    const handleRename = async (e: any) => {
-      const { sessionId, title } = e.detail
+    const handleRename = async (e: Event) => {
+      const detail = (e as CustomEvent<RenameSessionEvent>).detail
+      const { sessionId, title } = detail
       try {
         await apiHistoryRenameSession(token!, sessionId, title)
         toast.success('Session renamed in Palace index')
         window.location.reload() // Simple sync
       } catch (err) {
+        logger.error('Failed to rename session', { err, sessionId })
         toast.error('Failed to update session title')
       }
     }

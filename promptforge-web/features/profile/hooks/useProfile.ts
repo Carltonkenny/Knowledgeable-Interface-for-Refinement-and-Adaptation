@@ -9,6 +9,7 @@ import {
   apiGetStats,
   apiDeleteAccount,
   apiExportData,
+  apiGetProfileInfo,
   DomainStat,
   MemoryPreview,
   QualityTrendPoint,
@@ -37,18 +38,43 @@ export function useProfile(token: string | null) {
     setError(null)
 
     try {
-      // Fetch all required data in parallel
-      const [statsRes, domainsRes, memoriesRes, heatmapRes] = await Promise.all([
+      // Fetch all required data in parallel — use allSettled so secondary failures
+      // (memories, heatmap, domains) don't block primary profile/stats from loading
+      const [profileRes, statsRes, domainsRes, memoriesRes, heatmapRes] = await Promise.allSettled([
+        apiGetProfileInfo(token),
         apiGetStats(token),
         apiGetDomains(token),
         apiGetMemories(token),
         apiGetAnalyticsHeatmap(token)
       ])
 
-      setStats(statsRes)
-      setDomains(domainsRes.domains)
-      setMemories(memoriesRes.memories)
-      setHeatmap(heatmapRes)
+      // Primary: profile MUST succeed
+      if (profileRes.status === 'fulfilled') {
+        setProfile(profileRes.value)
+      } else {
+        logger.error('Profile fetch failed', { error: profileRes.reason })
+        setError('Could not load profile data.')
+      }
+
+      // Secondary: stats (nice-to-have, profile works without it)
+      if (statsRes.status === 'fulfilled') {
+        setStats(statsRes.value)
+      }
+
+      // Tertiary: domains
+      if (domainsRes.status === 'fulfilled') {
+        setDomains(domainsRes.value.domains)
+      }
+
+      // Quaternary: memories
+      if (memoriesRes.status === 'fulfilled') {
+        setMemories(memoriesRes.value.memories)
+      }
+
+      // Quinary: heatmap
+      if (heatmapRes.status === 'fulfilled') {
+        setHeatmap(heatmapRes.value)
+      }
     } catch (err) {
       logger.error('Failed to load profile data', { error: err, hasToken: !!token })
       setError('Failed to initialize profile.')
@@ -124,7 +150,26 @@ export function useProfile(token: string | null) {
     refreshStats: loadProfileData,
     trustLevel: stats?.trust_level ?? 0,
     tier: calculateTier(),
-    xpTotal: stats?.xp_total ?? 0,
-    username: profile?.username ?? (stats ? 'User' : null)
+    xpTotal: stats?.xp_total ?? profile?.xp_total ?? 0,
+    // Profile fields come from the profile state (apiGetProfileInfo), NOT stats
+    username: profile?.username ?? profile?.email?.split('@')[0] ?? 'User',
+    email: profile?.email ?? '',
+    bio: profile?.bio ?? null,
+    location: profile?.location ?? null,
+    website: profile?.website ?? null,
+    github: profile?.github ?? null,
+    twitter: profile?.twitter ?? null,
+    linkedin: profile?.linkedin ?? null,
+    avatar_url: profile?.avatar_url ?? null,
+    job_title: profile?.job_title ?? null,
+    company: profile?.company ?? null,
+    phone: profile?.phone ?? null,
+    // Kira's learned profile analysis fields
+    dominantDomains: profile?.dominant_domains ?? [],
+    preferredTone: profile?.preferred_tone ?? 'direct',
+    clarificationRate: profile?.clarification_rate ?? 0.0,
+    domainConfidence: profile?.domain_confidence ?? 0.5,
+    promptQualityTrend: profile?.prompt_quality_trend ?? 'stable',
+    notablePatterns: profile?.notable_patterns ?? [],
   }
 }

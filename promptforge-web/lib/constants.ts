@@ -38,7 +38,7 @@ export const LIMITS = {
   PROMPT_MAX:        2000,
   FILE_MAX_BYTES:    2 * 1024 * 1024,  // 2MB
   IMAGE_MAX_BYTES:   5 * 1024 * 1024,  // 5MB
-  DEMO_MAX_USES:     3,
+  DEMO_MAX_USES:     2,
   DEMO_STORAGE_KEY:  'pf_demo_uses',
   SESSION_STORAGE_KEY: 'pf_session_id',
 } as const

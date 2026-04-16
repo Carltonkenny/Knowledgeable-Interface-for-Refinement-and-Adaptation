@@ -23,14 +23,17 @@ logger = logging.getLogger(__name__)
 security = HTTPBearer()
 
 # Initialize Supabase client
+# SECURITY: Use anon key for user-facing operations (RLS enforced).
+# Service key is ONLY for admin contexts (account deletion, username change, password change).
+# Backward compatible: checks SUPABASE_ANON_KEY first, then SUPABASE_KEY (legacy name).
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_SERVICE_KEY")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY")
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    logger.error("[auth] Supabase credentials not configured")
-    raise RuntimeError("Supabase configuration missing")
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+    logger.critical("[auth] Supabase credentials not configured - app will fail on first auth attempt")
+    supabase: Client = None  # type: ignore
+else:
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 
 class User(BaseModel):
@@ -62,6 +65,9 @@ def get_current_user(
     Raises:
         HTTPException: 403 if token invalid, missing, or expired
     """
+    if supabase is None:
+        raise HTTPException(status_code=503, detail="Authentication service not configured")
+
     token = credentials.credentials
 
     # Retry once on transient network errors (WinError 10035 on Windows)

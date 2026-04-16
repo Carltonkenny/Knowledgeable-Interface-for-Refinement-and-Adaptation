@@ -16,6 +16,7 @@ import ProfileTabs from '@/features/profile/components/ProfileTabs'
 import ProfileCompleteness from '@/features/profile/components/ProfileCompleteness'
 import UsageStats from '@/features/profile/components/UsageStats'
 import LangMemPreview from '@/features/profile/components/LangMemPreview'
+import KiraInsights from '@/features/profile/components/KiraInsights'
 import DataExport from '@/features/profile/components/DataExport'
 import DangerZone from '@/features/profile/components/DangerZone'
 import SecurityTab from '@/features/profile/components/SecurityTab'
@@ -25,7 +26,7 @@ import SettingsTab from '@/features/profile/components/SettingsTab'
 export default function ProfilePage() {
   const router = useRouter()
   const token = useToken()
-  const [activeTab, setActiveTab] = useState('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'activity' | 'settings' | 'security'>('overview')
 
   const profile = useProfile(token)
 
@@ -61,26 +62,56 @@ export default function ProfilePage() {
     twitter?: string | null
     linkedin?: string | null
     avatar_url?: string | null
+    username?: string | null
   }) => {
     if (!token) return
-    
+
     // Filter out null values - only send fields that actually have data
     const cleaned = Object.fromEntries(
       Object.entries(data).filter(([_, v]) => v !== null && v !== '')
     ) as Record<string, string>
-    
+
     if (Object.keys(cleaned).length === 0) {
       toast.info('No changes to save')
       return
     }
-    
+
     try {
-      await apiUpdateProfile(token, cleaned)
+      // Split username from other attributes as they use different API paths
+      const { username: newUsername, ...attributes } = cleaned
+
+      const updateTasks: Promise<unknown>[] = []
+
+      if (newUsername) {
+        updateTasks.push(profile.updateUsername(newUsername))
+      }
+
+      if (Object.keys(attributes).length > 0) {
+        updateTasks.push(apiUpdateProfile(token, attributes))
+      }
+
+      await Promise.all(updateTasks)
+      
       toast.success('Profile synced successfully')
       await profile.refreshStats()
     } catch (err) {
       logger.error('Profile update failed', { err, fields: Object.keys(data) })
-      toast.error('Sync failed — your changes are safe. Try again.')
+      toast.error(err instanceof Error ? err.message : 'Sync failed — your changes are safe. Try again.')
+    }
+  }
+
+  // Handle username update
+  const handleUsernameUpdate = async (newUsername: string): Promise<boolean> => {
+    if (!token) return false
+    try {
+      await profile.updateUsername(newUsername)
+      toast.success('Username updated successfully')
+      await profile.refreshStats()
+      return true
+    } catch (err) {
+      logger.error('Username update failed', { err })
+      toast.error(err instanceof Error ? err.message : 'Failed to update username')
+      return false
     }
   }
 
@@ -99,27 +130,28 @@ export default function ProfilePage() {
       </div>
     }>
       <div className="max-w-5xl mx-auto px-4 py-8 animate-fade-in pb-20">
+
       {/* Profile Header */}
       <ProfileHeader
-        email={profile.stats?.email || ''}
+        email={profile.email}
         username={profile.username}
-        bio={profile.stats?.bio}
-        location={profile.stats?.location}
-        website={profile.stats?.website}
-        github={profile.stats?.github}
-        twitter={profile.stats?.twitter}
-        linkedin={profile.stats?.linkedin}
-        avatar_url={profile.stats?.avatar_url}
-        job_title={profile.stats?.job_title}
-        company={profile.stats?.company}
-        tier={profile.tier as any}
+        bio={profile.bio}
+        location={profile.location}
+        website={profile.website}
+        github={profile.github}
+        twitter={profile.twitter}
+        linkedin={profile.linkedin}
+        avatar_url={profile.avatar_url}
+        job_title={profile.job_title}
+        company={profile.company}
+        tier={profile.tier}
         trustLevel={profile.trustLevel}
         onSave={handleProfileUpdate}
       />
 
       {/* Profile Tabs */}
       <div className="mt-6">
-        <ProfileTabs activeTab={activeTab as any} onTabChange={(tab) => setActiveTab(tab as any)} />
+        <ProfileTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
         {/* Tab Content */}
         {activeTab === 'overview' && (
@@ -127,17 +159,25 @@ export default function ProfilePage() {
             {/* Left Column */}
             <div className="lg:col-span-1 space-y-6">
               <ProfileCompleteness profile={{
-                bio: profile.stats?.bio,
-                location: profile.stats?.location,
-                job_title: profile.stats?.job_title,
-                company: profile.stats?.company,
-                website: profile.stats?.website,
-                github: profile.stats?.github,
-                twitter: profile.stats?.twitter,
-                linkedin: profile.stats?.linkedin,
-                avatar_url: profile.stats?.avatar_url,
-                phone: profile.stats?.phone
+                bio: profile.bio,
+                location: profile.location,
+                job_title: profile.job_title,
+                company: profile.company,
+                website: profile.website,
+                github: profile.github,
+                twitter: profile.twitter,
+                linkedin: profile.linkedin,
+                avatar_url: profile.avatar_url,
+                phone: profile.phone
               }} />
+              <KiraInsights
+                dominantDomains={profile.dominantDomains}
+                preferredTone={profile.preferredTone}
+                clarificationRate={profile.clarificationRate}
+                domainConfidence={profile.domainConfidence}
+                promptQualityTrend={profile.promptQualityTrend}
+                notablePatterns={profile.notablePatterns}
+              />
               <LangMemPreview
                 memories={profile.memories}
                 isLoading={profile.isInitializing}

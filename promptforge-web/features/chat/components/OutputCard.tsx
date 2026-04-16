@@ -60,45 +60,67 @@ export default function OutputCard({ promptId, sessionId, result }: OutputCardPr
       transition={{ type: "spring", stiffness: 300, damping: 30, duration: shouldReduce ? 0 : undefined }}
       className="mb-6"
     >
-      {/* Gradient border wrapper */}
-      <div className="rounded-[11px] p-px bg-gradient-to-br from-kira/60 via-engineer/40 to-memory/30">
-        <div className="bg-layer1 rounded-[10px] p-4">
+      {/* Liquid Premium Glass Border Wrapper */}
+      <div className="rounded-2xl p-[1px] bg-gradient-to-br from-white/15 via-white/5 to-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.3)]">
+        <div className="bg-[#0a0a0c]/80 backdrop-blur-3xl rounded-[15px] p-6 relative overflow-hidden transition-all duration-400 ease-[0.23,1,0.32,1]">
+          
+          {/* Ambient Liquid Gradient Inside Card */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-[var(--kira-primary)]/10 blur-[80px] rounded-full pointer-events-none transform translate-x-1/2 -translate-y-1/2 mix-blend-screen" />
           {/* Header */}
-          <div className="flex items-center gap-3 mb-3">
-            <span className="font-mono text-[9px] tracking-wider uppercase text-text-dim">
-              Improved version
+          <div className="flex items-center gap-3 mb-4">
+            <span className="font-mono text-[9px] tracking-widest uppercase text-white/50">
+              Output Generation
             </span>
             {result.memories_applied > 0 && (
-              <Chip variant="memory">
-                ● {result.memories_applied} memories
+              <Chip variant="memory" className="bg-white/10 text-white/70">
+                ● {result.memories_applied} memory matches
               </Chip>
             )}
-            <span className="font-mono text-[10px] text-text-dim">
+            <span className="font-mono text-[10px] text-white/40 ml-auto">
               {formatDuration(result.latency_ms)}
             </span>
           </div>
 
-          {/* Output text */}
-          <p className="text-[--output-text] text-sm leading-relaxed mb-4 whitespace-pre-wrap">
-            {displayPrompt}
-          </p>
+          {/* Premium Syntax Block for Output */}
+          <div className="relative group mb-5">
+            <div className="absolute inset-0 bg-white/[0.02] rounded-xl border border-white/5 pointer-events-none shadow-[inset_0_1px_2px_rgba(255,255,255,0.02)]" />
+            <p className="text-white/90 text-[15px] leading-relaxed p-5 whitespace-pre-wrap font-sans tracking-wide selection:bg-[var(--kira-primary)]/30">
+              {displayPrompt}
+            </p>
+          </div>
 
-          {/* Annotation chips */}
-          <div className="flex gap-2 mb-3 flex-wrap">
-            {additions > 0 && (
-              <Chip variant="context">+ Added structure</Chip>
-            )}
-            {removals > 0 && (
-              <Chip variant="intent">− Removed vagueness</Chip>
-            )}
+          {/* Liquid Engineering Rationale */}
+          <div className="flex flex-col gap-2 mb-5">
+            <span className="text-[10px] uppercase tracking-wider font-mono text-[var(--kira-primary)] flex items-center gap-2 drop-shadow-[0_0_8px_rgba(var(--kira-primary-rgb),0.5)]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--kira-primary)] animate-pulse" />
+              Engineering Rationale
+            </span>
+            <div className="flex gap-2 flex-wrap">
+              {additions > 0 && (
+                <span className="px-2.5 py-1 text-xs rounded-md bg-white/5 text-white/80 border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] backdrop-blur-md">
+                  <span className="text-green-400 mr-1">+</span> Injected precise constraints and expert persona
+                </span>
+              )}
+              {removals > 0 && (
+                <span className="px-2.5 py-1 text-xs rounded-md bg-white/5 text-white/80 border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] backdrop-blur-md">
+                  <span className="text-red-400 mr-1">−</span> Excised vague or conflicting requirements
+                </span>
+              )}
+              {additions === 0 && removals === 0 && (
+                <span className="px-2.5 py-1 text-xs rounded-md bg-white/5 text-white/60 border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] backdrop-blur-md">
+                  No structural changes required
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Diff toggle */}
           <button
             onClick={() => setShowDiff(!showDiff)}
-            className="text-xs text-text-dim hover:text-text-bright mb-3"
+            className="text-[11px] font-medium text-white/40 hover:text-[var(--kira-primary)] mb-3 transition-colors duration-300 ease-[0.23,1,0.32,1] flex items-center gap-1.5"
           >
-            {showDiff ? 'Hide diff' : 'Show diff'}
+            {showDiff ? 'Hide diff' : 'Show diff view'}
+            <div className="w-1 h-1 rounded-full bg-white/20" />
           </button>
 
           {/* Diff view */}
@@ -108,7 +130,7 @@ export default function OutputCard({ promptId, sessionId, result }: OutputCardPr
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: shouldReduce ? 0 : 0.2, ease: "easeInOut" }}
+                transition={{ duration: shouldReduce ? 0 : 0.4, ease: [0.23, 1, 0.32, 1] }}
                 className="mb-4 overflow-hidden"
               >
                 <div className="p-3 bg-[var(--surface-hover)] rounded-lg border border-border-subtle">
@@ -123,9 +145,9 @@ export default function OutputCard({ promptId, sessionId, result }: OutputCardPr
 
           {/* Suggestions/Alternative Paths */}
           {result.suggestions && result.suggestions.length > 0 && (
-            <div className="mt-4 mb-3 border-t border-border-subtle pt-4">
-              <span className="text-[10px] uppercase tracking-wider font-mono text-text-dim block mb-2">
-                Alternative paths
+            <div className="mt-5 mb-2 pt-5 border-t border-white/5">
+              <span className="text-[10px] uppercase tracking-widest font-mono text-white/60 block mb-4">
+                Alternate Trajectories
               </span>
               <div className="flex flex-wrap gap-2">
                 {result.suggestions.map((suggestion, i) => (
@@ -135,7 +157,7 @@ export default function OutputCard({ promptId, sessionId, result }: OutputCardPr
                       const event = new CustomEvent('send-chat-message', { detail: { message: suggestion } })
                       window.dispatchEvent(event)
                     }}
-                    className="text-xs bg-layer2 hover:bg-layer3 border border-border-subtle hover:border-kira/40 text-text-bright px-3 py-1.5 rounded-full transition-all duration-200"
+                    className="text-xs bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 hover:shadow-[0_2px_8px_rgba(0,0,0,0.2)] text-white/80 hover:text-white px-3.5 py-2 rounded-full transition-all duration-300 backdrop-blur-sm"
                   >
                     {suggestion}
                   </button>
@@ -144,29 +166,31 @@ export default function OutputCard({ promptId, sessionId, result }: OutputCardPr
             </div>
           )}
 
-          <div className="flex gap-4 mt-4 pt-4 border-t border-border-subtle">
-            <button
-              onClick={handleCopy}
-              className="text-xs text-text-dim hover:text-text-bright font-mono flex items-center gap-1.5"
-            >
-              <div className={cn("w-1.5 h-1.5 rounded-full", isCopied ? "bg-green-400" : "bg-text-dim")} />
-              {isCopied ? 'Copied!' : 'Copy'}
-            </button>
-
-            {result.version_id && (
+          <div className="flex items-center justify-between mt-5 pt-4 border-t border-white/5">
+            <div className="flex gap-4">
               <button
-                onClick={() => {
-                  const event = new CustomEvent('open-version-history', { 
-                    detail: { versionId: result.version_id, vNumber: result.version_number } 
-                  })
-                  window.dispatchEvent(event)
-                }}
-                className="text-xs text-kira hover:text-kira-bright font-mono flex items-center gap-1.5"
+                onClick={handleCopy}
+                className="text-[11px] text-white/60 hover:text-white font-mono flex items-center gap-2 transition-all duration-300 ease-[0.23,1,0.32,1] hover:bg-white/5 px-2.5 py-1.5 rounded-lg border border-transparent hover:border-white/10"
               >
-                <HistoryIcon size={14} />
-                History
+                <div className={cn("w-2 h-2 rounded-full transition-all duration-500", isCopied ? "bg-green-400 shadow-[0_0_10px_rgba(74,222,128,0.5)]" : "bg-white/20")} />
+                {isCopied ? 'Action successful' : 'Copy result'}
               </button>
-            )}
+
+              {result.version_id && (
+                <button
+                  onClick={() => {
+                    const event = new CustomEvent('open-version-history', { 
+                      detail: { versionId: result.version_id, vNumber: result.version_number } 
+                    })
+                    window.dispatchEvent(event)
+                  }}
+                  className="text-xs text-[var(--kira-primary)] hover:text-white font-mono flex items-center gap-1.5 transition-colors duration-200"
+                >
+                  <HistoryIcon size={14} className="opacity-70" />
+                  View History
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>

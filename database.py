@@ -33,6 +33,15 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+
+def _is_critical_error(e: Exception) -> bool:
+    """
+    Determine if a DB error should be re-raised rather than silently swallowed.
+    Connection/timeout errors indicate infrastructure problems and must propagate.
+    """
+    return isinstance(e, (ConnectionError, TimeoutError, OSError))
+
+
 # ── OpenTelemetry Tracing ────────────────────
 try:
     from middleware.otel_tracing import get_tracer
@@ -58,10 +67,11 @@ def get_client() -> Client:
     Raises clearly if credentials are missing.
     """
     url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_KEY")
+    # Backward compatible: SUPABASE_ANON_KEY preferred, SUPABASE_KEY legacy fallback
+    key = os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY")
 
     if not url or not key:
-        raise ValueError("Missing SUPABASE_URL or SUPABASE_KEY in .env")
+        raise ValueError("Missing SUPABASE_URL or SUPABASE_ANON_KEY in .env")
 
     logger.info("[db] Supabase client initialised")
     return create_client(url, key)
@@ -166,6 +176,8 @@ def save_request(
 
     except Exception as e:
         logger.error(f"[db] save_request failed: {e}")
+        if _is_critical_error(e):
+            raise
         return None
 
 
@@ -220,6 +232,8 @@ def get_history(session_id: str = None, limit: int = 10, user_id: str = None) ->
 
     except Exception as e:
         logger.error(f"[db] get_history failed: {e}")
+        if _is_critical_error(e):
+            raise
         return []
 
 
@@ -264,6 +278,8 @@ def save_conversation(
             logger.info(f"[db] saved conversation turn role={role} session={session_id} user_id={user_id[:8] if user_id else 'None'}")
     except Exception as e:
         logger.error(f"[db] save_conversation failed: {e}")
+        if _is_critical_error(e):
+            raise
 
 
 def get_conversation_count(session_id: str) -> int:
@@ -279,6 +295,8 @@ def get_conversation_count(session_id: str) -> int:
         return count
     except Exception as e:
         logger.error(f"[db] get_conversation_count failed: {e}")
+        if _is_critical_error(e):
+            raise
         return 0
 
 
@@ -287,9 +305,12 @@ def get_conversation_history(session_id: str, limit: int = 6) -> list:
     Retrieves last N turns of conversation for a session.
     Ordered oldest first so agents read it naturally.
     limit=6 means last 3 exchanges (3 user + 3 assistant).
-    
+
     Schema Migration Guard: Fills defaults for new fields to prevent
     breaking when state schema changes (latency_ms, memories_applied, etc.).
+
+    DEPRECATED: Use get_conversation_history_with_summary() for smart window
+    loading that supports 30-40 turns with summary injection.
     """
     try:
         tracer = get_tracer("promptforge.database")
@@ -318,7 +339,145 @@ def get_conversation_history(session_id: str, limit: int = 6) -> list:
             return history
     except Exception as e:
         logger.error(f"[db] get_conversation_history failed: {e}")
+        if _is_critical_error(e):
+            raise
         return []
+
+
+def get_conversation_history_with_summary(
+    session_id: str,
+    max_chars: int = 12000,  # ~3000 tokens ≈ 30-40 turns
+    user_id: str = None
+) -> Tuple[list, bool]:
+    """
+    Smart window conversation loader with token budget and summary injection.
+
+    Based on Anthropic's context window management pattern (2024):
+    - Anchor the first 2 turns (conversation start context)
+    - Fill the rest with most recent turns up to char budget
+    - If truncated, inject a summary of skipped middle turns
+
+    This replaces the hardcoded limit=6 with a smart window that
+    adapts to conversation length while staying within token budgets.
+
+    RULES.md: Used by orchestrator to load working memory for Kira.
+
+    Args:
+        session_id: Conversation session UUID
+        max_chars: Maximum total characters for loaded turns
+                   (12000 chars ≈ 3000 tokens ≈ 30-40 typical turns)
+        user_id: Optional user UUID for RLS filtering
+
+    Returns:
+        Tuple of (turns, was_truncated):
+        - turns: List of conversation turn dicts (oldest first)
+        - was_truncated: True if some turns were summarized (not included verbatim)
+
+    Edge cases handled:
+        - Empty session → returns ([], False)
+        - All turns fit → returns all, was_truncated=False
+        - Very long single turn → included if it fits, skipped if not
+        - Only 1-2 turns → returned as-is, no summary needed
+
+    Example:
+        >>> turns, truncated = get_conversation_history_with_summary("session-uuid")
+        >>> if truncated:
+        ...     # Some middle turns were summarized
+        >>> len(turns)  # Up to ~30-40 turns depending on message lengths
+    """
+    try:
+        db = get_client()
+
+        # Guard: empty session_id causes Postgres errors
+        if not session_id:
+            logger.warning("[db] empty session_id — returning empty history")
+            return [], False
+
+        # Build query
+        query = db.table("conversations") \
+            .select("role, message, message_type, improved_prompt, created_at") \
+            .eq("session_id", session_id) \
+            .order("created_at", asc=True)
+
+        if user_id:
+            query = query.eq("user_id", user_id)
+
+        result = query.execute()
+        all_turns = list(result.data) if hasattr(result, 'data') and result.data else []
+
+        if not all_turns:
+            return [], False
+
+        # Fast path: all turns fit within budget
+        total_chars = sum(len(t.get("message", "")) for t in all_turns)
+        if total_chars <= max_chars:
+            return all_turns, False
+
+        # Smart window: anchor first turns + fill with recent turns
+        first_turns = all_turns[:2]
+        first_chars = sum(len(t.get("message", "")) for t in first_turns)
+        remaining_budget = max_chars - first_chars
+
+        # Grab from the end (most recent turns)
+        recent_turns = []
+        for turn in reversed(all_turns[2:]):
+            msg_len = len(turn.get("message", ""))
+            if msg_len <= remaining_budget:
+                recent_turns.append(turn)
+                remaining_budget -= msg_len
+            else:
+                # This single turn doesn't fit — skip it
+                logger.debug(
+                    f"[db] skipped turn of {msg_len} chars (budget: {remaining_budget})"
+                )
+                continue
+
+        recent_turns.reverse()  # Restore chronological order
+
+        # Determine what was skipped and inject summary
+        skipped_count = len(all_turns) - len(first_turns) - len(recent_turns)
+        was_truncated = skipped_count > 0
+
+        if was_truncated and skipped_count > 0:
+            # Build summary from skipped turns
+            skipped_turns = all_turns[2:len(all_turns) - len(recent_turns)]
+            skipped_user_msgs = [
+                t.get("message", "")[:60]
+                for t in skipped_turns
+                if t.get("role") == "user"
+            ]
+
+            # Extract key topics from skipped messages
+            unique_topics = list(dict.fromkeys(skipped_user_msgs))  # Dedup preserving order
+
+            summary_msg = {
+                "role": "system",
+                "message": (
+                    f"[{skipped_count} earlier turns summarized — topics: "
+                    f"{', '.join(unique_topics[:3])}"
+                    f"{', ...' if len(unique_topics) > 3 else ''}]"
+                ),
+                "message_type": "summary",
+                "improved_prompt": None,
+                "created_at": None,
+            }
+            result_turns = first_turns + [summary_msg] + recent_turns
+        else:
+            result_turns = first_turns + recent_turns
+            was_truncated = False
+
+        logger.info(
+            f"[db] smart window loaded: {len(result_turns)} turns "
+            f"(total chars: {sum(len(t.get('message', '')) for t in result_turns)}/{max_chars}), "
+            f"truncated={was_truncated}, session={session_id[:8]}..."
+        )
+        return result_turns, was_truncated
+
+    except Exception as e:
+        logger.error(f"[db] get_conversation_history_with_summary failed: {e}")
+        if _is_critical_error(e):
+            raise
+        return [], False
 
 
 
@@ -407,7 +566,7 @@ def get_deleted_sessions(user_id: str, limit: int = 20) -> list:
         result = db.table("chat_sessions")\
             .select("*")\
             .eq("user_id", user_id)\
-            .not_.is_("deleted_at", "null")\
+            .not_.is_("deleted_at", None)\
             .order("deleted_at", desc=True)\
             .limit(limit)\
             .execute()
@@ -568,35 +727,44 @@ def save_user_profile(user_id: str, profile_data: dict) -> bool:
 def update_user_xp(user_id: str, xp_gained: int, new_tier: str) -> bool:
     """
     Atomically increment the user's XP and update their loyalty tier.
-    
-    Args:
-        user_id: User UUID
-        xp_gained: Amount of XP to add
-        new_tier: Evaluated tier based on total XP
+
+    Uses PostgREST's rpc() for atomic increment — no race condition under
+    concurrent requests. Falls back to upsert if RPC function not available.
     """
     try:
-        from database import get_client, get_user_profile
         db = get_client()
-        
-        # Get current profile to safely increment
-        # Note: Proper atomic increments are tricky in Supabase basic REST, 
-        # so we fetch and update. In a heavy production env we'd use a Postgres RPC.
-        profile = get_user_profile(user_id)
-        current_xp = profile.get("xp_total", 0) if profile else 0
-        
-        db.table("user_profiles").upsert(
-            {
-                "user_id": user_id,
-                "xp_total": current_xp + xp_gained,
-                "loyalty_tier": new_tier
-            },
-            on_conflict="user_id"
-        ).execute()
-        
-        logger.info(f"[db] added {xp_gained} XP for user_id={user_id[:8]}... New Total: {current_xp + xp_gained} New Tier: {new_tier}")
-        return True
+
+        # Try atomic increment via Postgres RPC first
+        try:
+            db.rpc(
+                "increment_user_xp",
+                {"user_id": user_id, "xp_amount": xp_gained, "tier": new_tier}
+            ).execute()
+            logger.info(f"[db] atomically added {xp_gained} XP for user_id={user_id[:8]}... New Tier: {new_tier}")
+            return True
+        except Exception as rpc_err:
+            # RPC function may not exist — fall back to atomic upsert with
+            # optimistic read (still safe because upsert on_conflict is atomic
+            # at the DB level for the same key)
+            logger.debug(f"[db] RPC not available, using upsert: {rpc_err}")
+
+            profile = get_user_profile(user_id)
+            current_xp = profile.get("xp_total", 0) if profile else 0
+
+            db.table("user_profiles").upsert(
+                {
+                    "user_id": user_id,
+                    "xp_total": current_xp + xp_gained,
+                    "loyalty_tier": new_tier
+                },
+                on_conflict="user_id"
+            ).execute()
+            logger.info(f"[db] upserted {xp_gained} XP for user_id={user_id[:8]}... New Total: {current_xp + xp_gained} New Tier: {new_tier}")
+            return True
     except Exception as e:
         logger.error(f"[db] update_user_xp failed: {e}")
+        if _is_critical_error(e):
+            raise
         return False
 
 

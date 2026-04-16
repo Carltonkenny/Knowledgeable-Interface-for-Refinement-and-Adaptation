@@ -1,4 +1,4 @@
-# utils.py
+# utils/__init__.py
 # ─────────────────────────────────────────────
 # Shared utilities for PromptForge v2.0
 #
@@ -9,6 +9,9 @@
 #   get_cache_key       — SHA-256 hash of prompt (per RULES.md)
 #   get_cached_result   — returns cached swarm result from Redis
 #   set_cached_result   — stores to Redis with 1-hour expiry
+#
+# Submodules:
+#   error_messages      — Personality-driven error messages
 #
 # Cache rules (from RULES.md):
 # - SHA-256 for cache keys (NEVER MD5)
@@ -56,17 +59,17 @@ def get_redis_client() -> Optional[redis.Redis]:
     Returns cached Redis client.
     Created once, reused everywhere (connection pooling).
     Reads REDIS_URL from .env.
-    
+
     Returns:
         Redis client if connected, None if connection fails
-        
+
     Example:
         client = get_redis_client()
         if client:
             client.set("key", "value")
     """
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-    
+
     try:
         client = redis.from_url(redis_url, decode_responses=True)
         client.ping()
@@ -94,23 +97,23 @@ Prevents stale cached data from being served after schema updates.
 def get_cache_key(prompt: str, user_id: Optional[str] = None) -> str:
     """
     SHA-256 hash of normalized prompt with version prefix and optional user personalization.
-    
+
     Per RULES.md: NEVER use MD5 (security vulnerability).
-    
+
     Args:
         prompt: User's prompt text
         user_id: Optional user ID for personalized caching (includes profile hash)
-    
+
     Returns:
         64-character hex string (SHA-256 hash)
-    
+
     Example:
         key = get_cache_key("write a story", "user-123")
         # Returns: "a1b2c3..." (64 chars)
     """
     # Normalize prompt
     normalized = prompt.strip().lower()
-    
+
     # Include user_id in cache key if provided (for personalized results)
     if user_id:
         # Hash the user_id to keep key length reasonable
@@ -118,7 +121,7 @@ def get_cache_key(prompt: str, user_id: Optional[str] = None) -> str:
         raw = f"{CACHE_VERSION}:{user_hash}:{normalized}"
     else:
         raw = f"{CACHE_VERSION}:{normalized}"
-    
+
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
@@ -126,14 +129,14 @@ def get_cached_result(prompt: str, user_id: Optional[str] = None) -> Optional[Di
     """
     Returns cached swarm result for this prompt from Redis.
     Returns None if not cached or Redis unavailable.
-    
+
     Args:
         prompt: User's prompt text
         user_id: Optional user ID for personalized cache lookup
-    
+
     Returns:
         Cached swarm result dict, or None if not found
-    
+
     Example:
         cached = get_cached_result("write a story", "user-123")
         if cached:
@@ -142,11 +145,11 @@ def get_cached_result(prompt: str, user_id: Optional[str] = None) -> Optional[Di
             return run_swarm()  # Cache miss — run full pipeline
     """
     client = get_redis_client()
-    
+
     if not client:
         logger.debug("[cache] Redis unavailable — skipping cache check")
         return None
-    
+
     try:
         tracer = get_tracer("promptforge.cache")
         with tracer.start_as_current_span("cache.get_result") as span:
@@ -183,23 +186,23 @@ def set_cached_result(prompt: str, result: Dict[str, Any], user_id: Optional[str
     """
     Stores swarm result in Redis with 1-hour expiry.
     LRU eviction handled automatically by Redis.
-    
+
     Args:
         prompt: User's prompt text
         result: Full swarm result dict to cache
         user_id: Optional user ID for personalized cache key
-    
+
     Example:
         result = run_swarm("write a story", "user-123")
         set_cached_result("write a story", result, "user-123")
         # Next get_cached_result() returns cached result
     """
     client = get_redis_client()
-    
+
     if not client:
         logger.debug("[cache] Redis unavailable — skipping cache write")
         return
-    
+
     try:
         tracer = get_tracer("promptforge.cache")
         with tracer.start_as_current_span("cache.set_result") as span:
@@ -233,26 +236,26 @@ def set_cached_result(prompt: str, result: Dict[str, Any], user_id: Optional[str
 def parse_json_response(raw: str, agent_name: str, retries: int = 2) -> dict:
     """
     Safely parses JSON from LLM response with exponential backoff retry.
-    
+
     Handles 3 failure modes: clean JSON, markdown-wrapped, buried in text.
     Retries with backoff on parse failure — useful for streaming/partial responses.
     Returns {} on complete failure — caller decides how to handle.
-    
+
     Args:
         raw: Raw LLM response string
         agent_name: Agent name for logging context
         retries: Number of retry attempts with exponential backoff (default: 2)
-    
+
     Returns:
         Parsed JSON dict or empty dict on failure
-    
+
     Example:
         >>> result = parse_json_response('```json{"key": "value"}```', "intent")
         >>> result
         {"key": "value"}
     """
     import time
-    
+
     if not raw or not raw.strip():
         logger.warning(f"[{agent_name}] empty response from LLM")
         return {}
@@ -276,7 +279,7 @@ def parse_json_response(raw: str, agent_name: str, retries: int = 2) -> dict:
                 return result
             except (json.JSONDecodeError, AttributeError):
                 continue
-        
+
         # If all parse attempts failed and we have retries left, wait with backoff
         if retry < retries:
             backoff_seconds = 0.5 * (2 ** retry)  # 0.5s, 1s, 2s...
@@ -304,25 +307,25 @@ def calculate_overall_quality(quality_score: dict) -> float:
     """
     Calculates the overall quality score from specificity, clarity, and actionability.
     Standardized helper used by search and analytics to ensure consistency.
-    
+
     Args:
         quality_score: Dict containing 'specificity', 'clarity', 'actionability' (1-5)
                        and optionally an 'overall' field.
-                       
+
     Returns:
         float: Calculated or retrieved overall score (0-5).
     """
     if not quality_score:
         return 0.0
-        
+
     if 'overall' in quality_score:
         return float(quality_score['overall'])
-        
+
     # Dynamic fallback calculation
     metrics = ['specificity', 'clarity', 'actionability']
     scores = [quality_score.get(m, 0) for m in metrics]
-    
+
     if not any(scores):
         return 0.0
-        
+
     return round(sum(scores) / len(scores), 1)

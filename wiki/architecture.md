@@ -52,47 +52,62 @@ Expected latency: Kira ~500ms + parallel agents ~500–1000ms + prompt engineer 
 
 ---
 
-## 3. LangGraph State Schema (`state.py`)
+## 3. LangGraph State Schema (`graph/state.py`)
 
-`PromptForgeState` is a TypedDict with **27 fields** organized in 5 sections. This is the "baton" passed between all agents:
+`PromptForgeState` is a TypedDict with **26 fields** organized in 8 sections. Located in `graph/state.py` (not in root — the `graph/` directory is an active Python package with empty `__init__.py`). This is the "baton" passed between all agents:
 
 ### Section 1: INPUT (6 fields)
-- `message` — User's actual message (5–2000 chars)
+- `message` — User's actual message (5-2000 chars)
 - `session_id` — Conversation session identifier
 - `user_id` — From JWT, extracted via `auth.uid()`
 - `attachments` — Multimodal: `[{type, content/base64, filename}]`
 - `input_modality` — `'text' | 'file' | 'image' | 'voice'`
 - `conversation_history` — Last N turns from Supabase
 
-### Section 2: MEMORY (3 fields)
+### Section 2: MEMORY (6 fields)
 - `user_profile` — From `user_profiles` table (dominant_domains, preferred_tone, etc.)
 - `langmem_context` — Top 5 memories from LangMem semantic search
 - `mcp_trust_level` — 0 (cold) | 1 (warm) | 2 (tuned), always 0 for web app
+- `session_count` — Total sessions for experience level formatting
+- `user_facts` — Verified facts from fact_extractor.py background job (v2.5)
+- `quality_trend` — Last 5 quality scores for trend detection (v2.5)
 
-### Section 3: ORCHESTRATOR (5 fields)
+### Section 3: ROUTING (5 fields)
+- `mode` — `"REFINE" | "ARCHITECT" | "ERROR_DIAGNOSIS"` (v3)
+- `route` — `"CONVERSATION" | "SWARM" | "FOLLOWUP" | "CLARIFICATION"`
+- `input_quality` — From `score_input_quality()` — structural quality assessment
+- `agents_to_run` — Which agents to execute (subset of intent, context, domain)
 - `orchestrator_decision` — Full Kira response JSON
-- `user_facing_message` — Message user sees immediately via SSE
-- `pending_clarification` — True if waiting for user's clarification answer
-- `clarification_key` — Which field is being clarified
-- `proceed_with_swarm` — Kira's go/no-go decision
 
-### Section 4: AGENT OUTPUTS (8 fields)
-- `intent_analysis` — From intent agent (Annotated with `merge_dict` reducer)
-- `context_analysis` — From context agent (Annotated with `merge_dict` reducer)
-- `domain_analysis` — From domain agent (Annotated with `merge_dict` reducer)
-- `agents_skipped` — Which agents didn't run and why (Annotated with `add` reducer)
-- `agents_run` — Agent names that completed (Annotated with `add` reducer)
-- `agent_latencies` — Execution time per agent in ms (Annotated with `merge_dict`)
-- `latency_ms` — Aggregate execution time (Annotated with `add`)
-- `memories_applied` — LangMem memories retrieved (Annotated with `add`)
+### Section 4: AGENT OUTPUTS (5 fields)
+- `intent_analysis` — From intent agent (None if skipped)
+- `context_analysis` — From context agent (None if skipped)
+- `domain_analysis` — From domain agent (None if skipped)
+- `agents_skipped` — Which agents didn't run and why
+- `agent_latencies` — Execution time per agent in ms
 
-### Section 5: OUTPUT (7 fields)
+### Section 5: FINAL OUTPUT (8 fields)
 - `improved_prompt` — Final engineered prompt
 - `original_prompt` — User's original input
-- `prompt_diff` — Changes with annotations `[{type, old, new, explanation}]`
-- `quality_score` — Scores (1–5): specificity, clarity, actionability
+- `prompt_diff` — Changes with annotations `[{type, before, after, reason}]`
+- `quality_score` — Scores (1-5): specificity, clarity, actionability, overall
 - `changes_made` — Human-readable change explanations
 - `breakdown` — Agent-specific insights for API response
+- `user_facing_message` — Message user sees via SSE stream
+
+### Section 6: CLARIFICATION (4 fields)
+- `clarification_needed` — True if Kira needs user answer
+- `clarification_question` — The actual question asked
+- `clarification_key` — Which field is being clarified
+- `pending_clarification` — True if waiting for user's answer
+
+### Section 7: V3 ERROR DIAGNOSIS (4 fields) — Future-proofing
+- `error_text`, `original_tool`, `error_category`, `error_fix_suggestion`
+
+### Section 8: V3 PROJECT CONTEXT (2 fields) — Future-proofing
+- `project_context`, `session_level_context`
+
+**Helper:** `create_initial_state()` function initializes all INPUT fields with defaults.
 
 ---
 
@@ -113,7 +128,19 @@ Expected latency: Kira ~500ms + parallel agents ~500–1000ms + prompt engineer 
 
 **Required PostgreSQL extensions:** `pgvector` (for embeddings), `uuid-ossp`
 
-**13 migrations:** 001–009 (Phase 1–2 tables + RLS), 010 (LangMem embedding column), 011 (user sessions), 012 (Supermemory facts), 013 (MCP tokens — verified in Supabase)
+**4 Performance Indexes:**
+```sql
+CREATE INDEX idx_requests_user_id ON requests(user_id);
+CREATE INDEX idx_requests_created_at ON requests(created_at DESC);
+CREATE INDEX idx_conversations_session_id ON conversations(session_id);
+CREATE INDEX idx_chat_sessions_user_id ON chat_sessions(user_id);
+```
+
+**⚠️ Missing:** No HNSW index on `langmem_memories.embedding` — should be added for pgvector performance.
+
+**13 migrations:** 001-009 (Phase 1-2 tables + RLS), 010 (LangMem embedding column), 011 (user sessions), 012 (Supermemory facts), 013 (MCP tokens — verified in Supabase). Additional migration `docs/migrations/027_add_missing_profile_columns.sql` found.
+
+**Note on `prompt_feedback` table:** No CRUD operations in `database.py`. The `routes/feedback.py` endpoint writes directly to this table via `db.table("prompt_feedback").insert()`, bypassing database.py helpers.
 
 ---
 
@@ -166,25 +193,32 @@ Native MCP server for Cursor/Claude Desktop integration:
 
 ---
 
-## 8. Next.js Frontend (`promptforge-web/`)
+## 8. Next.js Frontend (`promptforge-web/`) — VERIFIED COMPLETE
 
 | Aspect | Details |
 |--------|---------|
-| **Framework** | Next.js 16 (App Router), React 19 |
-| **Language** | TypeScript (strict mode) |
-| **Styling** | Tailwind CSS, shadcn/ui components |
-| **Auth** | Supabase JWT integration |
-| **API layer** | Fetch calls to backend (`NEXT_PUBLIC_API_URL`) |
-| **Features** | Chat interface, prompt history, analytics, session management, DiffView component |
+| **Framework** | Next.js 16.1.6 (App Router), React 19, TypeScript 5.9.3 |
+| **Source Size** | 115 TypeScript/TSX source files (excluding node_modules, .next) |
+| **Styling** | Tailwind CSS 3.4.17, Framer Motion, Lucide React icons, Sonner toasts |
+| **Auth** | Supabase SSR (`@supabase/ssr`) with login/signup pages, session management |
+| **State** | Redux Toolkit (RTK) — confirmed from package.json dependencies |
+| **Charts** | Recharts 3.8.0 for analytics visualizations |
+| **API Layer** | `lib/api.ts` — typed API client communicating with `NEXT_PUBLIC_API_URL` |
+| **Testing** | Jest + Testing Library with coverage configuration |
+| **Error Tracking** | `@sentry/nextjs` configured with DSN in `.env.local` |
+| **Env Config** | `.env.local` — real Supabase credentials, localhost:8000 backend |
+| **Features** | Auth (login/signup), Chat with SSE, History with analytics, Profile management, Landing page, Onboarding wizard, MCP token management, Data export |
 
-**Key pages/components referenced in docs:**
-- Chat interface with SSE streaming
-- Sidebar with session list (pinned, favorited)
-- Recycle bin for soft-deleted sessions
-- Analytics dashboard (quality trends, domain distribution)
-- History page with search/filter
+**Key pages:**
+- `app/(auth)/login/page.tsx`, `app/(auth)/signup/page.tsx` — Authentication
+- `app/app/page.tsx` — Main chat interface
+- `app/app/chat/[sessionId]/page.tsx` — Session-specific chat
+- `app/app/history/page.tsx` — Prompt history with search/filter
+- `app/app/profile/page.tsx` — User profile with multiple tabs
+- `app/onboarding/page.tsx` — Onboarding wizard
+- `app/(marketing)/page.tsx` — Landing page
 
-⚠️ **UNCERTAIN:** Phase 4 frontend audit status is unclear. The frontend exists and has been built, but whether it has passed the same rigorous audit as Phases 1–3 is not documented.
+**Assessment:** This is a **complete, feature-rich frontend** — not a scaffold or placeholder. It has NOT been deployed to Vercel (`.env.local` points to `localhost:8000`).
 
 ---
 
@@ -257,6 +291,7 @@ Both models cached via `lru_cache(maxsize=1)` — created once, reused everywher
 ## Sources
 
 - `state.py` — Full 27-field PromptForgeState schema
+- `graph/state.py` — 26-field PromptForgeState TypedDict, 8 sections, create_initial_state() helper (READ)
 - `workflow.py` — LangGraph StateGraph with Send() parallel execution
 - `api.py` — App factory, middleware stack, Sentry init
 - `service.py` — Business logic (_run_swarm, _astream_swarm, compute_diff, sse_format)
@@ -267,11 +302,18 @@ Both models cached via `lru_cache(maxsize=1)` — created once, reused everywher
 - `xp_engine.py` — XP/gamification system
 - `mcp/server.py` — MCP server with 2 tools, trust levels
 - `memory/langmem.py` — LangMem with Gemini embeddings, hybrid recall
+- `memory/supermemory.py` — 221 lines, MCP-exclusive memory, trust levels (READ)
+- `memory/hybrid_recall.py` — 366 lines, BM25+Vector+RRF+MMR (READ)
+- `memory/profile_updater.py` — 228 lines, 5th interaction + 30min trigger (READ)
+- `routes/feedback.py` — 111 lines, POST /feedback endpoint (READ)
+- `routes/prompts_stream.py` — BackgroundTasks trigger for profile updater (READ lines 358-373)
 - `middleware/rate_limiter.py` — Rate limiting (hourly/daily/monthly)
-- `docs/SUPABASE_SCHEMA.md` — Database schema documentation
+- `docs/SUPABASE_SCHEMA.md` — Database schema documentation, 4 indexes
 - `agents/README.md` — Agent system public API
 - `history/PROJECT_SUMMARY.md` — Phase completion, metrics, security
 - `README.md` — Project overview, architecture diagram
+- `promptforge-web/package.json` — Dependencies, scripts (READ)
+- `promptforge-web/.env.local` — Local dev config with real Supabase credentials (READ)
 
 ---
 

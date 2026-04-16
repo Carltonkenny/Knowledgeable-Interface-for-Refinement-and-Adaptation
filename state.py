@@ -18,7 +18,7 @@
 
 from typing import Any, Optional, List, Dict, Annotated
 from operator import add
-from typing_extensions import TypedDict, NotRequired
+from typing_extensions import TypedDict
 
 
 def merge_dict(left: Dict[str, Any], right: Dict[str, Any]) -> Dict[str, Any]:

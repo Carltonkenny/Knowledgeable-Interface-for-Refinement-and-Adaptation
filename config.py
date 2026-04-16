@@ -26,8 +26,7 @@ API_KEY = os.getenv("POLLINATIONS_API_KEY")
 
 # Validate API key is set
 if not API_KEY:
-    logger.error("[config] POLLINATIONS_API_KEY not set in .env")
-    raise ValueError("POLLINATIONS_API_KEY environment variable is required")
+    logger.critical("[config] POLLINATIONS_API_KEY not set - LLM calls will fail")
 
 # Models from .env (restart server to change)
 MODEL_FULL = os.getenv("POLLINATIONS_MODEL_FULL", "nova-fast")

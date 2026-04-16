@@ -45,7 +45,7 @@ export function useChatSessions(token: string) {
         error_message: err instanceof Error ? err.message : (typeof err === 'string' ? err : String(err)),
         error_status: err?.status || err?.statusCode || 'no status code',
         has_token: !!token,
-        token_preview: token ? `${token.substring(0, 20)}...` : 'none',
+        token_length: token?.length ?? 0,
         session_count: sessions.length,
       })
       setError('Could not load chat history')

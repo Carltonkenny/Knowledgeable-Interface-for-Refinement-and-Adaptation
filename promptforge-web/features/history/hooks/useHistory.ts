@@ -6,7 +6,7 @@ import { logger } from '@/lib/logger'
 
 import { useState, useEffect } from 'react'
 import { apiHistory, apiHistorySearch, apiToggleFavorite, apiUpdatePromptDomain } from '@/lib/api'
-import type { HistoryItem, SearchQuery } from '@/lib/api'
+import type { HistoryItem } from '@/lib/api'
 
 interface UseHistoryProps {
   token: string

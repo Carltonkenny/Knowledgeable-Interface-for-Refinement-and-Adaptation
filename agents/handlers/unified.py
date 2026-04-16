@@ -178,15 +178,15 @@ def build_kira_context(
 ) -> str:
     """
     Build rich context string for unified Kira call.
-    
+
     Args:
         message: Current user message
         history: Last 4 conversation turns
         user_profile: User's profile from Supabase
-        
+
     Returns:
         Formatted context string for LLM
-        
+
     Example:
         >>> context = build_kira_context(
         ...     message="make it async",
@@ -201,26 +201,57 @@ def build_kira_context(
             if turn.get('improved_prompt'):
                 last_improved = turn['improved_prompt'][:500]
                 break
-        
-        # Build context parts
-        context_parts = [
-            f"User's message: {message}",
-            f"User's primary use: {user_profile.get('primary_use', 'general')}",
-            f"User's audience: {user_profile.get('audience', 'general')}",
-            f"User's preferred tone: {user_profile.get('preferred_tone', 'direct')}",
-            f"\nLast {min(4, len(history))} conversation turns:",
-        ]
-        
+
+        # Build rich user context from profile
+        job_title = user_profile.get('job_title', '')
+        company = user_profile.get('company', '')
+        bio = user_profile.get('bio', '')
+        location = user_profile.get('location', '')
+        preferred_tone = user_profile.get('preferred_tone', 'direct')
+
+        # Build user context header
+        context_parts = []
+        context_parts.append("User Context:")
+        if job_title or company:
+            role_str = f"{job_title} at {company}" if job_title and company else (job_title or company)
+            context_parts.append(f"- Role: {role_str}")
+        if bio:
+            context_parts.append(f"- Bio: {bio[:200]}")
+        if location:
+            context_parts.append(f"- Location: {location}")
+        context_parts.append(f"- Preferred tone: {preferred_tone}")
+
+        # Infer experience level from profile fields
+        xp_total = user_profile.get('xp_total', 0)
+        if xp_total > 5000:
+            experience_level = "expert"
+        elif xp_total > 1000:
+            experience_level = "intermediate"
+        else:
+            experience_level = "beginner"
+        context_parts.append(f"- Experience level: {experience_level}")
+
+        # Add active domains from profile
+        dominant_domains = user_profile.get('dominant_domains', [])
+        if dominant_domains:
+            domain_str = ", ".join(str(d) for d in dominant_domains[:3])
+            context_parts.append(f"- Active domains: {domain_str}")
+
+        # Add conversation history
+        context_parts.append(f"\nLast {min(4, len(history))} conversation turns:")
         for turn in history[-4:]:
             role = turn.get('role', 'USER').upper()
             msg = turn.get('message', '')[:100]
             context_parts.append(f"  {role}: {msg}")
-        
+
         if last_improved:
             context_parts.append(f"\nLast improved prompt: {last_improved}")
-        
+
+        # Add current message
+        context_parts.insert(0, f"User's message: {message}")
+
         return "\n".join(context_parts)
-        
+
     except Exception as e:
         logger.error(f"[build_kira_context] failed: {e}")
         return f"User's message: {message}"
@@ -244,12 +275,10 @@ PERSONALITY:
 FORBIDDEN PHRASES (NEVER USE):
 "Certainly", "Great question", "Of course", "I'd be happy to", "Let me help you", "No problem", "Sure!", "Absolutely", "Happy to help"
 
-4. If they want a prompt improved, provide the improved version
-
-INTENT RULES:
-- If message is a short greeting (e.g. "hi", "hello") -> intent: "conversation"
-- If message is too short (< 15 chars) to be a real prompt -> intent: "conversation" OR set "clarification_needed": true
-- Only use "new_prompt" if user explicitly provides a goal to engineer.
+INTENT ROUTING RULES (CRITICAL):
+- "conversation": Use this for ANY greeting ("hi", "hello"), questions about your capabilities ("what can you do?"), general advice, or small talk. DO NOT trigger 'new_prompt' for these!
+- "followup": Use this ONLY if the user is asking to modify or tweak the PREVIOUSLY generated prompt shown in the history.
+- "new_prompt": Use this EXCLUSIVELY when the user explicitly provides a rough idea, task, or concept that they want engineered into a pristine, structured prompt (e.g. "Create a blog post calendar", "Draft an email to my boss"). If they are just asking a question about *you*, it is NOT a new_prompt!
 
 RESPONSE FORMAT (JSON):
 {

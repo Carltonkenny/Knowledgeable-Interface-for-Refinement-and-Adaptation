@@ -13,12 +13,16 @@
 import os
 import hashlib
 import logging
+import time
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 
 from auth import User, get_current_user
 from database import get_client
 from multimodal import transcribe_voice
+from voice.rate_limiter import check_voice_rate_limit
+from voice.metrics import record_voice_metric
+from utils.error_messages import get_error_message, ErrorType
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +44,15 @@ async def upload_file(
     try:
         db = get_client()
 
+        # File size limit: 10MB
+        content = await file.read()
+        if len(content) > 10 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="File too large (max 10MB)")
+
+        # Reset file pointer if possible, or wrap content for downstream use
+        from io import BytesIO
+        file.file = BytesIO(content)
+
         if file.content_type.startswith("audio/"):
             result = await transcribe_voice(file, user.user_id, "upload", db)
             return {"success": True, "type": "voice", "text": result["transcript"], "file_url": result["file_url"]}
@@ -59,7 +72,8 @@ async def upload_file(
         raise
     except Exception as e:
         logger.exception("[api] /upload error")
-        raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
+        error = get_error_message(ErrorType.UNKNOWN, user_tone="direct")
+        raise HTTPException(status_code=500, detail=error["full_message"])
 
 
 # ── Voice Transcription ───────────────────────
@@ -71,6 +85,12 @@ async def transcribe(
 ):
     """
     Transcribe voice audio to text using Whisper.
+
+    Production features:
+    - Rate limiting: 10/min, 50/hr per user
+    - Budget check: blocks if monthly voice budget exhausted
+    - Retry: automatic retry on network failures (in transcribe_voice)
+    - Metrics: tracks latency, success rate, cost
 
     RULES.md: JWT auth required, file size validation, MIME type validation
 
@@ -84,12 +104,27 @@ async def transcribe(
     Raises:
         400: File too large or unsupported MIME type
         401: Missing or invalid JWT
+        429: Rate limit exceeded or budget exhausted
         500: Transcription failed
         504: Timeout
     """
+    start_time = time.time()
     logger.info(f"[transcribe] user_id={user.user_id} file={audio.filename} type={audio.content_type}")
 
     try:
+        # RATE LIMIT CHECK (Production item #1)
+        allowed, error_msg, headers = check_voice_rate_limit(user.user_id, "transcribe")
+        if not allowed:
+            record_voice_metric(
+                service="transcribe",
+                success=False,
+                latency_ms=(time.time() - start_time) * 1000,
+                user_id=user.user_id,
+                provider="pollinations",
+                error_type="rate_limited"
+            )
+            raise HTTPException(status_code=429, detail=error_msg, headers=headers)
+
         db = get_client()
 
         # Use a session_id for storage path (use user_id as fallback for standalone transcription)
@@ -106,8 +141,18 @@ async def transcribe(
     except HTTPException:
         raise
     except Exception as e:
+        latency_ms = (time.time() - start_time) * 1000
+        record_voice_metric(
+            service="transcribe",
+            success=False,
+            latency_ms=latency_ms,
+            user_id=user.user_id,
+            provider="pollinations",
+            error_type="unexpected_error"
+        )
         logger.exception("[transcribe] failed")
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+        error = get_error_message(ErrorType.UNKNOWN, user_tone="direct")
+        raise HTTPException(status_code=500, detail=error["full_message"])
 
 
 # ── MCP Tokens ────────────────────────────────
@@ -131,9 +176,13 @@ async def generate_mcp_token(user: User = Depends(get_current_user)):
             "exp": expires_at
         }
         
+        mcp_secret = os.getenv("MCP_JWT_SECRET") or os.getenv("SUPABASE_JWT_SECRET")
+        if not mcp_secret:
+            raise HTTPException(status_code=500, detail="MCP JWT secret not configured")
+
         mcp_token = jwt.encode(
             payload,
-            os.getenv("SUPABASE_JWT_SECRET"),
+            mcp_secret,
             algorithm="HS256"
         )
         
@@ -158,7 +207,8 @@ async def generate_mcp_token(user: User = Depends(get_current_user)):
         
     except Exception as e:
         logger.exception("[api] /mcp/generate-token error")
-        raise HTTPException(status_code=500, detail=f"Token generation failed: {str(e)}")
+        error = get_error_message(ErrorType.UNKNOWN, user_tone="direct")
+        raise HTTPException(status_code=500, detail=error["full_message"])
 
 
 @router.get("/mcp/list-tokens")
@@ -173,7 +223,8 @@ async def list_mcp_tokens(user: User = Depends(get_current_user)):
         return {"tokens": result.data, "count": len(result.data)}
     except Exception as e:
         logger.exception("[api] /mcp/list-tokens error")
-        raise HTTPException(status_code=500, detail=f"Failed: {str(e)}")
+        error = get_error_message(ErrorType.UNKNOWN, user_tone="direct")
+        raise HTTPException(status_code=500, detail=error["full_message"])
 
 
 @router.post("/mcp/revoke-token/{token_id}")
@@ -193,4 +244,5 @@ async def revoke_mcp_token(token_id: str, user: User = Depends(get_current_user)
         raise
     except Exception as e:
         logger.exception("[api] /mcp/revoke-token error")
-        raise HTTPException(status_code=500, detail=f"Failed: {str(e)}")
+        error = get_error_message(ErrorType.UNKNOWN, user_tone="direct")
+        raise HTTPException(status_code=500, detail=error["full_message"])

@@ -18,6 +18,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
 
   # ── PromptForge API ──────────────────────────
   api:
@@ -51,6 +56,14 @@ services:
       options:
         max-size: "20m"
         max-file: "10"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
 
   # ── LangFuse (Self-hosted LLM Observability) ─────
   langfuse:
@@ -80,6 +93,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
 
   langfuse-db:
     image: postgres:16-alpine
@@ -96,6 +114,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
 
   # ── Jaeger (OpenTelemetry UI) ──────────────
   jaeger:
@@ -115,6 +138,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
 
 # ── Volumes ───────────────────────────────────
 volumes:

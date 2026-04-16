@@ -6,7 +6,7 @@ import { Plus, MessageSquare, Trash2, ChevronLeft, ChevronRight, Pin, Star, Tras
 import { useChatSessions } from '../hooks/useChatSessions'
 import RecycleBin from './RecycleBin'
 import { cn } from '@/lib/utils'
-import React, { memo } from 'react'
+import { memo } from 'react'
 
 interface SessionItemProps {
   session: any
@@ -180,7 +180,7 @@ export default function ChatSidebar({ token, mode = 'chat' }: ChatSidebarProps) 
       {/* Collapse Toggle */}
       <button 
         onClick={() => toggleCollapse(!isCollapsed)}
-        className="absolute -right-3 top-20 w-6 h-6 rounded-full border border-border-strong bg-layer-2 flex items-center justify-center text-text-dim hover:text-text-bright z-10 shadow-sm"
+        className="absolute -right-3 top-20 w-6 h-6 rounded-full border border-border-strong bg-layer-2 flex items-center justify-center text-text-dim hover:text-text-bright z-20 shadow-sm"
       >
         {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
       </button>
@@ -193,20 +193,28 @@ export default function ChatSidebar({ token, mode = 'chat' }: ChatSidebarProps) 
       </div>
 
       {/* New Action Button */}
-      <div className="p-4 pt-2">
+      <div className={cn("p-4 pt-2", isCollapsed && "flex justify-center")}>
         <button
           onClick={() => createNewChat()}
           disabled={isCreating}
           className={cn(
-            "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-kira/20 bg-kira/5 text-text-bright hover:bg-kira/10 hover:border-kira/40 transition-all group shadow-sm shadow-kira/5",
-            isCollapsed && "justify-center px-0"
+            "flex items-center gap-3 transition-all group",
+            isCollapsed 
+              ? "w-10 h-10 rounded-full border-2 border-kira bg-kira/10 justify-center shadow-[0_0_15px_rgba(var(--color-kira),0.3)] hover:scale-110 active:scale-95" 
+              : "w-full px-3 py-2.5 rounded-xl border border-kira/20 bg-kira/5 text-text-bright hover:bg-kira/10 hover:border-kira/40 shadow-sm shadow-kira/5"
           )}
           title={mode === 'history' ? "New Search" : "New Chat"}
         >
-          <div className="p-1.5 rounded-lg bg-layer2 border border-border group-hover:border-kira/30 shrink-0">
-             {mode === 'history' ? <Sparkles size={16} className="text-kira" /> : <Plus size={16} className="text-kira transition-transform group-hover:rotate-90" />}
-          </div>
-          {!isCollapsed && <span className="font-semibold text-sm">{mode === 'history' ? 'Palace Search' : 'New Chat'}</span>}
+          {isCollapsed ? (
+            mode === 'history' ? <Sparkles size={18} className="text-kira" /> : <Plus size={20} className="text-kira" />
+          ) : (
+            <>
+              <div className="p-1.5 rounded-lg bg-layer2 border border-border group-hover:border-kira/30 shrink-0">
+                {mode === 'history' ? <Sparkles size={16} className="text-kira" /> : <Plus size={16} className="text-kira transition-transform group-hover:rotate-90" />}
+              </div>
+              <span className="font-semibold text-sm">{mode === 'history' ? 'Palace Search' : 'New Chat'}</span>
+            </>
+          )}
         </button>
       </div>
 

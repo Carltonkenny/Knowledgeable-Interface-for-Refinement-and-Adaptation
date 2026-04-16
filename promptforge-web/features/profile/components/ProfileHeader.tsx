@@ -51,6 +51,7 @@ export default function ProfileHeader({
   const [isSaving, setIsSaving] = useState(false)
   const [showAvatarPicker, setShowAvatarPicker] = useState(false)
   const [editData, setEditData] = useState({
+    username: username || '',
     bio: bio || '',
     location: location || '',
     website: website || '',
@@ -78,6 +79,7 @@ export default function ProfileHeader({
 
   const handleCancel = () => {
     setEditData({
+      username: username || '',
       bio: bio || '',
       location: location || '',
       website: website || '',
@@ -138,7 +140,7 @@ export default function ProfileHeader({
           {!editMode && onSave && (
             <button
               onClick={() => setEditMode(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-kira/40 bg-kira/10 text-kira font-bold text-sm hover:bg-kira/20 hover:border-kira/60 hover:shadow-[0_0_15px_rgba(var(--color-kira),0.3)] transition-all"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-kira/40 bg-kira/10 text-kira font-bold text-sm hover:bg-kira/20 hover:border-kira/60 hover:shadow-[0_0_15px_rgba(var(--color-kira),0.3)] transition-all uppercase tracking-wider"
               title="Edit profile"
             >
               <Edit2 size={14} />
@@ -147,16 +149,30 @@ export default function ProfileHeader({
           )}
         </div>
 
-        {/* Bio */}
+        {/* Identity & Bio Section */}
         {editMode ? (
-          <motion.textarea
-            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-            value={editData.bio}
-            onChange={(e) => setEditData({ ...editData, bio: e.target.value })}
-            className="w-full h-24 bg-layer1/50 border border-kira/30 rounded-xl p-3 text-sm text-kira font-mono shadow-[inset_0_0_15px_rgba(0,0,0,0.5)] resize-none focus:outline-none focus:border-kira focus:ring-1 focus:ring-kira/50 backdrop-blur-sm transition-all placeholder:text-kira/30"
-            placeholder="Tell users what you do, your expertise, and what drives your work..."
-            maxLength={500}
-          />
+          <div className="space-y-4 mb-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] uppercase tracking-widest text-kira font-bold">Neural Identity (Username)</label>
+              <input
+                value={editData.username}
+                onChange={(e) => setEditData({ ...editData, username: e.target.value })}
+                className="w-full bg-layer1/50 border border-kira/30 rounded-xl px-4 py-3 text-sm text-text-bright font-mono focus:outline-none focus:border-kira focus:ring-1 focus:ring-kira/50 backdrop-blur-sm transition-all shadow-[inset_0_0_15px_rgba(0,0,0,0.5)]"
+                placeholder="Synchronize username..."
+              />
+            </div>
+            
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] uppercase tracking-widest text-kira font-bold">Bio & Protocols</label>
+              <textarea
+                value={editData.bio}
+                onChange={(e) => setEditData({ ...editData, bio: e.target.value })}
+                className="w-full h-24 bg-layer1/50 border border-kira/30 rounded-xl p-3 text-sm text-kira font-mono shadow-[inset_0_0_15px_rgba(0,0,0,0.5)] resize-none focus:outline-none focus:border-kira focus:ring-1 focus:ring-kira/50 backdrop-blur-sm transition-all placeholder:text-kira/30"
+                placeholder="Tell users what you do, your expertise, and what drives your work..."
+                maxLength={500}
+              />
+            </div>
+          </div>
         ) : (
           <p className="text-sm text-text-muted mb-4">
             {bio || 'No bio yet. Click edit to add one.'}

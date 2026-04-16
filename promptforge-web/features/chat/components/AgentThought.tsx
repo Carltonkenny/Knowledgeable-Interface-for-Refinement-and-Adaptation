@@ -293,17 +293,21 @@ export default function AgentThought({
       <motion.div
         initial={{ opacity: 0, x: -10 }}
         animate={{ opacity: 1, x: 0 }}
-        className="flex items-center gap-3 text-sm text-white/50 py-2"
+        className="relative flex gap-4 w-full pb-6"
       >
-        <SkipForward className={`w-4 h-4 ${config.color}`} />
-        <div className="flex-1">
+        <div className="relative z-10 flex-shrink-0">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-white/5 border border-white/10">
+            <SkipForward className={`w-3.5 h-3.5 ${config.color} opacity-50`} strokeWidth={2.5} />
+          </div>
+        </div>
+        <div className="flex-1 pt-1">
           <div className="flex items-center gap-2">
-            <span className="font-medium">{config.label}</span>
-            <span className="text-xs text-white/40">({formatLatency(latencyMs)})</span>
+            <span className="font-medium text-white/40 text-[13px]">{config.label}</span>
+            <span className="text-[10px] text-white/30 font-mono">({formatLatency(latencyMs)})</span>
           </div>
           {skipReason && (
-            <div className="text-xs text-white/40 mt-0.5">
-              Reason: {skipReason}
+            <div className="text-[11px] text-white/30 mt-1">
+              {skipReason}
             </div>
           )}
         </div>
@@ -311,41 +315,68 @@ export default function AgentThought({
     )
   }
 
-  // Running state (placeholder)
+  // Running state
   if (status === 'running') {
     return (
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="flex items-center gap-3 text-sm text-white/50 py-2"
+        className="relative flex gap-4 w-full pb-6"
       >
-        <Icon className={`w-4 h-4 ${config.color} animate-pulse`} />
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <span className="font-medium">{config.label}</span>
-            <Clock className="w-3 h-3 animate-pulse" />
+        <div className="relative z-10 flex-shrink-0">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${config.bgColor} border ${config.borderColor} shadow-[0_0_15px_rgba(255,255,255,0.05)]`}>
+            <Icon className={`w-4 h-4 ${config.color} animate-pulse`} strokeWidth={2} />
+          </div>
+        </div>
+        <div className="flex-1 pt-1.5 flex items-center gap-2 text-white/60">
+          <span className="font-medium text-[13px] tracking-wide">{config.label}</span>
+          <div className="flex gap-1">
+            <span className="w-1 h-1 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '0ms' }} />
+            <span className="w-1 h-1 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '150ms' }} />
+            <span className="w-1 h-1 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '300ms' }} />
           </div>
         </div>
       </motion.div>
     )
   }
 
+  // Handle Missing Info / Amber Node edge cases
+  const isMissingInfo = agent === 'intent' && data?.missing_info && data.missing_info.length > 0;
+  const isWarning = isMissingInfo || agent === 'orchestrator' && data?.clarification_needed;
+
+  const nodeBgColor = isWarning ? 'bg-amber-500/10' : config.bgColor;
+  const nodeBorderColor = isWarning ? 'border-amber-500/30' : config.borderColor;
+  const iconColor = isWarning ? 'text-amber-400' : config.color;
+
   // Complete state
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
-      className={`p-3 rounded-lg border ${config.borderColor} ${config.bgColor} space-y-2`}
+      className="relative flex gap-4 w-full pb-6 group"
     >
-      {/* Header */}
-      <div className="flex items-center gap-2">
-        <Icon className={`w-4 h-4 ${config.color}`} />
-        <span className="font-medium text-sm text-white/90">{config.label}</span>
-        <span className="text-xs text-white/40 font-mono">({formatLatency(latencyMs)})</span>
+      {/* Node */}
+      <div className="relative z-10 flex-shrink-0">
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${nodeBgColor} border ${nodeBorderColor} shadow-md transition-all duration-300 group-hover:scale-105`}>
+          <Icon className={`w-4 h-4 ${iconColor}`} strokeWidth={2} />
+        </div>
       </div>
 
-      {/* Data */}
-      {renderData()}
+      {/* Content wrapper */}
+      <div className="flex-1 pt-0.5">
+        <div className="flex items-center gap-2 mb-2">
+          <span className={`font-medium text-[13px] ${isWarning ? 'text-amber-200' : 'text-white/90'}`}>{config.label}</span>
+          <span className="text-[10px] text-white/40 font-mono tracking-wider">({formatLatency(latencyMs)})</span>
+          {isWarning && (
+            <span className="px-1.5 py-0.5 rounded text-[9px] uppercase tracking-widest bg-amber-500/20 text-amber-300 ml-auto border border-amber-500/20">Action Required</span>
+          )}
+        </div>
+
+        {/* Data Box */}
+        <div className="p-3.5 bg-black/20 rounded-xl border border-white/5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)] backdrop-blur-sm group-hover:bg-black/30 transition-colors duration-300">
+            {renderData()}
+        </div>
+      </div>
     </motion.div>
   )
 }

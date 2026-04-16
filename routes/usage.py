@@ -8,6 +8,7 @@
 # ─────────────────────────────────────────────
 
 import logging
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
@@ -159,8 +160,6 @@ async def get_usage_history(
     logger.info(f"[api] /usage/history user_id={user.user_id[:8]}... days={days}")
 
     try:
-        from datetime import timedelta
-
         db = get_client()
         today = datetime.now(timezone.utc).date()
         start_date = (today - timedelta(days=days)).isoformat()

@@ -36,7 +36,7 @@ export function LiveDemoWidget() {
   const [input, setInput] = useState('')
   const [result, setResult] = useState<ChatResult | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const { isGated, recordUse } = useDemoGate()
+  const { isGated, recordUse, usesRemaining } = useDemoGate()
 
   const handleSubmit = async () => {
     if (!input.trim()) return
@@ -74,10 +74,10 @@ export function LiveDemoWidget() {
               K
             </div>
             <p className="text-text-bright font-semibold mb-2">
-              You've seen what I can do.
+              You've used your 2 free trials.
             </p>
             <p className="text-text-dim text-sm mb-6">
-              Sign up to keep going — it's free.
+              Sign up to unlock Kira at 100% power (4 agents parallel processing).
             </p>
             <div className="flex items-center justify-center gap-3">
               <Button variant="primary" onClick={() => (window.location.href = ROUTES.SIGNUP)}>
@@ -100,11 +100,11 @@ export function LiveDemoWidget() {
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-success animate-live-pulse" />
           <span className="font-mono text-[10px] text-text-dim uppercase tracking-wider">
-            Live demo
+            Live demo ({usesRemaining} trials left)
           </span>
         </div>
         <span className="font-mono text-[9px] text-kira uppercase tracking-wider">
-          LIVE · REAL BACKEND · REAL KIRA
+          LIVE · REAL BACKEND · 40% POWER DEMO
         </span>
       </div>
 

@@ -90,14 +90,14 @@ export default function AppLayout({ children }: AppLayoutProps) {
             </div>
 
             {/* Nav links */}
-            <div className="flex items-center gap-1">
-              <Link href="/app" className={`px-3 py-1.5 rounded-md text-sm ${pathname.startsWith('/app/chat') || pathname === '/app' ? 'text-text-bright bg-layer2' : 'text-text-dim hover:text-text-bright'}`}>
+            <div className="flex items-center gap-1" role="navigation" aria-label="Main navigation">
+              <Link href="/app" className={`px-3 py-1.5 rounded-md text-sm ${pathname.startsWith('/app/chat') || pathname === '/app' ? 'text-text-bright bg-layer2' : 'text-text-dim hover:text-text-bright'}`} aria-current={pathname.startsWith('/app/chat') || pathname === '/app' ? 'page' : undefined}>
                 Chat
               </Link>
-              <Link href="/app/history" className={`px-3 py-1.5 rounded-md text-sm ${pathname === '/app/history' ? 'text-text-bright bg-layer2' : 'text-text-dim hover:text-text-bright'}`}>
+              <Link href="/app/history" className={`px-3 py-1.5 rounded-md text-sm ${pathname === '/app/history' ? 'text-text-bright bg-layer2' : 'text-text-dim hover:text-text-bright'}`} aria-current={pathname === '/app/history' ? 'page' : undefined}>
                 History
               </Link>
-              <Link href="/app/profile" className={`px-3 py-1.5 rounded-md text-sm ${pathname === '/app/profile' ? 'text-text-bright bg-layer2' : 'text-text-dim hover:text-text-bright'} transition-colors`}>
+              <Link href="/app/profile" className={`px-3 py-1.5 rounded-md text-sm ${pathname === '/app/profile' ? 'text-text-bright bg-layer2' : 'text-text-dim hover:text-text-bright'} transition-colors`} aria-current={pathname === '/app/profile' ? 'page' : undefined}>
                 Profile
               </Link>
             </div>
@@ -108,9 +108,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
               Ver 2.0.0-rc1
             </div>
             {/* Avatar */}
-            <div className="w-8 h-8 rounded-full bg-kira flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-kira/20 cursor-pointer hover:scale-105 transition-transform" title={userEmail || 'User'}>
+            <button
+              className="w-8 h-8 rounded-full bg-kira flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-kira/20 hover:scale-105 transition-transform"
+              title={userEmail || 'User'}
+              aria-label={`User menu: ${userEmail || 'User'}`}
+            >
               {(userEmail || 'U')[0].toUpperCase()}
-            </div>
+            </button>
           </div>
         </div>
       </nav>

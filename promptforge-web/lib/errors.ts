@@ -38,27 +38,3 @@ export function mapError(err: unknown): KiraError {
   }
   return { type: 'unknown', userMessage: KIRA_ERROR_MESSAGES.UNKNOWN, retryable: true }
 }
-
-// ── These strings must NEVER reach the UI ─────────────────────────────────
-export const FORBIDDEN_ERROR_STRINGS = [
-  'jwt',
-  'token',
-  'supabase',
-  'fly.io',
-  'postgres',
-  'gpt-4',
-  'openai',
-  'langmem',
-  'langraph',
-  'agent',
-  'node_modules',
-  'stack trace',
-]
-
-export function sanitizeError(message: string): string {
-  const lower = message.toLowerCase()
-  if (FORBIDDEN_ERROR_STRINGS.some(s => lower.includes(s))) {
-    return KIRA_ERROR_MESSAGES.UNKNOWN
-  }
-  return message
-}

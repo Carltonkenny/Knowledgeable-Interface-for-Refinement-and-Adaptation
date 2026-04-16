@@ -9,15 +9,23 @@ import UserMessage from './UserMessage'
 import KiraMessage from './KiraMessage'
 import ThinkAccordion from './ThinkAccordion'
 import OutputCard from './OutputCard'
+import MemoryCitations from './MemoryCitations'
 import type { ChatMessage, ProcessingStatus } from '../types'
+
+interface TTSProps {
+  onSpeak: (text: string) => void
+  ttsPlaybackState: 'idle' | 'loading' | 'playing' | 'paused' | 'stopped' | 'error'
+  ttsError: string | null
+}
 
 interface MessageListProps {
   messages: ChatMessage[]
   isStreaming: boolean
   status: ProcessingStatus
+  ttsProps?: TTSProps
 }
 
-export default function MessageList({ messages, isStreaming, status }: MessageListProps) {
+export default function MessageList({ messages, isStreaming, status, ttsProps }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   // Auto-scroll to bottom on new message
@@ -30,40 +38,55 @@ export default function MessageList({ messages, isStreaming, status }: MessageLi
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-6">
-      {messages.map((message) => {
-        switch (message.type) {
-          case 'user':
-            return message.content ? (
-              <UserMessage key={message.id} content={message.content} />
-            ) : null
+    <div className="flex-1 overflow-y-auto px-4 py-6 shadow-[inset_0_2px_10px_rgba(0,0,0,0.3)] bg-[#050507]">
+      <div className="max-w-4xl mx-auto space-y-8">
+        {messages.map((message) => {
+          switch (message.type) {
+            case 'user':
+              return message.content ? (
+                <div key={message.id} className="flex justify-end">
+                  <div className="max-w-[85%] sm:max-w-[75%]">
+                    <UserMessage content={message.content} />
+                  </div>
+                </div>
+              ) : null
 
-          case 'kira':
-          case 'error':
-            return (
-              <KiraMessage
-                key={message.id}
-                message={message.content || ''}
-                isError={message.isError}
-                isStreaming={message.isStreaming}
-                retryable={message.retryable}
-              />
-            )
+            case 'kira':
+            case 'error':
+              return (
+                <div key={message.id} className="max-w-[90%] sm:max-w-[85ch]">
+                  <KiraMessage
+                    message={message.content || ''}
+                    isError={message.isError}
+                    isStreaming={message.isStreaming}
+                    retryable={message.retryable}
+                    onSpeak={ttsProps?.onSpeak}
+                    ttsPlaybackState={ttsProps?.ttsPlaybackState}
+                    ttsError={ttsProps?.ttsError}
+                  />
+                </div>
+              )
 
-          case 'output':
-            return message.result ? (
-              <OutputCard
-                key={message.id}
-                promptId={message.id}
-                sessionId={message.sessionId || ''}
-                result={message.result}
-              />
-            ) : null
+            case 'output':
+              return message.result ? (
+                <div key={message.id} className="w-full">
+                  <OutputCard
+                    promptId={message.id}
+                    sessionId={message.sessionId || ''}
+                    result={message.result}
+                  />
+                  {/* Memory citations — shown below output card when memories were applied */}
+                  {message.memoryCitations && message.memoryCitations.length > 0 && (
+                    <MemoryCitations citations={message.memoryCitations} />
+                  )}
+                </div>
+              ) : null
 
-          default:
-            return null
-        }
-      })}
+            default:
+              return null
+          }
+        })}
+      </div>
 
       {/* Animated Accordion for Agent Thoughts */}
       {status && (status.state === 'kira_reading' || status.state === 'swarm_running' || status.state === 'complete') && (

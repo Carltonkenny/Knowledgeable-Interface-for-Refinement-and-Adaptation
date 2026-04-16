@@ -25,15 +25,20 @@ google-generativeai>=0.8.0
 # Monitoring & Error Tracking (Sentry)
 sentry-sdk[fastapi]==2.20.0
 
+# Voice audio conversion (lighter than ffmpeg-python)
+pydub>=0.25.1
+
 # Phase 2: Hybrid Memory Recall (BM25 + reranking)
 rank-bm25==0.2.2
 
 # LLM Observability (LangFuse — self-hosted, free)
-langfuse>=2.50.0
+# Pin to v2.x — matches LangFuse server v2, avoids OTel conflicts with v4
+langfuse>=2.50.0,<3.0.0
 
-# Infrastructure Tracing (OpenTelemetry)
-opentelemetry-api>=1.27.0
-opentelemetry-sdk>=1.27.0
-opentelemetry-instrumentation-fastapi>=0.48b0
-opentelemetry-exporter-otlp>=1.27.0
-opentelemetry-exporter-jaeger>=1.21.0
+# Infrastructure Tracing (OpenTelemetry) — optional, disabled by default
+# Pinned to avoid dependency resolution conflicts with langfuse v4
+opentelemetry-api==1.27.0
+opentelemetry-sdk==1.27.0
+opentelemetry-instrumentation-fastapi==0.48b0
+opentelemetry-exporter-otlp==1.27.0
+opentelemetry-exporter-jaeger==1.21.0

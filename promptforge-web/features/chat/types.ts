@@ -23,6 +23,7 @@ export interface ChatMessage {
   isStreaming?: boolean
   retryable?: boolean
   sessionId?: string
+  memoryCitations?: MemoryCitation[]  // NEW: citations from memory system
 }
 
 // Agent update from backend streaming
@@ -33,6 +34,15 @@ export interface AgentUpdate {
   data?: any | null
   skip_reason?: string
   memories_applied?: number
+}
+
+// Memory citation from backend (for expandable citation panel)
+export interface MemoryCitation {
+  id: string
+  content: string      // Truncated preview (~120 chars)
+  domain: string       // e.g., "python", "creative_writing"
+  quality_score: number // 0-1 overall quality
+  created_at: string   // ISO timestamp
 }
 
 // Chat-specific processing status

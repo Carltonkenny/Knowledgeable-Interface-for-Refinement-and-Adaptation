@@ -394,10 +394,21 @@ def _orchestrator_impl(state: Dict[str, Any], start_time: float, span=None) -> D
         else:
             logger.warning(f"[langmem] skipping search — user_id={langmem_user_id}, query_len={len(query_text)}")
         
+        # Build history context from working memory (smart window loads up to 30-40 turns)
+        # Show enough context for Kira to make informed decisions
+        history_turns = conversation_history[-15:] if len(conversation_history) > 15 else conversation_history
         history_context = "\n".join([
             f"{t.get('role', 'USER').upper()}: {t.get('message', '')[:100]}"
-            for t in conversation_history[-3:]
-        ]) if conversation_history else "No previous conversation"
+            for t in history_turns
+        ]) if history_turns else "No previous conversation"
+
+        # Check if summary was injected (system message with "summarized" in it)
+        summary_turns = [
+            t for t in conversation_history
+            if t.get('role') == 'system' and t.get('message_type') == 'summary'
+        ]
+        if summary_turns:
+            history_context = f"{summary_turns[-1]['message']}\n{history_context}"
 
         profile_context = f"User's preferred tone: {user_profile.get('preferred_tone', 'not set')}" if user_profile else "No profile available"
         

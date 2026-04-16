@@ -11,11 +11,12 @@ interface LangMemPreviewProps {
 
 // Category configuration for professional color coding
 const categoryConfig: Record<string, { label: string; color: string; bg: string; border: string; icon: string }> = {
-  style: { label: 'Style Rules', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30', icon: '🎨' },
-  format: { label: 'Format Rules', color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/30', icon: '📋' },
-  domain: { label: 'Domain Knowledge', color: 'text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/30', icon: '🧠' },
-  tone: { label: 'Tone Rules', color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/30', icon: '💬' },
-  other: { label: 'Other Rules', color: 'text-text-muted', bg: 'bg-layer3', border: 'border-border-subtle', icon: '📌' },
+  identity: { label: 'Identity', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30', icon: '👤' },
+  preference: { label: 'Preference', color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/30', icon: '✨' },
+  project: { label: 'Project Context', color: 'text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/30', icon: '🏭' },
+  constraint: { label: 'Constraints', color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/30', icon: '⛓️' },
+  feedback: { label: 'Feedback', color: 'text-rose-400', bg: 'bg-rose-500/10', border: 'border-rose-500/30', icon: '🎯' },
+  other: { label: 'Knowledge', color: 'text-text-muted', bg: 'bg-layer3', border: 'border-border-subtle', icon: '🧠' },
 }
 
 interface MemoryGroupProps {
@@ -158,7 +159,7 @@ export default function LangMemPreview({ memories, isLoading }: LangMemPreviewPr
               Kira automatically extracts and stores your preferences as you forge prompts.
             </p>
             <div className="text-[10px] text-text-dim space-y-1">
-              <p>✨ Examples of what will appear:</p>
+              <p>✨ Extraction occurs every 5 turns.</p>
               <p>• "Use direct, professional tone"</p>
               <p>• "Format as JSON with schema"</p>
               <p>• "Focus on Python best practices"</p>

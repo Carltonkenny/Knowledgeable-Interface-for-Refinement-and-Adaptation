@@ -14,6 +14,8 @@ from routes.mcp import router as mcp_router
 from routes.feedback import router as feedback_router
 from routes.usage import router as usage_router
 from routes.analytics import router as analytics_router
+from routes.newsletter import router as newsletter_router
+from routes.tts import router as tts_router
 
 ALL_ROUTERS = [
     health_router,
@@ -26,6 +28,8 @@ ALL_ROUTERS = [
     feedback_router,
     usage_router,
     analytics_router,
+    newsletter_router,
+    tts_router,
 ]
 
 __all__ = ["ALL_ROUTERS"]

@@ -20,61 +20,61 @@ const AVATARS = [
     id: 'kira-core', 
     name: 'Kira Core', 
     desc: 'The original',
-    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=kira-core&backgroundColor=0d8abc&eyes=bulging&mouth=smile02&texture=carbon' 
+    url: 'https://api.dicebear.com/9.x/bottts/svg?seed=kira-core&backgroundColor=0d8abc&eyes=bulging&mouth=smile02&texture=carbon' 
   },
   { 
     id: 'neural-net', 
     name: 'Neural Net', 
     desc: 'Deep learning mode',
-    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=neural-net&backgroundColor=6b4c9a&eyes=eva&mouth=grill01&texture=electro' 
+    url: 'https://api.dicebear.com/9.x/bottts/svg?seed=neural-net&backgroundColor=6b4c9a&eyes=eva&mouth=grill01&texture=electro' 
   },
   { 
     id: 'prompt-forge', 
     name: 'Prompt Forge', 
     desc: 'Master crafter',
-    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=prompt-forge&backgroundColor=c2410c&eyes=diamond&mouth=smile01&texture=shiny' 
+    url: 'https://api.dicebear.com/9.x/bottts/svg?seed=prompt-forge&backgroundColor=c2410c&eyes=diamond&mouth=smile01&texture=shiny' 
   },
   { 
     id: 'data-wizard', 
     name: 'Data Wizard', 
     desc: 'Analytics guru',
-    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=data-wizard&backgroundColor=0f766e&eyes=frame01&mouth=smile02&texture=gradient' 
+    url: 'https://api.dicebear.com/9.x/bottts/svg?seed=data-wizard&backgroundColor=0f766e&eyes=frame01&mouth=smile02&texture=gradient' 
   },
   { 
     id: 'code-ninja', 
     name: 'Code Ninja', 
     desc: 'Silent but deadly',
-    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=code-ninja&backgroundColor=1e293b&eyes=glow&mouth=grill02&texture=dark' 
+    url: 'https://api.dicebear.com/9.x/bottts/svg?seed=code-ninja&backgroundColor=1e293b&eyes=glow&mouth=grill02&texture=dark' 
   },
   { 
     id: 'quantum-leap', 
     name: 'Quantum Leap', 
     desc: 'Beyond classical',
-    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=quantum-leap&backgroundColor=7c3aed&eyes=round&mouth=smile01&texture=holographic' 
+    url: 'https://api.dicebear.com/9.x/bottts/svg?seed=quantum-leap&backgroundColor=7c3aed&eyes=round&mouth=smile01&texture=holographic' 
   },
   { 
     id: 'cyber-punk', 
     name: 'Cyber Punk', 
     desc: 'Neon rebel',
-    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=cyber-punk&backgroundColor=db2777&eyes=cyber&mouth=grill01&texture=neon' 
+    url: 'https://api.dicebear.com/9.x/bottts/svg?seed=cyber-punk&backgroundColor=db2777&eyes=cyber&mouth=grill01&texture=neon' 
   },
   { 
     id: 'space-cadet', 
     name: 'Space Cadet', 
     desc: 'Out of this world',
-    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=space-cadet&backgroundColor=0369a1&eyes=astro&mouth=smile02&texture=stars' 
+    url: 'https://api.dicebear.com/9.x/bottts/svg?seed=space-cadet&backgroundColor=0369a1&eyes=astro&mouth=smile02&texture=stars' 
   },
   { 
     id: 'pixel-punk', 
     name: 'Pixel Punk', 
     desc: 'Retro future',
-    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=pixel-punk&backgroundColor=ea580c&eyes=pixel&mouth=grill02&texture=retro' 
+    url: 'https://api.dicebear.com/9.x/bottts/svg?seed=pixel-punk&backgroundColor=ea580c&eyes=pixel&mouth=grill02&texture=retro' 
   },
   { 
     id: 'ghost-shell', 
     name: 'Ghost Shell', 
     desc: 'Stealth mode',
-    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=ghost-shell&backgroundColor=475569&eyes=ghost&mouth=smile01&texture=matte' 
+    url: 'https://api.dicebear.com/9.x/bottts/svg?seed=ghost-shell&backgroundColor=475569&eyes=ghost&mouth=smile01&texture=matte' 
   },
 ]
 

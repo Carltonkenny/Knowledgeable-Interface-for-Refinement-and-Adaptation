@@ -2,166 +2,146 @@
 # ─────────────────────────────────────────────
 # Rate Limiting Middleware — RULES.md Security Rule #8
 #
-# Implements per-user rate limiting to prevent API abuse.
-# Uses sliding window algorithm with in-memory storage.
+# Redis-backed sliding window rate limiter.
+# Works across multiple Docker instances — all share the same Redis state.
 #
 # Configuration (via .env):
 # - RATE_LIMIT_ENABLED: Master toggle (true/false)
-# - RATE_LIMIT_HOURLY: Max requests per hour (default: 10)
-# - RATE_LIMIT_DAILY: Max requests per day (default: 50)
-# - RATE_LIMIT_MONTHLY: Max requests per month (default: 1500)
-# - RATE_LIMIT_EXEMPT_USERS: Comma-separated VIP user IDs
+# - RATE_LIMIT_HOURLY: Max requests per hour (default: 100)
+# - RATE_LIMIT_DAILY: Max requests per day (default: 1000)
+# - RATE_LIMIT_MONTHLY: Max requests per month (default: 15000)
+# - RATE_LIMIT_UNLIMITED_USERS: Comma-separated VIP user IDs
+# - REDIS_URL: Redis connection string (default: redis://redis:6379)
 #
 # RULES.md Compliance:
 # - Rate limiting per user_id
 # - Returns 429 when limit exceeded
 # - Works with JWT authentication
 # - Master toggle for dev/demo flexibility
+# - VIP bypass for admin/friends/paid users
 # ─────────────────────────────────────────────
 
+import os
 import time
 import logging
-import os
-import json
-from collections import defaultdict
-from typing import Dict, List, Tuple
-from datetime import datetime, timezone, timedelta
+import redis
+from datetime import datetime, timezone
+from typing import Tuple, Optional
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
-from jose import jwt, JWTError
 
 logger = logging.getLogger(__name__)
 
 
-# ═══ MASTER TOGGLE — Single boolean to enable/disable ALL rate limiting ═══
-# Set via environment variable for easy deployment control
-RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
-
-# Per-user override (comma-separated user IDs)
-RATE_LIMIT_EXEMPT_USERS = [
-    uid.strip() for uid in os.getenv("RATE_LIMIT_EXEMPT_USERS", "").split(",") if uid.strip()
+# ── VIP bypass list ──
+RATE_LIMIT_UNLIMITED_USERS = [
+    uid.strip() for uid in os.getenv("RATE_LIMIT_UNLIMITED_USERS", "").split(",") if uid.strip()
 ]
 
-# Rate limit configuration from environment
-RATE_LIMIT_HOURLY = int(os.getenv("RATE_LIMIT_HOURLY", "10"))
-RATE_LIMIT_DAILY = int(os.getenv("RATE_LIMIT_DAILY", "50"))
-RATE_LIMIT_MONTHLY = int(os.getenv("RATE_LIMIT_MONTHLY", "1500"))
 
-logger.info(
-    f"[rate_limiter] config: enabled={RATE_LIMIT_ENABLED}, "
-    f"hourly={RATE_LIMIT_HOURLY}, daily={RATE_LIMIT_DAILY}, monthly={RATE_LIMIT_MONTHLY}"
-)
-
-
-class RateLimiter:
+class RedisRateLimiter:
     """
-    In-memory rate limiter using sliding window algorithm.
+    Redis-backed sliding window rate limiter.
 
-    Thread-safe for single-instance deployments.
-    For multi-instance, use Redis-based rate limiting.
+    Uses Redis INCR + EXPIRE for atomic counting.
+    Works across multiple instances — all share the same Redis state.
 
-    Tracks:
-    - Hourly requests (sliding window)
-    - Daily requests (calendar day, UTC)
-    - Monthly requests (calendar month, UTC)
+    Limits (generous defaults, configurable via .env):
+    - Hourly: 100 requests per user
+    - Daily: 1000 requests per user
+    - Monthly: 15000 requests per user
+
+    VIP users (configured via RATE_LIMIT_UNLIMITED_USERS) bypass all limits.
     """
 
     def __init__(
         self,
-        hourly_limit: int = 10,
-        daily_limit: int = 50,
-        monthly_limit: int = 1500,
-        window_seconds: int = 3600
+        redis_url: str = "redis://redis:6379",
+        hourly_limit: int = 100,
+        daily_limit: int = 1000,
+        monthly_limit: int = 15000,
     ):
-        """
-        Initialize rate limiter.
-
-        Args:
-            hourly_limit: Max requests per hour (default: 10)
-            daily_limit: Max requests per day (default: 50)
-            monthly_limit: Max requests per month (default: 1500)
-            window_seconds: Sliding window size in seconds (default: 3600 = 1 hour)
-        """
         self.hourly_limit = hourly_limit
         self.daily_limit = daily_limit
         self.monthly_limit = monthly_limit
-        self.window_seconds = window_seconds
-        
-        # Hourly tracking (sliding window)
-        self._hourly_requests: Dict[str, List[float]] = defaultdict(list)
-        
-        # Daily tracking (calendar day, UTC)
-        self._daily_requests: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
-        
-        # Monthly tracking (calendar month, UTC)
-        self._monthly_requests: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
-        
-        logger.info(
-            f"[rate_limiter] initialized: hourly={hourly_limit}, "
-            f"daily={daily_limit}, monthly={monthly_limit}"
-        )
+        self._redis_url = redis_url
+        self._redis: Optional[redis.Redis] = None
+        self._connect()
 
-    def is_allowed(self, user_id: str) -> bool:
+    def _connect(self):
+        """Establish connection to Redis with retry-safe settings."""
+        try:
+            self._redis = redis.from_url(
+                self._redis_url,
+                decode_responses=True,
+                socket_connect_timeout=5,
+                retry_on_timeout=True,
+            )
+            self._redis.ping()
+            logger.info("[rate_limiter] connected to Redis successfully")
+        except Exception as e:
+            logger.error(f"[rate_limiter] failed to connect to Redis: {e}")
+            self._redis = None
+
+    def _get_redis(self) -> Optional[redis.Redis]:
+        """Lazy reconnect if connection dropped."""
+        if self._redis is None:
+            self._connect()
+        return self._redis
+
+    def is_allowed(self, user_id: str) -> Tuple[bool, str]:
         """
-        Check if request is allowed for this user.
-        Checks hourly, daily, and monthly limits.
+        Check if user is within rate limits.
 
         Args:
-            user_id: User identifier from JWT
+            user_id: User identifier
 
         Returns:
-            True if request allowed, False if any limit exceeded
+            (allowed: bool, reason: str)
         """
-        now = time.time()
+        r = self._get_redis()
+        if r is None:
+            # Redis unavailable — fail open (allow request)
+            logger.warning("[rate_limiter] Redis unavailable, allowing request")
+            return True, "OK (Redis unavailable)"
+
+        now = int(time.time())
         now_utc = datetime.now(timezone.utc)
-        today_key = now_utc.date().isoformat()
-        month_key = f"{now_utc.year}-{now_utc.month:02d}"
-        
-        # Clean old hourly requests outside current window
-        window_start = now - self.window_seconds
-        self._hourly_requests[user_id] = [
-            timestamp
-            for timestamp in self._hourly_requests[user_id]
-            if timestamp > window_start
-        ]
-        
-        # Check hourly limit
-        if len(self._hourly_requests[user_id]) >= self.hourly_limit:
-            logger.warning(
-                f"[rate_limiter] hourly limit exceeded for user {user_id[:8]}... "
-                f"({len(self._hourly_requests[user_id])}/{self.hourly_limit})"
-            )
-            return False
-        
-        # Check daily limit
-        daily_count = self._daily_requests[user_id].get(today_key, 0)
-        if daily_count >= self.daily_limit:
-            logger.warning(
-                f"[rate_limiter] daily limit exceeded for user {user_id[:8]}... "
-                f"({daily_count}/{self.daily_limit})"
-            )
-            return False
-        
-        # Check monthly limit
-        monthly_count = self._monthly_requests[user_id].get(month_key, 0)
-        if monthly_count >= self.monthly_limit:
-            logger.warning(
-                f"[rate_limiter] monthly limit exceeded for user {user_id[:8]}... "
-                f"({monthly_count}/{self.monthly_limit})"
-            )
-            return False
-        
-        # All limits passed — record this request
-        self._hourly_requests[user_id].append(now)
-        self._daily_requests[user_id][today_key] += 1
-        self._monthly_requests[user_id][month_key] += 1
-        
-        return True
+        hour_key = f"rate:{user_id}:h:{now // 3600}"
+        day_key = f"rate:{user_id}:d:{now_utc.date().isoformat()}"
+        month_key = f"rate:{user_id}:m:{now_utc.year}-{now_utc.month:02d}"
+
+        try:
+            # Atomic increment + set expiry
+            hourly_count = r.incr(hour_key)
+            if hourly_count == 1:
+                r.expire(hour_key, 3600)
+
+            daily_count = r.incr(day_key)
+            if daily_count == 1:
+                r.expire(day_key, 86400)
+
+            monthly_count = r.incr(month_key)
+            if monthly_count == 1:
+                r.expire(month_key, 86400 * 31)
+
+            # Check limits
+            if hourly_count > self.hourly_limit:
+                return False, f"Hourly limit exceeded ({hourly_count}/{self.hourly_limit})"
+            if daily_count > self.daily_limit:
+                return False, f"Daily limit exceeded ({daily_count}/{self.daily_limit})"
+            if monthly_count > self.monthly_limit:
+                return False, f"Monthly limit exceeded ({monthly_count}/{self.monthly_limit})"
+
+            return True, "OK"
+        except Exception as e:
+            logger.error(f"[rate_limiter] Redis error: {e}")
+            return True, "OK (Redis error, fail open)"
 
     def get_remaining(self, user_id: str) -> Tuple[int, int, int]:
         """
-        Get remaining requests for user in current windows.
+        Get remaining requests in current windows.
 
         Args:
             user_id: User identifier
@@ -169,87 +149,61 @@ class RateLimiter:
         Returns:
             Tuple of (hourly_remaining, daily_remaining, monthly_remaining)
         """
-        now = time.time()
+        r = self._get_redis()
+        if r is None:
+            return self.hourly_limit, self.daily_limit, self.monthly_limit
+
+        now = int(time.time())
         now_utc = datetime.now(timezone.utc)
-        today_key = now_utc.date().isoformat()
-        month_key = f"{now_utc.year}-{now_utc.month:02d}"
-        
-        # Clean old hourly requests
-        window_start = now - self.window_seconds
-        self._hourly_requests[user_id] = [
-            timestamp
-            for timestamp in self._hourly_requests[user_id]
-            if timestamp > window_start
-        ]
-        
-        hourly_remaining = max(0, self.hourly_limit - len(self._hourly_requests[user_id]))
-        daily_remaining = max(0, self.daily_limit - self._daily_requests[user_id].get(today_key, 0))
-        monthly_remaining = max(0, self.monthly_limit - self._monthly_requests[user_id].get(month_key, 0))
-        
-        return hourly_remaining, daily_remaining, monthly_remaining
+        hour_key = f"rate:{user_id}:h:{now // 3600}"
+        day_key = f"rate:{user_id}:d:{now_utc.date().isoformat()}"
+        month_key = f"rate:{user_id}:m:{now_utc.year}-{now_utc.month:02d}"
 
-    def check_limits(self, user_id: str) -> Tuple[bool, str]:
-        """
-        Check which limit (if any) is exceeded.
+        try:
+            hourly = int(r.get(hour_key) or 0)
+            daily = int(r.get(day_key) or 0)
+            monthly = int(r.get(month_key) or 0)
 
-        Args:
-            user_id: User identifier
-
-        Returns:
-            Tuple of (is_allowed, reason)
-        """
-        now = time.time()
-        now_utc = datetime.now(timezone.utc)
-        today_key = now_utc.date().isoformat()
-        month_key = f"{now_utc.year}-{now_utc.month:02d}"
-        window_start = now - self.window_seconds
-        
-        # Clean and check hourly
-        self._hourly_requests[user_id] = [
-            timestamp
-            for timestamp in self._hourly_requests[user_id]
-            if timestamp > window_start
-        ]
-        hourly_count = len(self._hourly_requests[user_id])
-        
-        if hourly_count >= self.hourly_limit:
-            return False, f"Hourly limit exceeded ({hourly_count}/{self.hourly_limit})"
-        
-        # Check daily
-        daily_count = self._daily_requests[user_id].get(today_key, 0)
-        if daily_count >= self.daily_limit:
-            return False, f"Daily limit exceeded ({daily_count}/{self.daily_limit})"
-        
-        # Check monthly
-        monthly_count = self._monthly_requests[user_id].get(month_key, 0)
-        if monthly_count >= self.monthly_limit:
-            return False, f"Monthly limit exceeded ({monthly_count}/{self.monthly_limit})"
-        
-        return True, "OK"
+            return (
+                max(0, self.hourly_limit - hourly),
+                max(0, self.daily_limit - daily),
+                max(0, self.monthly_limit - monthly),
+            )
+        except Exception:
+            return self.hourly_limit, self.daily_limit, self.monthly_limit
 
 
-# Global rate limiter instance
-# RULES.md: Configurable limits via environment variables
-rate_limiter = RateLimiter(
-    hourly_limit=RATE_LIMIT_HOURLY,
-    daily_limit=RATE_LIMIT_DAILY,
-    monthly_limit=RATE_LIMIT_MONTHLY,
-    window_seconds=3600
-)
+# ── Lazy-init singleton ──
+_rate_limiter_instance: Optional[RedisRateLimiter] = None
+
+
+def get_rate_limiter() -> Optional[RedisRateLimiter]:
+    """Get (or create) the global RedisRateLimiter instance."""
+    global _rate_limiter_instance
+    if _rate_limiter_instance is None:
+        _rate_limiter_instance = RedisRateLimiter(
+            redis_url=os.getenv("REDIS_URL", "redis://redis:6379"),
+            hourly_limit=int(os.getenv("RATE_LIMIT_HOURLY", "100")),
+            daily_limit=int(os.getenv("RATE_LIMIT_DAILY", "1000")),
+            monthly_limit=int(os.getenv("RATE_LIMIT_MONTHLY", "15000")),
+        )
+    return _rate_limiter_instance
 
 
 class RateLimiterMiddleware(BaseHTTPMiddleware):
     """
-    FastAPI middleware for rate limiting.
+    FastAPI middleware — checks Redis rate limits per user.
 
-    Extracts user_id from JWT token in Authorization header.
+    Extracts user_id from request.state (set by auth middleware).
+    Falls back to IP-based identifier for anonymous requests.
     Returns 429 Too Many Requests when limit exceeded.
 
     Features:
     - Master toggle (RATE_LIMIT_ENABLED)
-    - VIP user bypass (RATE_LIMIT_EXEMPT_USERS)
+    - VIP user bypass (RATE_LIMIT_UNLIMITED_USERS)
     - Hourly, daily, and monthly limits
     - Dev mode auto-disable (ENVIRONMENT=development)
+    - Fail-open when Redis is unavailable
     """
 
     async def dispatch(self, request: Request, call_next):
@@ -259,15 +213,10 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
         Checks (in order):
         1. Master toggle (RATE_LIMIT_ENABLED)
         2. Dev mode (ENVIRONMENT=development)
-        3. VIP user bypass (RATE_LIMIT_EXEMPT_USERS)
-        4. Health check skip (/health)
-        5. CORS preflight skip (OPTIONS)
+        3. Health check skip (/health)
+        4. CORS preflight skip (OPTIONS)
+        5. VIP user bypass (RATE_LIMIT_UNLIMITED_USERS)
         6. Hourly, daily, monthly limits
-
-        RULES.md:
-        - Skip rate limiting for health checks
-        - Skip rate limiting for CORS preflight (OPTIONS)
-        - Rate limit per user_id or per-IP for anonymous (configurable)
 
         Args:
             request: Incoming HTTP request
@@ -277,10 +226,10 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
             Response or 429 error
         """
         # ═══ MASTER TOGGLE CHECK ═══
-        if not RATE_LIMIT_ENABLED:
+        if os.getenv("RATE_LIMIT_ENABLED", "true").lower() != "true":
             logger.debug("[rate_limiter] DISABLED via master toggle")
             return await call_next(request)
-        
+
         # ═══ DEV MODE AUTO-DISABLE ═══
         if os.getenv("ENVIRONMENT", "development") == "development":
             logger.debug("[rate_limiter] DEV MODE - skipping rate limiting")
@@ -300,68 +249,66 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
         # Try to get user_id from request.state (set by auth middleware)
         if hasattr(request, 'state') and hasattr(request.state, 'user_id'):
             user_id = request.state.user_id
-            logger.debug(f"[rate_limiter] Using user_id from request.state: {user_id[:8]}...")
-
-        # ═══ VIP USER BYPASS CHECK ═══
-        if user_id and user_id in RATE_LIMIT_EXEMPT_USERS:
-            logger.debug(f"[rate_limiter] VIP user bypass: {user_id[:8]}...")
-            return await call_next(request)
+            if user_id:
+                logger.debug(f"[rate_limiter] Using user_id from request.state: {user_id[:8]}...")
 
         # Fallback: If no user_id from state, use client IP
         if not user_id:
-            # Get client IP (handle X-Forwarded-For for proxied requests)
             forwarded_for = request.headers.get('X-Forwarded-For')
             if forwarded_for:
-                # Take the first IP in the chain (client IP)
                 client_ip = forwarded_for.split(',')[0].strip()
             else:
                 client_ip = request.client.host if request.client else 'unknown'
-
             user_id = f"anon:{client_ip}"
-            logger.debug(f"[rate_limiter] Using IP-based identifier: {user_id[:8]}...")
+            logger.debug(f"[rate_limiter] Using IP-based identifier: {user_id}")
+
+        # ═══ VIP USER BYPASS CHECK ═══
+        if user_id in RATE_LIMIT_UNLIMITED_USERS:
+            logger.debug(f"[rate_limiter] VIP user bypass: {user_id[:8]}...")
+            return await call_next(request)
 
         # ═══ CHECK RATE LIMITS ═══
-        is_allowed, reason = rate_limiter.check_limits(user_id)
-        
-        if not is_allowed:
-            hourly_rem, daily_rem, monthly_rem = rate_limiter.get_remaining(user_id)
+        limiter = get_rate_limiter()
+        if limiter is None:
+            return await call_next(request)
+
+        allowed, reason = limiter.is_allowed(user_id)
+
+        if not allowed:
+            hourly_rem, daily_rem, monthly_rem = limiter.get_remaining(user_id)
             logger.warning(
                 f"[rate_limiter] blocked request for user {user_id[:8]}... "
                 f"reason={reason}"
             )
-            # Return JSONResponse directly (avoids 500 error from HTTPException)
             return JSONResponse(
                 status_code=429,
                 content={
                     "error": "Rate limit exceeded",
                     "message": reason,
                     "limits": {
-                        "hourly": RATE_LIMIT_HOURLY,
-                        "daily": RATE_LIMIT_DAILY,
-                        "monthly": RATE_LIMIT_MONTHLY
+                        "hourly": limiter.hourly_limit,
+                        "daily": limiter.daily_limit,
+                        "monthly": limiter.monthly_limit,
                     },
                     "remaining": {
                         "hourly": hourly_rem,
                         "daily": daily_rem,
-                        "monthly": monthly_rem
-                    }
+                        "monthly": monthly_rem,
+                    },
                 },
                 headers={
-                    'X-RateLimit-Limit-Hourly': str(RATE_LIMIT_HOURLY),
-                    'X-RateLimit-Limit-Daily': str(RATE_LIMIT_DAILY),
-                    'X-RateLimit-Limit-Monthly': str(RATE_LIMIT_MONTHLY),
-                    'Retry-After': '3600'
-                }
+                    'Retry-After': '3600',
+                    'X-RateLimit-Limit-Hourly': str(limiter.hourly_limit),
+                    'X-RateLimit-Limit-Daily': str(limiter.daily_limit),
+                    'X-RateLimit-Limit-Monthly': str(limiter.monthly_limit),
+                },
             )
 
         # ═══ ADD RATE LIMIT HEADERS TO RESPONSE ═══
         response = await call_next(request)
-        hourly_rem, daily_rem, monthly_rem = rate_limiter.get_remaining(user_id)
-        response.headers['X-RateLimit-Limit-Hourly'] = str(RATE_LIMIT_HOURLY)
+        hourly_rem, daily_rem, monthly_rem = limiter.get_remaining(user_id)
         response.headers['X-RateLimit-Remaining-Hourly'] = str(hourly_rem)
-        response.headers['X-RateLimit-Limit-Daily'] = str(RATE_LIMIT_DAILY)
         response.headers['X-RateLimit-Remaining-Daily'] = str(daily_rem)
-        response.headers['X-RateLimit-Limit-Monthly'] = str(RATE_LIMIT_MONTHLY)
         response.headers['X-RateLimit-Remaining-Monthly'] = str(monthly_rem)
 
         return response

@@ -100,3 +100,7 @@ check_*.py
 *.tmp
 *.bak
 .agent/ 
+lighthouse-*.json
+lighthouse-*.html
+lint_output.txt
+tsc_check.txt

@@ -10,7 +10,7 @@ import asyncio
 import logging
 import time
 from typing import Any, Optional
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -18,13 +18,16 @@ from service import sse_format, _astream_swarm, compute_diff
 from auth import User, get_current_user
 from database import (
     save_request, save_conversation,
-    get_conversation_history, update_session_activity, get_last_activity,
+    get_conversation_history_with_summary,
+    update_session_activity, get_last_activity,
     get_conversation_count,
 )
 from agents.handlers.unified import kira_unified_handler
 from memory.langmem import write_to_langmem
+from memory.memory_extractor import save_core_memories_if_needed
 from memory.profile_updater import should_trigger_update, update_user_profile
 from utils import calculate_overall_quality
+from utils.error_messages import get_error_message, ErrorType
 from xp_engine import calculate_forge_xp, get_tier_from_xp
 
 logger = logging.getLogger(__name__)
@@ -97,7 +100,7 @@ class ChatResponse(BaseModel):
 # ── Streaming Chat Endpoint ──────────────────
 
 @router.post("/chat/stream", response_model=ChatResponse)
-async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks, user: User = Depends(get_current_user)):
+async def chat_stream(request: Request, req: ChatRequest, background_tasks: BackgroundTasks, user: User = Depends(get_current_user)):
     """
     Streaming version of /chat.
     Sends Server-Sent Events (SSE) as processing progresses.
@@ -111,7 +114,26 @@ async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks, user:
 
             loop = asyncio.get_event_loop()
 
-            history = await loop.run_in_executor(None, lambda: get_conversation_history(req.session_id, limit=6))
+            # Smart window: load up to 30-40 turns with summary injection
+            history, was_truncated = await loop.run_in_executor(
+                None,
+                lambda: get_conversation_history_with_summary(
+                    req.session_id,
+                    max_chars=12000,  # ~3000 tokens ≈ 30-40 turns
+                    user_id=user.user_id
+                )
+            )
+
+            # Check if client disconnected during history load
+            if await request.is_disconnected():
+                logger.info(f"[sse] client disconnected after history load, stopping stream")
+                return
+
+            if was_truncated:
+                logger.info(
+                    f"[api] conversation history truncated for session {req.session_id} "
+                    f"— middle turns summarized"
+                )
 
             from database import get_user_profile
             user_profile = await loop.run_in_executor(None, lambda: get_user_profile(user.user_id) or {})
@@ -164,7 +186,7 @@ async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks, user:
 
             if intent in ["CONVERSATION", "FOLLOWUP"]:
                 # Word-by-word streaming (natural cadence, ~6x fewer SSE events)
-                yield sse_format("status", {"message": "✨ Kira is responding..."})
+                yield sse_format("status", {"message": "Kira is responding..."})
                 words = reply.split(" ")
                 for i, word in enumerate(words):
                     chunk = word + (" " if i < len(words) - 1 else "")
@@ -192,15 +214,34 @@ async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks, user:
                 clarification_key = "topic"
                 user_facing_message = reply
 
+                # Generate suggestion chips based on clarification key
+                clarification_options_map = {
+                    "audience": ["Beginners", "Developers", "Business Leaders", "General"],
+                    "tone": ["Professional", "Casual", "Technical", "Persuasive"],
+                    "format": ["Email", "Blog Post", "Documentation", "Social Media"],
+                    "length": ["Short", "Medium", "Detailed", "Comprehensive"],
+                }
+                clarification_options = clarification_options_map.get(clarification_key, [])
+
                 save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="new_prompt", user_id=user.user_id)
                 save_conversation(session_id=req.session_id, role="assistant", message=user_facing_message, message_type="clarification_question", user_id=user.user_id)
 
                 yield sse_format("kira_message", {"message": user_facing_message, "complete": True})
-                yield sse_format("result", {"type": "clarification_requested", "reply": user_facing_message})
+                yield sse_format("result", {
+                    "type": "clarification_requested",
+                    "reply": user_facing_message,
+                    "clarification_key": clarification_key,
+                    "clarification_options": clarification_options,
+                })
                 yield sse_format("done", {"message": "Complete"})
                 return
 
             # NEW_PROMPT (swarm execution)
+            # Check client disconnect before expensive LLM call
+            if await request.is_disconnected():
+                logger.info(f"[sse] client disconnected before swarm execution, stopping stream")
+                return
+
             yield sse_format("status", {"message": "⚡ Orchestrator: Launching agents..."})
 
             final_state = {}
@@ -334,7 +375,6 @@ async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks, user:
                 previous_prompt = req.message
 
             improved = final_state.get("improved_prompt", "")
-            from service import compute_diff
             diff = compute_diff(previous_prompt, improved) if improved else []
 
             # Word-by-word streaming (natural cadence, ~6x fewer SSE events)
@@ -346,6 +386,11 @@ async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks, user:
                 await asyncio.sleep(0.01)  # Reduced from 0.02 for faster cadence
 
             yield sse_format("kira_message", {"message": "", "complete": True})
+
+            # Check client disconnect before saving to database
+            if await request.is_disconnected():
+                logger.info(f"[sse] client disconnected before DB save, stopping stream")
+                return
 
             # ═══ SAVE CONVERSATION TURNS (matching /chat non-streaming) ═══
             save_conversation(
@@ -364,31 +409,82 @@ async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks, user:
                 user_id=user.user_id
             )
 
-            yield sse_format("result", {
-                "type": "prompt_improved",
-                "reply": reply,
-                "improved_prompt": improved,
-                "diff": diff,
-                "quality_score": final_state.get("quality_score") or {"specificity": 4, "clarity": 4, "actionability": 4},
-                "kira_message": reply,
-                "memories_applied": final_state.get("memories_applied", 0),
-                "latency_ms": final_state.get("latency_ms", 0),
-                "agents_run": final_state.get("agents_run", [])
-            })
-            yield sse_format("done", {"message": "Complete"})
+            # ═══ SAVE CONVERSATION TURNS (Persistence Barrier) ═══
+            # Only persist if analysis produced a valid improved prompt or valid state
+            is_valid_analysis = bool(improved and final_state.get("quality_score"))
+            
+            if is_valid_analysis:
+                save_conversation(
+                    session_id=req.session_id,
+                    role="user",
+                    message=req.message,
+                    message_type="new_prompt",
+                    user_id=user.user_id
+                )
+                save_conversation(
+                    session_id=req.session_id,
+                    role="assistant",
+                    message=reply,
+                    message_type="prompt_improved",
+                    improved_prompt=improved,
+                    user_id=user.user_id
+                )
 
-            save_request(
-                raw_prompt=req.message, improved_prompt=improved,
-                session_id=req.session_id, user_id=user.user_id,
-                quality_score=final_state.get("quality_score"),
-                domain_analysis=final_state.get("domain_analysis"),
-                agents_used=final_state.get("agents_run"),
-                agents_skipped=final_state.get("agents_skipped"),
-                prompt_diff=diff
+                # Build memory citations from langmem_context in final_state
+                langmem_context = final_state.get("langmem_context", [])
+                memory_citations = []
+                for mem in langmem_context[:5]:  # Top 5 memories max
+                    memory_citations.append({
+                        "id": str(mem.get("id", "")),
+                        "content": (mem.get("content", "") or "")[:120],  # Truncate for preview
+                        "domain": mem.get("domain", "general"),
+                        "quality_score": mem.get("quality_score", {}).get("overall", 0),
+                        "created_at": mem.get("created_at", ""),
+                    })
+
+                yield sse_format("result", {
+                    "type": "prompt_improved",
+                    "reply": reply,
+                    "improved_prompt": improved,
+                    "diff": diff,
+                    "quality_score": final_state.get("quality_score") or {"specificity": 4, "clarity": 4, "actionability": 4},
+                    "kira_message": reply,
+                    "memories_applied": final_state.get("memories_applied", 0),
+                    "memory_citations": memory_citations,
+                    "latency_ms": final_state.get("latency_ms", 0),
+                    "agents_run": final_state.get("agents_run", [])
+                })
+                yield sse_format("done", {"message": "Complete"})
+
+                save_request(
+                    raw_prompt=req.message, improved_prompt=improved,
+                    session_id=req.session_id, user_id=user.user_id,
+                    quality_score=final_state.get("quality_score"),
+                    domain_analysis=final_state.get("domain_analysis"),
+                    agents_used=final_state.get("agents_run"),
+                    agents_skipped=final_state.get("agents_skipped"),
+                    prompt_diff=diff
+                )
+                update_session_activity(user.user_id, req.session_id)
+            else:
+                logger.warning(f"[api] skipping persistence: analysis failed or empty for session {req.session_id}")
+                yield sse_format("error", {"message": "Neural analysis failed to produce a valid result. This turn was not saved."})
+                yield sse_format("done", {"message": "Complete"})
+                return
+
+            # ═══ BACKGROUND TASK: Store in Memory Palace (importance-filtered) ═══
+            # Only important facts (identity, preferences, constraints) are saved to core memory.
+            # Raw prompts are NOT saved — only distilled facts every 5th turn.
+            background_tasks.add_task(
+                save_core_memories_if_needed,
+                user_id=user.user_id,
+                session_id=req.session_id,
+                session_result=final_state
             )
-            update_session_activity(user.user_id, req.session_id)
 
-            # ═══ BACKGROUND TASK: Store in Memory Palace ═══
+            # ═══ FALLBACK: Also save raw session result for backward compat ═══
+            # This ensures langmem_memories still has raw session data for
+            # quality trend analysis and style references.
             background_tasks.add_task(
                 write_to_langmem,
                 user_id=user.user_id,
@@ -419,7 +515,8 @@ async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks, user:
 
         except Exception as e:
             logger.exception(f"[api] /chat/stream error")
-            yield sse_format("error", {"message": "Something went wrong"})
+            error = get_error_message(ErrorType.UNKNOWN, user_tone="direct")
+            yield sse_format("error", {"message": error["full_message"]})
             yield sse_format("done", {"message": "Complete"})
 
     return StreamingResponse(
