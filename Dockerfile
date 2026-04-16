@@ -12,19 +12,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
+# Set up virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
 # Copy requirements first (layer caching)
 COPY requirements.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir --user -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # ── Stage 2: Runtime ─────────────────────────
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy installed packages from builder
-COPY --from=builder /root/.local /root/.local
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Create non-root user
 RUN useradd -r -u 1000 -g root appuser && \
@@ -36,9 +41,6 @@ USER appuser
 
 # Copy application code (as root first, then chown is done above)
 COPY --chown=appuser:root . .
-
-# Add local bin to PATH
-ENV PATH=/root/.local/bin:$PATH
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
