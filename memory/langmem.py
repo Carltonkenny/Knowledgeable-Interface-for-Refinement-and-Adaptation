@@ -17,6 +17,9 @@
 
 import logging
 import os
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, module="google")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="google")
 import google.generativeai as genai
 import google.ai.generativelanguage as glm
 from supabase import create_client, Client
