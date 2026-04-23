@@ -94,27 +94,45 @@ from agents.handlers import (
     kira_unified_handler,
 )
 
-# Orchestration
-from agents.orchestration import (
-    decide_route,
-    RoutingDecision,
-    RouteType,
-    RoutingConfig,
-    detect_modification_phrases,
-    calculate_ambiguity_score,
-)
+# Orchestration (graceful — placeholder modules may have broken imports)
+try:
+    from agents.orchestration import (
+        decide_route,
+        RoutingDecision,
+        RouteType,
+        RoutingConfig,
+        detect_modification_phrases,
+        calculate_ambiguity_score,
+    )
+except ImportError:
+    decide_route = None
+    RoutingDecision = None
+    RouteType = None
+    RoutingConfig = None
+    detect_modification_phrases = None
+    calculate_ambiguity_score = None
 
-from agents.orchestration.confidence import (
-    calculate_confidence,
-    ConfidenceScore,
-    get_confidence_guidance,
-)
+try:
+    from agents.orchestration.confidence import (
+        calculate_confidence,
+        ConfidenceScore,
+        get_confidence_guidance,
+    )
+except ImportError:
+    calculate_confidence = None
+    ConfidenceScore = None
+    get_confidence_guidance = None
 
-from agents.orchestration.personality import (
-    adapt_kira_personality,
-    check_forbidden_phrases,
-    PersonalityAdaptation,
-)
+try:
+    from agents.orchestration.personality import (
+        adapt_kira_personality,
+        check_forbidden_phrases,
+        PersonalityAdaptation,
+    )
+except ImportError:
+    adapt_kira_personality = None
+    check_forbidden_phrases = None
+    PersonalityAdaptation = None
 
 # Backward compatibility — re-export old names for existing code
 from agents.handlers.unified import fallback_unified_response

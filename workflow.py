@@ -43,17 +43,30 @@ def route_to_agents(state: AgentState) -> List[Optional[Send]]:
     This function is called by add_conditional_edges().
     It reads orchestrator_decision["agents_to_run"] and returns
     a list of Send() objects that LangGraph executes in parallel.
+    
+    Args:
+        state: Current AgentState with orchestrator_decision
+        
+    Returns:
+        List of Send() objects for parallel execution, or empty list
+        
+    Example:
+        If orchestrator_decision["agents_to_run"] = ["intent", "domain"]
+        Returns: [Send("intent_agent", state), Send("domain_agent", state)]
+        
+    Per RULES.md:
+    - Intent: Always run unless simple direct command
+    - Context: Skip if no session history (orchestrator handles this)
+    - Domain: Skip if profile confidence > 85% (orchestrator handles this)
+    - Prompt Engineer: ALWAYS runs (handled separately, never skipped)
     """
     decision = state.get("orchestrator_decision", {})
     agents_to_run = decision.get("agents_to_run", [])
     proceed_with_swarm = decision.get("proceed_with_swarm", False)
     
-    # ═══ ROBUSTNESS OVERRIDE ═══
-    # If the workflow is invoked, it means we ARE engineering a prompt.
-    # If the LLM randomly hallucinates proceed_with_swarm=False or skips all agents,
-    # enforce the default pipeline so prompt_engineer doesn't receive empty data.
+    # If no swarm or no agents, go straight to prompt engineer
     if not proceed_with_swarm or not agents_to_run:
-        agents_to_run = ["intent", "context", "domain"]
+        return ["prompt_engineer"]
     
     # Map agent names to node names
     node_map = {

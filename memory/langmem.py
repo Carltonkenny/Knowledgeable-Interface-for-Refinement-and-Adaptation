@@ -18,6 +18,7 @@
 import logging
 import os
 import google.generativeai as genai
+import google.ai.generativelanguage as glm
 from supabase import create_client, Client
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
