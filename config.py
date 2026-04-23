@@ -15,7 +15,7 @@ from langchain_openai import ChatOpenAI
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-# ═══ POLLIATIONS GEN API (OFFICIAL) ═══════
+# ═══ POLLINATIONS GEN API (OFFICIAL) ═══════
 # Official Gen API: https://gen.pollinations.ai
 # Docs: https://gen.pollinations.ai (OpenAPI)
 # API Key: enter.pollinations.ai
@@ -26,29 +26,29 @@ API_KEY = os.getenv("POLLINATIONS_API_KEY")
 
 # Validate API key is set
 if not API_KEY:
-    logger.critical("[config] POLLINATIONS_API_KEY not set - LLM calls will fail")
+    logger.error("[config] POLLINATIONS_API_KEY not set in .env")
+    raise ValueError("POLLINATIONS_API_KEY environment variable is required")
 
-# Models from .env (restart server to change)
-MODEL_FULL = os.getenv("POLLINATIONS_MODEL_FULL", "nova-fast")
-MODEL_FAST = os.getenv("POLLINATIONS_MODEL_FAST", "nova-fast")
+# Models from official API:
+# - openai: OpenAI GPT-5 Mini (best quality)
+# - nova: Amazon Nova Micro (fastest)
+MODEL_FULL = "openai"        # For prompt engineer
+MODEL_FAST = "nova"          # For analysis agents - FASTEST
 
 logger.info(f"[config] Pollinations Gen API: {BASE_URL}")
 logger.info(f"[config] Models: FULL={MODEL_FULL}, FAST={MODEL_FAST}")
 
 # ═══ LLM FACTORY FUNCTIONS ═══════════════════
 
-def clear_llm_cache():
-    """Clear LLM cache - call after .env changes or use /restart endpoint"""
-    get_llm.cache_clear()
-    get_fast_llm.cache_clear()
-    logger.info("[config] LLM cache cleared - new models will be loaded on next call")
-
 @lru_cache(maxsize=1)
 def get_llm() -> ChatOpenAI:
     """
     Returns cached LLM instance for prompt engineer (full model).
-    Uses MODEL_FULL from .env (default: nova).
+    Uses MODEL_FULL from .env (default: openai).
     Restart server to pick up new settings.
+
+    Returns:
+        ChatOpenAI: Configured LLM client for full synthesis tasks.
     """
     logger.info(f"[config] initialising full LLM → {MODEL_FULL} @ {BASE_URL}")
     return ChatOpenAI(
@@ -58,17 +58,17 @@ def get_llm() -> ChatOpenAI:
         temperature=0.3,
         max_tokens=2048,
         max_retries=5,
-        # LangSmith tracing
-        tags=["prompt_engineer", "full_model"],
-        metadata={"agent": "prompt_engineer", "model_type": "full"},
     )
 
 @lru_cache(maxsize=1)
 def get_fast_llm() -> ChatOpenAI:
     """
     Returns cached LLM instance for analysis agents (fast model).
-    Uses MODEL_FAST from .env (default: nova-fast).
+    Uses MODEL_FAST from .env (default: nova).
     Lower temp (0.1) and token limit (400) for faster, consistent analysis.
+
+    Returns:
+        ChatOpenAI: Configured LLM client for fast analysis tasks.
     """
     logger.info(f"[config] initialising fast LLM → {MODEL_FAST} @ {BASE_URL}")
     return ChatOpenAI(
@@ -78,7 +78,4 @@ def get_fast_llm() -> ChatOpenAI:
         temperature=0.1,
         max_tokens=400,
         max_retries=5,
-        # LangSmith tracing
-        tags=["fast_model", "analysis_agent"],
-        metadata={"agent": "fast_analysis", "model_type": "fast"},
     )
