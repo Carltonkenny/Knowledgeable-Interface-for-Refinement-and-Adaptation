@@ -135,6 +135,7 @@ async def refine(req: RefineRequest, background_tasks: BackgroundTasks, user: Us
         final_state = _run_swarm(
             prompt=req.prompt,
             user_id=user.user_id,
+            session_id=req.session_id,
             input_modality="text"
         )
 
@@ -225,6 +226,7 @@ async def refine_try(req: AnonymousTrialRequest, background_tasks: BackgroundTas
         final_state = _run_swarm(
             prompt=req.prompt,
             user_id=None,  # Anonymous — no personalization
+            session_id=None,  # Anonymous — no session
             input_modality="text"
         )
 
@@ -393,6 +395,7 @@ async def _handle_chat_nonstreaming(
         final_state = _run_swarm(
             prompt=req.message,
             user_id=user.user_id,
+            session_id=req.session_id,
             input_modality=req.input_modality or "text",
             file_base64=req.file_base64,
             file_type=req.file_type

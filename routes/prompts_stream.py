@@ -248,7 +248,14 @@ async def chat_stream(request: Request, req: ChatRequest, background_tasks: Back
             start_time = time.time()
 
             # Using Native LangGraph Streaming instead of thread-blocking executor
-            async for chunk in _astream_swarm(req.message, user.user_id, req.input_modality or "text", req.file_base64, req.file_type):
+            async for chunk in _astream_swarm(
+                prompt=req.message,
+                user_id=user.user_id,
+                session_id=req.session_id,
+                input_modality=req.input_modality or "text",
+                file_base64=req.file_base64,
+                file_type=req.file_type,
+            ):
                 if chunk.get("is_cached"):
                     final_state = chunk["final_state"]
                     break
