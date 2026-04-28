@@ -1,236 +1,143 @@
-# ⚠️ CRITICAL: Pre-Deployment Checklist
+# Critical Pre-Deployment Checklist
 
-**DO THESE BEFORE DEPLOYING TO PRODUCTION**
+## Overview
 
----
+This checklist ensures all critical requirements are met before production deployment of the multi-agent system.
 
-## 🔴 CRITICAL SECURITY (Do Immediately)
+## Security Requirements
 
-### 1. Rotate ALL API Keys
+### Authentication & Authorization
+- [ ] Complete authentication system implementation
+- [ ] Role-based access control (RBAC) defined
+- [ ] Secure session management
+- [ ] Password strength requirements enforced
+- [ ] Two-factor authentication support (optional but recommended)
 
-Your `.env` file contains **real API keys** that are committed to git history. **Rotate these immediately:**
+### Data Protection
+- [ ] Encryption for sensitive data at rest
+- [ ] Secure transmission protocols (TLS 1.3+)
+- [ ] Input validation and sanitization implemented
+- [ ] Output encoding for preventing XSS
+- [ ] Secure headers configured (Content Security Policy, etc.)
 
-```bash
-# 1. Supabase
-- Go to: https://cckznjkzsfypssgecyya.supabase.co/project/settings/api
-- Reset JWT Secret
-- Reset Service Role Key
-- Update `.env` with new values
+### API Security
+- [ ] Rate limiting implemented for all endpoints
+- [ ] API key management system
+- [ ] Request/response size limits
+- [ ] DDoS protection mechanisms
+- [ ] Comprehensive API documentation with security sections
 
-# 2. Pollinations API
-- Go to: https://gen.pollinations.ai
-- Generate new API key
-- Update `.env`
+## Testing Requirements
 
-# 3. Google Gemini
-- Go to: https://aistudio.google.com/app/apikey
-- Delete old key, generate new one
-- Update `.env`
+### Unit Testing
+- [ ] 80%+ code coverage for core modules
+- [ ] Test cases for all business logic
+- [ ] Edge case handling tests
+- [ ] Error condition testing
 
-# 4. Redis (Upstash)
-- Go to: https://console.upstash.io
-- Reset database password
-- Update `.env` with new REDIS_URL
-```
+### Integration Testing
+- [ ] API endpoint testing
+- [ ] Database integration tests
+- [ ] External service integration tests
+- [ ] Cross-module communication tests
 
-### 2. Add `.env` to `.gitignore` Immediately
+### Performance Testing
+- [ ] Load testing with expected concurrent users
+- [ ] Stress testing under extreme conditions
+- [ ] Response time benchmarks
+- [ ] Resource utilization monitoring
 
-```bash
-# Verify .env is ignored
-git check-ignore .env
-# If no output, add to .gitignore:
-echo ".env" >> .gitignore
-git add .gitignore
-git commit -m "Ensure .env is never committed"
-```
+### Security Testing
+- [ ] Penetration testing plan
+- [ ] Vulnerability scanning
+- [ ] OWASP Top 10 compliance check
+- [ ] Security code review completed
 
-### 3. Run SQL Migrations
+## Monitoring & Observability
 
-Go to Supabase SQL Editor and run:
+### Infrastructure Monitoring
+- [ ] Health check endpoints implemented
+- [ ] System metrics collection (CPU, memory, disk)
+- [ ] Application performance monitoring
+- [ ] Log aggregation system in place
+- [ ] Alerting system configured
 
-```sql
--- Migration 025: Add user_timezone
-ALTER TABLE user_profiles 
-ADD COLUMN IF NOT EXISTS user_timezone TEXT DEFAULT 'UTC';
+### Application Monitoring
+- [ ] Request tracing and correlation
+- [ ] Error tracking and reporting
+- [ ] Business metric tracking
+- [ ] User activity monitoring
+- [ ] Performance degradation alerts
 
--- Migration 026: Add last_profile_sync
-ALTER TABLE user_profiles 
-ADD COLUMN IF NOT EXISTS last_profile_sync TIMESTAMPTZ;
+## Operational Requirements
 
--- Verify columns exist
-SELECT column_name, data_type, column_default
-FROM information_schema.columns
-WHERE table_name = 'user_profiles'
-  AND column_name IN ('user_timezone', 'last_profile_sync');
-```
+### Deployment
+- [ ] Automated deployment pipeline
+- [ ] Rollback procedures documented
+- [ ] Zero-downtime deployment capability
+- [ ] Configuration management system
+- [ ] Environment-specific settings handling
 
----
+### Backup & Recovery
+- [ ] Database backup strategy
+- [ ] Data recovery procedures
+- [ ] Disaster recovery plan
+- [ ] Backup testing completed
+- [ ] Backup retention policy defined
 
-## 🟡 HIGH PRIORITY (Before First User)
+### Documentation
+- [ ] Complete API documentation
+- [ ] Installation and setup guide
+- [ ] User manual
+- [ ] Developer documentation
+- [ ] Operations manual
 
-### 4. Update Environment Variables for Production
+## Compliance Requirements
 
-Edit `.env`:
+### Data Privacy
+- [ ] GDPR compliance measures
+- [ ] CCPA compliance measures
+- [ ] Data retention policies
+- [ ] Data deletion procedures
+- [ ] Consent management system
 
-```env
-# Change from localhost to production domain
-FRONTEND_URLS=https://your-domain.com,https://www.your-domain.com
+### Regulatory Compliance
+- [ ] Industry-specific compliance requirements
+- [ ] Audit trail capabilities
+- [ ] Access logging
+- [ ] Compliance reporting tools
 
-# Ensure production environment
-ENVIRONMENT=production
+## Quality Assurance
 
-# Verify rate limiting is enabled
-RATE_LIMIT_ENABLED=true
-```
+### Code Quality
+- [ ] Code review process implemented
+- [ ] Static code analysis integrated
+- [ ] Code formatting consistency
+- [ ] Dependency vulnerability scanning
+- [ ] Technical debt management
 
-Edit `promptforge-web/.env.local`:
+### Release Process
+- [ ] Version control strategy
+- [ ] Release candidate testing
+- [ ] Change log maintenance
+- [ ] Feature flagging system
+- [ ] Production deployment approval process
 
-```env
-# Update to production API URL when deployed
-NEXT_PUBLIC_API_URL=https://api.your-domain.com
-```
+## Final Verification
 
-### 5. Enable Supabase Row-Level Security (RLS)
+### Pre-Launch Checklist
+- [ ] All security requirements met
+- [ ] All testing requirements completed
+- [ ] All monitoring requirements implemented
+- [ ] All operational requirements satisfied
+- [ ] All compliance requirements addressed
+- [ ] All documentation completed
+- [ ] Stakeholder approval obtained
 
-Run in Supabase SQL Editor:
-
-```sql
--- Enable RLS on all tables
-ALTER TABLE requests ENABLE ROW LEVEL SECURITY;
-ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE chat_sessions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE agent_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE langmem_memories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE usage_logs ENABLE ROW LEVEL SECURITY;
-
--- Create policies (example for requests table)
-CREATE POLICY "Users can only see their own requests"
-ON requests
-FOR ALL
-USING (user_id = auth.uid());
-
--- Repeat for other tables...
-```
-
-### 6. Set Up Database Backups
-
-1. Go to Supabase Dashboard → Settings → Database
-2. Enable daily backups
-3. Set retention period (recommend 30 days)
-4. Test restore procedure
-
----
-
-## 🟢 MEDIUM PRIORITY (First Week)
-
-### 7. Deploy Backend
-
-**Option A: Railway**
-```bash
-# Install Railway CLI
-npm i -g @railway/cli
-
-# Login and deploy
-railway login
-railway init
-railway up
-```
-
-**Option B: Render**
-```bash
-# Connect GitHub repo in Render dashboard
-# Set environment variables
-# Deploy
-```
-
-**Option C: Docker**
-```bash
-docker-compose up -d
-# Verify health
-curl http://localhost:8000/health
-```
-
-### 8. Deploy Frontend
-
-**Vercel (Recommended)**
-```bash
-# Install Vercel CLI
-npm i -g vercel
-
-# Deploy
-cd promptforge-web
-vercel
-# Follow prompts, set environment variables
-```
-
-### 9. Configure Custom Domain (Optional)
-
-1. Buy domain (Namecheap, GoDaddy, etc.)
-2. Point DNS to Vercel/Railway
-3. Add domain in Vercel/Railway dashboard
-4. Enable HTTPS (automatic with Vercel/Railway)
-
-### 10. Set Up Monitoring
-
-1. **Sentry** — Already configured, verify DSN works
-2. **Better Stack** — Set up uptime monitoring
-3. **Supabase Logs** — Enable query logging
-4. **Vercel Analytics** — Enable in dashboard
-
----
-
-## ✅ VERIFICATION CHECKLIST
-
-After deployment, verify:
-
-- [ ] Health check returns 200: `curl https://api.your-domain.com/health`
-- [ ] Sign-up works end-to-end
-- [ ] Login works end-to-end
-- [ ] Chat endpoint responds (`/chat`)
-- [ ] Streaming works (`/chat/stream`)
-- [ ] History loads correctly
-- [ ] Profile updates save
-- [ ] Rate limiting works (spam 50+ requests)
-- [ ] No errors in Sentry dashboard
-- [ ] Database queries <200ms
-- [ ] Mobile responsive (test on phone)
-- [ ] Lighthouse score >90
-
----
-
-## 🆘 EMERGENCY CONTACTS
-
-If something breaks:
-
-1. **Check Sentry** — https://sentry.io
-2. **Check Supabase Logs** — https://supabase.com/dashboard/project/_/logs
-3. **Check Vercel Logs** — https://vercel.com/dashboard
-4. **Rollback** — Revert to previous deployment
-
----
-
-## 📞 POST-DEPLOYMENT MONITORING
-
-**First 24 Hours:**
-- Check Sentry every 4 hours
-- Monitor database query performance
-- Watch for rate limit violations
-- Check user sign-up flow
-
-**First Week:**
-- Daily error rate review
-- User feedback collection
-- Performance optimization
-- Bug fixes
-
-**First Month:**
-- Weekly analytics review
-- Feature usage analysis
-- User retention metrics
-- Plan next sprint
-
----
-
-**Last Updated:** April 1, 2026  
-**Next Review:** After first production deployment
+### Go-Live Checklist
+- [ ] Production environment verified
+- [ ] Backup systems confirmed
+- [ ] Monitoring systems activated
+- [ ] Alerting systems configured
+- [ ] Rollback procedures tested
+- [ ] Post-deployment monitoring initiated

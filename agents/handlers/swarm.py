@@ -15,6 +15,9 @@ RULES.md Compliance:
 from typing import Dict, Any, List, Optional
 import logging
 
+from agents.enhanced_feedback import generate_processing_feedback
+from agents.state_consistency import state_manager
+
 logger = logging.getLogger(__name__)
 
 
@@ -55,6 +58,22 @@ def handle_swarm_routing(
     GRAPH_TIMEOUT = 180  # seconds
     
     try:
+        # Ensure state integrity before building state
+        state_data = {
+            "message": message,
+            "session_id": session_id,
+            "user_id": user_id,
+            "user_profile": user_profile,
+            "conversation_history": conversation_history,
+            "langmem_context": langmem_context,
+            "orchestrator_decision": {}
+        }
+        
+        # Validate and ensure state integrity
+        if not state_manager.validate_state_consistency(state_data):
+            logger.warning("[swarm] state validation failed, ensuring integrity")
+            state_data = state_manager.ensure_state_integrity(state_data)
+        
         # Build initial state
         initial_state = AgentState(
             message=message,
@@ -81,12 +100,16 @@ def handle_swarm_routing(
         
         logger.info(f"[swarm] completed for user={user_id[:8]}...")
         
+        # Generate feedback for user
+        feedback = generate_processing_feedback({}, result)
+        
         return {
             "improved_prompt": result.get("improved_prompt", ""),
             "breakdown": result.get("breakdown", {}),
             "quality_score": result.get("quality_score", {}),
             "changes_made": result.get("changes_made", []),
-            "latency_ms": result.get("agent_latencies", {})
+            "latency_ms": result.get("agent_latencies", {}),
+            "feedback": feedback
         }
         
     except HTTPException:

@@ -1,152 +1,50 @@
-# PromptForge v2.0 - Docker Compose (Backend Only)
-# Frontend runs locally via `npm run dev`
-# ─────────────────────────────────────────────
+version: '3.8'
 
 services:
-  # ── Redis Cache ──────────────────────────────
-  redis:
-    image: redis:7-alpine
-    container_name: promptforge-redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 256M
-
-  # ── PromptForge API ──────────────────────────
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: promptforge-api
-    restart: unless-stopped
+  backend:
+    build: .
     ports:
       - "8000:8000"
-    env_file:
-      - .env
     environment:
-      # Override Redis to use Docker internal network
-      - REDIS_URL=redis://redis:6379
-      # CORS: Allow local frontend
-      - FRONTEND_URLS=http://localhost:3000,http://localhost:9000
-      # Dev mode
-      - ENVIRONMENT=development
-    depends_on:
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "20m"
-        max-file: "10"
-    deploy:
-      resources:
-        limits:
-          cpus: "2.0"
-          memory: 2G
-        reservations:
-          cpus: "0.5"
-          memory: 512M
-
-  # ── LangFuse (Self-hosted LLM Observability) ─────
-  langfuse:
-    image: langfuse/langfuse:2
-    container_name: promptforge-langfuse
-    restart: unless-stopped
-    ports:
-      - "3001:3000"
-    environment:
-      DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
-      SALT: "my-salt-string-for-hashing"
-      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
-      NEXTAUTH_URL: http://localhost:3001
-      NEXTAUTH_SECRET: my-nextauth-secret
-      LANGFUSE_INIT_ORG_ID: promptforge
-      LANGFUSE_INIT_ORG_NAME: PromptForge
-      LANGFUSE_INIT_PROJECT_ID: kira
-      LANGFUSE_INIT_PROJECT_NAME: Kira
-      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-kira
-      LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-kira
-    depends_on:
-      langfuse-db:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/public/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    deploy:
-      resources:
-        limits:
-          cpus: "1.0"
-          memory: 1G
-
-  langfuse-db:
-    image: postgres:16-alpine
-    container_name: promptforge-langfuse-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: langfuse
-      POSTGRES_PASSWORD: langfuse
-      POSTGRES_DB: langfuse
+      - DATABASE_URL=${DATABASE_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
     volumes:
-      - langfuse_db_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U langfuse"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 256M
+      - ./logs:/app/logs
+    depends_on:
+      - db
+      - redis
 
-  # ── Jaeger (OpenTelemetry UI) ──────────────
-  jaeger:
-    image: jaegertracing/all-in-one:latest
-    container_name: promptforge-jaeger
-    restart: unless-stopped
-    ports:
-      - "16686:16686"  # Jaeger UI
-      - "4317:4317"    # OTLP gRPC
-      - "4318:4318"    # OTLP HTTP
+  db:
+    image: postgres:15
     environment:
-      - COLLECTOR_OTLP_ENABLED=true
-      - LOG_LEVEL=info
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    deploy:
-      resources:
-        limits:
-          cpus: "1.0"
-          memory: 512M
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
 
-# ── Volumes ───────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  frontend:
+    build:
+      context: ./promptforge-web
+      dockerfile: ./promptforge-web/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+    depends_on:
+      - backend
+
 volumes:
-  redis_data:
-    driver: local
-  langfuse_db_data:
-    driver: local
+  postgres_data:

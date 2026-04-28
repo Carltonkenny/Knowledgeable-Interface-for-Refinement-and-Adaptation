@@ -1,150 +1,231 @@
-# PromptForge — Deployment Guide
+# Deployment Guide
 
-**Production-ready deployment instructions for Railway + Vercel**
+## Overview
 
----
+This document provides comprehensive guidance for deploying the multi-agent system in production environments.
 
-## 🚀 Quick Deploy
+## Prerequisites
 
-### Backend (Railway)
+### System Requirements
+- Python 3.11+
+- Docker 20.10+
+- Docker Compose 2.20+
+- PostgreSQL 15+
+- Redis 7+
 
-```bash
-# 1. Deploy from GitHub
-Railway Dashboard → New Project → Deploy from GitHub
+### Environment Variables
+The following environment variables must be configured:
 
-# 2. Set Environment Variables
-SENTRY_DSN=your_sentry_dsn
-POLLINATIONS_API_KEY=your_api_key
+```
+DATABASE_URL=postgresql://user:password@db:5432/database_name
+OPENAI_API_KEY=your_openai_key_here
+ANTHROPIC_API_KEY=your_anthropic_key_here
 SUPABASE_URL=your_supabase_url
-SUPABASE_KEY=your_supabase_key
-REDIS_URL=your_redis_url
-
-# 3. Deploy
-# Railway auto-detects Dockerfile and builds
+SUPABASE_ANON_KEY=your_supabase_anon_key
+REDIS_URL=redis://redis:6379/0
+SECRET_KEY=your_secret_key_here
 ```
 
-### Frontend (Vercel)
+## Deployment Options
 
+### Option 1: Docker Compose (Local/Development)
 ```bash
-# 1. Install Vercel CLI
-npm install -g vercel
+# Clone the repository
+git clone <repository-url>
+cd <project-directory>
 
-# 2. Deploy
-cd promptforge-web
-vercel --prod
+# Copy environment file
+cp .env.example .env
+# Edit .env with actual values
 
-# 3. Set Environment Variables
-NEXT_PUBLIC_API_URL=https://your-backend.railway.app
-```
-
----
-
-## 📋 Environment Variables
-
-### Required (Backend)
-
-```env
-# Error Tracking
-SENTRY_DSN=https://xxx@xxx.ingest.sentry.io/xxx
-ENVIRONMENT=production
-
-# LLM Provider
-POLLINATIONS_API_KEY=sk_xxx
-POLLINATIONS_BASE_URL=https://gen.pollinations.ai/v1
-POLLINATIONS_MODEL_FULL=qwen-coder
-POLLINATIONS_MODEL_FAST=gemini-fast
-
-# Database
-SUPABASE_URL=https://xxx.supabase.co
-SUPABASE_KEY=eyJxxx
-SUPABASE_JWT_SECRET=xxx
-
-# Redis
-REDIS_URL=rediss://xxx:xxx@xxx.upstash.io:6379
-
-# Embeddings
-GEMINI_API_KEY=AIzaxxx
-
-# CORS
-FRONTEND_URLS=https://your-app.vercel.app
-```
-
-### Required (Frontend)
-
-```env
-NEXT_PUBLIC_API_URL=https://your-backend.railway.app
-NEXT_PUBLIC_SENTRY_DSN=https://xxx@xxx.ingest.sentry.io/xxx
-```
-
----
-
-## 🐳 Docker Deployment
-
-### Local Testing
-
-```bash
-# Build and run
+# Start services
 docker-compose up -d
-
-# View logs
-docker-compose logs -f api
-
-# Test
-curl http://localhost:8000/health
 ```
 
-### Production (Railway)
-
-Railway auto-builds from `Dockerfile` in repo root.
-
+### Option 2: Kubernetes (Production)
+```yaml
+# Example deployment manifest
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: multi-agent-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: multi-agent-api
+  template:
+    metadata:
+      labels:
+        app: multi-agent-api
+    spec:
+      containers:
+      - name: api
+        image: multi-agent-system:latest
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - secretRef:
+            name: multi-agent-secrets
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: multi-agent-api-service
+spec:
+  selector:
+    app: multi-agent-api
+  ports:
+  - port: 80
+    targetPort: 8000
+```
 
-## 📊 Monitoring
+### Option 3: Cloud Platform Deployment
+#### Vercel (Frontend)
+```bash
+# Build frontend
+cd promptforge-web
+npm install
+npm run build
 
-### Sentry (Errors)
+# Deploy to Vercel
+vercel
+```
 
-- Dashboard: https://sentry.io
-- Test: `curl https://your-url.railway.app/test-error`
+#### Railway (Backend)
+```bash
+# Push to GitHub and connect to Railway
+# Configure environment variables in Railway dashboard
+```
 
-### Better Stack (Uptime)
+## Configuration Files
 
-- Dashboard: https://betterstack.com/uptime
-- Monitor: `https://your-url.railway.app/health`
-- Interval: 3 minutes
+### Docker Compose Configuration
+The `docker-compose.yml` file defines the complete stack:
+- Backend API service
+- Database (PostgreSQL)
+- Cache (Redis)
+- Frontend (Next.js)
 
-### Railway Logs
+### Environment Configuration
+The `.env` file contains all necessary configuration values for different environments:
+- Development
+- Staging
+- Production
 
-- Dashboard → Project → Deployments → Logs
-- Real-time streaming
+## Scaling Considerations
 
----
+### Horizontal Scaling
+The system is designed to scale horizontally:
+- API service: Multiple replicas can be deployed
+- Database: Read replicas for read-heavy operations
+- Cache: Redis cluster for high availability
 
-## 🗄️ Database Schema
+### Vertical Scaling
+Individual services can be scaled vertically:
+- API service: More CPU and memory
+- Database: Increased storage and connection limits
+- Cache: Larger memory allocation
 
-See: [`SUPABASE_SCHEMA.md`](./SUPABASE_SCHEMA.md)
+## Monitoring and Maintenance
 
----
+### Health Checks
+The system includes built-in health check endpoints:
+- `/health` - Basic service health
+- `/metrics` - Prometheus metrics endpoint
 
-## 🔧 Troubleshooting
+### Logging
+All services log to stdout/stderr for container orchestration compatibility.
+Logs should be aggregated using tools like ELK stack or similar.
 
-### Backend won't start
+### Backup Strategy
+Regular database backups should be scheduled:
+```bash
+# Example backup script
+pg_dump -h db -U username database_name > backup_$(date +%Y%m%d_%H%M%S).sql
+```
 
-1. Check Railway logs
-2. Verify all env vars are set
-3. Test health endpoint: `/health`
+## Security Best Practices
 
-### Sentry not receiving errors
+### Network Security
+- Restrict access to internal services
+- Use private networks for service communication
+- Implement firewalls and network segmentation
 
-1. Check DSN is correct
-2. Verify `sentry_sdk.init()` is called
-3. Check firewall/proxy settings
+### Application Security
+- Regular security patches
+- Environment variable management
+- Secret rotation procedures
+- Input validation and sanitization
 
-### Frontend can't connect
+### Data Security
+- Encrypt sensitive data at rest
+- Use secure transport protocols
+- Regular data backup and recovery testing
 
-1. Verify `NEXT_PUBLIC_API_URL` is correct
-2. Check CORS settings in backend
-3. Ensure backend is running
+## Troubleshooting
 
----
+### Common Issues
+1. **Database Connection Failures**
+   - Check database service status
+   - Verify connection string in environment variables
+   - Confirm database credentials
 
-**For technical questions, open an issue on GitHub.**
+2. **Service Not Starting**
+   - Check logs for error messages
+   - Verify environment variables
+   - Confirm dependency services are running
+
+3. **Performance Issues**
+   - Monitor resource utilization
+   - Check for memory leaks
+   - Optimize database queries
+
+### Debugging Commands
+```bash
+# View service logs
+docker-compose logs api
+
+# Execute commands in running container
+docker-compose exec api bash
+
+# Check service status
+docker-compose ps
+
+# Restart specific service
+docker-compose restart api
+```
+
+## Upgrade Process
+
+### Minor Updates
+1. Pull latest code
+2. Rebuild Docker images
+3. Restart services
+4. Verify functionality
+
+### Major Updates
+1. Review release notes
+2. Backup database and important data
+3. Test upgrade in staging environment
+4. Apply upgrade to production
+5. Monitor system behavior post-upgrade
+
+## Support and Maintenance
+
+### Support Channels
+- Issue tracking via GitHub
+- Community forums
+- Commercial support options
+
+### Maintenance Windows
+- Scheduled maintenance periods
+- Emergency patch procedures
+- Communication protocols for outages

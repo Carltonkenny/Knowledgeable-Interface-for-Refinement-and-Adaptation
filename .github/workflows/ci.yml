@@ -1,0 +1,38 @@
+name: Python Backend CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.10"
+        cache: 'pip' # caching pip dependencies
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+        # Ensure pytest is installed
+        pip install pytest httpx pytest-asyncio
+
+    - name: Run Pytest
+      env:
+        # Mock env vars needed for tests to run without failing on startup
+        SUPABASE_URL: "http://mock-supabase.local"
+        SUPABASE_ANON_KEY: "mock-anon-key"
+        FRONTEND_URLS: "http://localhost:3000"
+      run: |
+        pytest tests/ -v

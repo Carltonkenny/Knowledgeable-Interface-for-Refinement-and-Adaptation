@@ -19,9 +19,14 @@ ALLOWED_ORIGINS = [url.strip() for url in _raw_origins.split(",") if url.strip()
 
 # In development (no FRONTEND_URLS set), allow all origins
 if not os.getenv("FRONTEND_URLS"):
+    logger.warning("[api] FRONTEND_URLS not set! Defaulting to allow all origins ('*'). If this is production, please set FRONTEND_URLS.")
     ALLOWED_ORIGINS = ["*"]
 
-logger.info(f"[api] CORS allowed origins: {ALLOWED_ORIGINS}")
+logger.info(f"[api] CORS allowed origins configured: {ALLOWED_ORIGINS}")
+
+# Validate critical auth variables on startup (Fail Fast)
+if not os.getenv("SUPABASE_URL") or not (os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY")):
+    logger.critical("[api] CRITICAL: SUPABASE_URL or SUPABASE_ANON_KEY is missing. Authentication will fail.")
 
 app.add_middleware(
     CORSMiddleware,
@@ -41,3 +46,12 @@ logger.info(f"[api] {len(ALL_ROUTERS)} routers registered")
 @app.get("/")
 async def root():
     return {"message": "PromptForge API v2.0", "status": "running"}
+
+@app.get("/health")
+async def health_check():
+    """Detailed health check for automated CI/CD and deployment ping."""
+    return {
+        "status": "healthy",
+        "version": "2.0.0",
+        "cors_origins": ALLOWED_ORIGINS,
+    }

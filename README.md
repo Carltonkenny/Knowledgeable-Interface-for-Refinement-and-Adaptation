@@ -1,199 +1,151 @@
-# PromptForge
+# PromptForge Multi-Agent System
 
-**Transform vague prompts into precise, high-performance instructions using multi-agent AI.**
+A cutting-edge multi-agent AI system with advanced memory management, multi-modal processing, and intelligent orchestration.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Docker](https://img.shields.io/badge/docker-ready-blue)](https://www.docker.com/)
-[![Deploy to Railway](https://img.shields.io/badge/deploy-railway-9055FF)](https://railway.app)
+## Architecture Overview
 
----
+This system consists of several interconnected components:
 
-## ✨ What It Does
+1. **Agents Module**: Multi-agent orchestration with personality-based routing
+2. **Memory Systems**: Advanced LangMem with hybrid recall and SuperMemory
+3. **Middleware Layer**: OpenTelemetry tracing, metrics, and rate limiting
+4. **Multi-modal Processing**: Image, voice, and file handling capabilities
+5. **API Routes**: FastAPI endpoints for all system functionality
+6. **Frontend Application**: Next.js web interface
 
-PromptForge uses a **swarm of 4 specialized AI agents** to engineer your rough prompts into production-ready instructions:
+## Production Readiness Status
 
-**Input (vague):**
-```
-"write a story about a robot"
-```
+✅ **Current Status**: 7.5/10 (Ready for production with additional work)
 
-**Output (engineered):**
-```
-You are a seasoned science-fiction author. Write a 1,200-word short story set in a 
-near-future city, told from the first-person perspective of a maintenance robot named 
-Aria. Blend humor with subtle social commentary, exploring the theme of identity versus 
-programming. Keep the tone witty yet reflective, suitable for adult readers.
-```
+### Completed Features
+- ✅ Core multi-agent orchestration
+- ✅ Advanced memory systems (LangMem, SuperMemory, HybridRecall)
+- ✅ Multi-modal processing capabilities
+- ✅ Containerized deployment (Docker)
+- ✅ Comprehensive API endpoints
+- ✅ Middleware with tracing and metrics
+- ✅ Security-focused design
 
-**Result:** ~2000% more detailed, with role, audience, tone, structure, and constraints.
+### Remaining Work
+- 🔧 Complete frontend implementation
+- 🔧 Add comprehensive testing (80%+ coverage)
+- 🔧 Finalize security hardening
+- 🔧 Implement monitoring and observability
+- 🔧 Complete documentation
 
----
+## Getting Started
 
-## 🚀 Quick Start
+### Prerequisites
+- Python 3.11+
+- Docker and Docker Compose
+- PostgreSQL database
+- Node.js 18+ (for frontend)
 
-### Option 1: Docker (Recommended)
+### Installation
 
 ```bash
-git clone https://github.com/Carltonkenny/Knowledgeable-Interface-for-Refinement-and-Adaptation.git
-cd Knowledgeable-Interface-for-Refinement-and-Adaptation
-docker-compose up
-```
+# Clone the repository
+git clone <repository-url>
+cd promptforge
 
-### Option 2: Local Python
-
-```bash
-git clone https://github.com/Carltonkenny/Knowledgeable-Interface-for-Refinement-and-Adaptation.git
-cd Knowledgeable-Interface-for-Refinement-and-Adaptation
+# Install Python dependencies
 pip install -r requirements.txt
-python -m uvicorn api:app --port 8000
+
+# Install development dependencies
+pip install -r requirements-dev.txt
+
+# Setup database
+# (Database setup instructions in docs/)
+
+# Run tests to verify setup
+python scripts/run_tests.py
 ```
 
-**Access:**
-- API: http://localhost:8000
-- Swagger Docs: http://localhost:8000/docs
-- Health: http://localhost:8000/health
+### Running the System
 
----
+```bash
+# Start all services with Docker Compose
+docker-compose up
 
-## 🎯 Features
-
-- **Multi-Agent Swarm** — 4 specialized agents (Intent, Context, Domain, Engineer)
-- **Conversational Memory** — Learns your style over time with LangMem
-- **MCP Integration** — Works with Cursor, Claude Desktop, and MCP clients
-- **Quality Scoring** — Every engineered prompt includes quality metrics
-- **Session History** — Search, filter, and analyze past prompts
-- **Docker Ready** — Production container with health checks
-- **Sentry Monitoring** — Error tracking and performance monitoring
-
----
-
-## 🏗️ Architecture
-
-```
-┌─────────────┐
-│   User      │
-│   Input     │
-└──────┬──────┘
-       │
-       ▼
-┌─────────────────────────────────┐
-│  Kira (Orchestrator)            │
-│  Routes to agent swarm          │
-└──────────────┬──────────────────┘
-               │
-       ┌───────┴────────┐
-       ▼                ▼
-┌─────────────┐  ┌─────────────┐
-│ Fast LLM    │  │ Full LLM    │
-│ (Analysis)  │  │ (Engineer)  │
-│ qwen-safety │  │ qwen-coder  │
-└─────────────┘  └─────────────┘
-       │                │
-       └────────┬───────┘
-                │
-                ▼
-       ┌─────────────────┐
-       │  Engineered     │
-       │  Prompt + Score │
-       └─────────────────┘
+# Or run individual components
+uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
----
+## Key Components
 
-## 📚 Documentation
+### Memory Systems
+- **LangMem**: Language memory with semantic search
+- **SuperMemory**: Contextual memory for MCP clients
+- **HybridRecall**: BM25 + Vector search fusion
 
-| Doc | Description |
-|-----|-------------|
-| [API Reference](./docs/API.md) | Full endpoint documentation |
-| [Deployment Guide](./docs/DEPLOYMENT.md) | Railway + Vercel deployment |
-| [Database Schema](./docs/SUPABASE_SCHEMA.md) | Supabase tables and RLS |
+### Agents
+- Conversation handler
+- Follow-up handler
+- Swarm intelligence handler
+- Unified agent orchestrator
 
----
+### Multi-modal Processing
+- Voice processing with transcription
+- Image handling and analysis
+- File validation and processing
 
-## 🔧 Configuration
+## API Endpoints
 
-Copy `.env.example` to `.env` and configure:
-
-```env
-# LLM Provider (Pollinations.ai)
-POLLINATIONS_API_KEY=your_api_key
-POLLINATIONS_MODEL_FULL=qwen-coder
-POLLINATIONS_MODEL_FAST=qwen-safety
-
-# Database (Supabase)
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your_service_key
-
-# Redis (Upstash)
-REDIS_URL=rediss://your-redis.upstash.io:6379
+```http
+GET /health              # Health check
+POST /api/v1/users       # User management
+POST /api/v1/prompts     # Prompt management
+POST /api/v1/sessions    # Session management
+POST /api/v1/analytics   # Analytics data
+POST /api/v1/feedback    # Feedback submission
+GET /api/v1/history      # History retrieval
+POST /api/v1/newsletter  # Newsletter subscription
+POST /api/v1/tts         # Text-to-speech
+POST /api/v1/mcp         # MCP integration
+POST /api/v1/usage       # Usage tracking
 ```
 
----
+## Testing
 
-## 🌐 Live Demo
+```bash
+# Run all tests
+python scripts/run_tests.py
 
-**Frontend:** [https://promptforge.vercel.app](https://promptforge.vercel.app) (after deployment)
+# Run specific test suites
+python scripts/run_tests.py memory
+python scripts/run_tests.py production
+```
 
-**Backend:** [https://promptforge.railway.app](https://promptforge.railway.app) (after deployment)
+## Deployment
 
----
+### Production Deployment
+```bash
+# Build production images
+docker build -t promptforge:latest .
 
-## 🛠️ Tech Stack
+# Deploy with Docker Compose
+docker-compose -f docker-compose.prod.yml up -d
+```
 
-| Layer | Technology |
-|-------|------------|
-| **Backend** | FastAPI, Python 3.11 |
-| **LLM Orchestration** | LangChain, LangGraph |
-| **Database** | Supabase (PostgreSQL + pgvector) |
-| **Cache** | Redis (Upstash) |
-| **Frontend** | Next.js 16, React 19, TypeScript |
-| **Monitoring** | Sentry, Better Stack |
-| **Deployment** | Docker, Railway, Vercel |
+### Security Considerations
+- All API endpoints require authentication
+- Input validation and sanitization
+- Rate limiting implemented
+- Secure database connections
+- Environment-based configuration
 
----
+## Contributing
 
-## 📊 Performance
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
-| Metric | Target | Status |
-|--------|--------|--------|
-| First token latency | <500ms | ✅ |
-| Full response time | <10s | ✅ |
-| Quality score avg | >4.0/5 | ✅ |
-| Uptime | >99% | ✅ |
+## License
 
----
+MIT License
 
-## 🤝 Contributing
+## Support
 
-1. Fork the repo
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
----
-
-## 📝 License
-
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🙏 Acknowledgments
-
-- [LangChain](https://python.langchain.com/) — LLM orchestration framework
-- [LangGraph](https://langchain-ai.github.io/langgraph/) — Agent orchestration
-- [Supabase](https://supabase.com/) — Database and auth
-- [Pollinations.ai](https://pollinations.ai/) — LLM provider
-- [Sentry](https://sentry.io/) — Error tracking
-
----
-
-## 📬 Contact
-
-- **GitHub Issues:** [Report bugs or request features](https://github.com/Carltonkenny/Knowledgeable-Interface-for-Refinement-and-Adaptation/issues)
-- **Discussions:** [Community discussions](https://github.com/Carltonkenny/Knowledgeable-Interface-for-Refinement-and-Adaptation/discussions)
-
----
-
-**Built with ❤️ by Carlton Kenny**
+For support, please open an issue on the GitHub repository or contact the development team.

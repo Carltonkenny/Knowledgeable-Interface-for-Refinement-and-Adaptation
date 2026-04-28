@@ -30,10 +30,11 @@ if not API_KEY:
     raise ValueError("POLLINATIONS_API_KEY environment variable is required")
 
 # Models from official API:
-# - openai: OpenAI GPT-5 Mini (best quality)
-# - nova: Amazon Nova Micro (fastest)
-MODEL_FULL = "openai"        # For prompt engineer
-MODEL_FAST = "nova"          # For analysis agents - FASTEST
+# - qwen-safety: Qwen3Guard 8B (best quality/safety)
+# - nova-fast: Amazon Nova Micro (fastest)
+# Other options: pollen (pollen 0.26), moonshot (Moonshot Kimi K2.6)
+MODEL_FULL = "qwen-safety"   # For prompt engineer
+MODEL_FAST = "nova-fast"     # For analysis agents - FASTEST
 
 logger.info(f"[config] Pollinations Gen API: {BASE_URL}")
 logger.info(f"[config] Models: FULL={MODEL_FULL}, FAST={MODEL_FAST}")
