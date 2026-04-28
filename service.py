@@ -222,6 +222,26 @@ def _run_swarm(prompt: str, user_id: str, session_id: Optional[str] = None,
     # ── Load Memory Context (parallel, bounded, graceful) ──
     mem = _load_memory_context(user_id, session_id)
 
+    # ── Query LangMem — retrieve top-5 semantically relevant memories ──
+    # CRITICAL FIX: was hardcoded to [] — Kira had zero memory at inference time
+    langmem_context: List[Dict[str, Any]] = []
+    if user_id:
+        try:
+            from memory.langmem import query_langmem
+            from concurrent.futures import ThreadPoolExecutor as _TPE, TimeoutError as _TE
+            with _TPE(max_workers=1, thread_name_prefix="langmem") as _pool:
+                _fut = _pool.submit(query_langmem, user_id, prompt, 5, "web_app")
+                try:
+                    langmem_context = _fut.result(timeout=3) or []
+                    logger.info(
+                        f"[service] langmem_context: {len(langmem_context)} memories "
+                        f"for user={user_id[:8]}..."
+                    )
+                except _TE:
+                    logger.warning("[service] langmem query timed out (3s) — continuing without memories")
+        except Exception as _e:
+            logger.warning(f"[service] langmem query failed — continuing without memories: {_e}")
+
     initial_state = PromptForgeState(
         message=prompt,
         user_id=user_id,
@@ -233,10 +253,10 @@ def _run_swarm(prompt: str, user_id: str, session_id: Optional[str] = None,
         attachments=attachments,
         input_modality=input_modality,
         latency_ms=0,
-        memories_applied=0,
+        memories_applied=len(langmem_context),
         conversation_history=mem.conversation_history,
         user_profile=mem.user_profile,
-        langmem_context=[],  # LangMem semantic search — Phase 2
+        langmem_context=langmem_context,  # ✅ FIXED — real memories injected
         mcp_trust_level=0,
         orchestrator_decision={},
         user_facing_message="Analyzing your request...",
@@ -304,6 +324,22 @@ async def _astream_swarm(prompt: str, user_id: str, session_id: Optional[str] = 
     # ── Load Memory Context (parallel, bounded, graceful) ──
     mem = _load_memory_context(user_id, session_id)
 
+    # ── Query LangMem — retrieve top-5 semantically relevant memories ──
+    langmem_context: List[Dict[str, Any]] = []
+    if user_id:
+        try:
+            from memory.langmem import query_langmem
+            from concurrent.futures import ThreadPoolExecutor as _TPE, TimeoutError as _TE
+            with _TPE(max_workers=1, thread_name_prefix="langmem") as _pool:
+                _fut = _pool.submit(query_langmem, user_id, prompt, 5, "web_app")
+                try:
+                    langmem_context = _fut.result(timeout=3) or []
+                    logger.info(f"[service] stream langmem_context: {len(langmem_context)} memories")
+                except _TE:
+                    logger.warning("[service] stream langmem query timed out — continuing without memories")
+        except Exception as _e:
+            logger.warning(f"[service] stream langmem query failed: {_e}")
+
     initial_state = PromptForgeState(
         message=prompt,
         user_id=user_id,
@@ -315,10 +351,10 @@ async def _astream_swarm(prompt: str, user_id: str, session_id: Optional[str] = 
         attachments=attachments,
         input_modality=input_modality,
         latency_ms=0,
-        memories_applied=0,
+        memories_applied=len(langmem_context),
         conversation_history=mem.conversation_history,
         user_profile=mem.user_profile,
-        langmem_context=[],  # LangMem semantic search — Phase 2
+        langmem_context=langmem_context,  # ✅ FIXED — real memories injected
         mcp_trust_level=0,
         orchestrator_decision={},
         user_facing_message="Analyzing your request...",
@@ -397,6 +433,21 @@ def _run_swarm_with_clarification(
     # ── Load Memory Context (parallel, bounded, graceful) ──
     mem = _load_memory_context(user_id, session_id)
 
+    # ── Query LangMem — retrieve relevant memories for clarification answer ──
+    langmem_context: List[Dict[str, Any]] = []
+    if user_id:
+        try:
+            from memory.langmem import query_langmem
+            from concurrent.futures import ThreadPoolExecutor as _TPE, TimeoutError as _TE
+            with _TPE(max_workers=1, thread_name_prefix="langmem") as _pool:
+                _fut = _pool.submit(query_langmem, user_id, message, 5, "web_app")
+                try:
+                    langmem_context = _fut.result(timeout=3) or []
+                except _TE:
+                    logger.warning("[service] clarification langmem timed out")
+        except Exception as _e:
+            logger.warning(f"[service] clarification langmem failed: {_e}")
+
     # Initialize state with clarification already resolved
     initial_state = PromptForgeState(
         message=message,
@@ -406,7 +457,7 @@ def _run_swarm_with_clarification(
         input_modality="text",
         conversation_history=mem.conversation_history,
         user_profile=mem.user_profile,
-        langmem_context=[],  # LangMem semantic search — Phase 2
+        langmem_context=langmem_context,  # ✅ FIXED — real memories injected
         mcp_trust_level=0,
         orchestrator_decision={
             "user_facing_message": "Got it — let me work with that.",
