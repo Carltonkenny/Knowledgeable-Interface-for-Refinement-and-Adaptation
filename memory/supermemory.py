@@ -202,9 +202,9 @@ async def get_trust_level(user_id: str) -> int:
         session_count = len(result.data) if result.data else 0
         
         # Determine trust level
-        if session_count < 10:
+        if session_count < 3:
             return 0  # Cold
-        elif session_count < 30:
+        elif session_count < 10:
             return 1  # Warm
         else:
             return 2  # Tuned

@@ -305,9 +305,9 @@ async def get_user_stats(user: User = Depends(get_current_user)):
         conv_result = db.table("conversations").select("id", count="exact").eq("user_id", user.user_id).execute()
         session_count = conv_result.count if hasattr(conv_result, 'count') else len(conv_result.data)
 
-        if session_count < 10:
+        if session_count < 3:
             trust_level = 0  # Cold
-        elif session_count < 30:
+        elif session_count < 10:
             trust_level = 1  # Warm
         else:
             trust_level = 2  # Tuned
