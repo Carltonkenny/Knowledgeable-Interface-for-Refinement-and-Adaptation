@@ -680,3 +680,41 @@ async def handle_mcp_message(message: str, user_id: Optional[str] = None) -> str
                 "message": f"Internal error: {str(e)}"
             }
         })
+
+
+if __name__ == "__main__":
+    import asyncio
+    import sys
+
+    async def main():
+        # Setup basic logging to stderr so it doesn't pollute stdout (which is for JSON-RPC)
+        logging.basicConfig(level=logging.INFO, stream=sys.stderr)
+        
+        token = os.getenv("MCP_JWT_TOKEN")
+        if not token:
+            logger.error("MCP_JWT_TOKEN environment variable required")
+            sys.exit(1)
+            
+        user_id = await validate_mcp_jwt(token)
+        if not user_id:
+            logger.error("Invalid, expired, or revoked MCP_JWT_TOKEN")
+            sys.exit(1)
+            
+        logger.info(f"[mcp] Server started for user {user_id[:8]}... Listening on stdio.")
+        
+        # Standard stdio reading loop for MCP
+        loop = asyncio.get_event_loop()
+        while True:
+            try:
+                line = await loop.run_in_executor(None, sys.stdin.readline)
+                if not line:
+                    break
+                response = await handle_mcp_message(line, user_id=user_id)
+                sys.stdout.write(response + "\n")
+                sys.stdout.flush()
+            except KeyboardInterrupt:
+                break
+            except Exception as e:
+                logger.error(f"Error in stdio loop: {e}")
+
+    asyncio.run(main())
