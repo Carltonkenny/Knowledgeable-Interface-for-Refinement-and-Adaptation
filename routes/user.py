@@ -236,7 +236,7 @@ async def get_user_memories(user: User = Depends(get_current_user)):
             memories.append({
                 "id": str(row.get("id")),
                 "content": row.get("content", ""),
-                "category": row.get("domain", "General").title(),
+                "category": row.get("domain", "other").lower(),
                 "created_at": row.get("created_at")
             })
             

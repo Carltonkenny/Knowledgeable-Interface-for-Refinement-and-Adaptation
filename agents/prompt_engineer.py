@@ -236,6 +236,30 @@ def _prompt_engineer_impl(state: AgentState, start_time: float, prompt: str, spa
         # Combine all context
         personalization_context = frustration_constraint + audience_constraint + persona_constraint
 
+        # ═══ MULTIMODAL CONTEXT ═══
+        attachments = state.get("attachments", [])
+        input_modality = state.get("input_modality", "text")
+        multimodal_context = ""
+        
+        if input_modality == "image" or any(a.get("type") == "image" for a in attachments):
+            multimodal_context += "\n\nMULTIMODAL INPUT: User attached an image. Consider visual context when engineering the prompt."
+        elif input_modality == "voice":
+            multimodal_context += "\n\nMULTIMODAL INPUT: User provided audio input. Ensure the prompt captures the nuance of spoken instructions."
+            
+        for a in attachments:
+            if a.get("type") != "image":
+                multimodal_context += f"\n\nATTACHMENT: User provided a file ({a.get('filename', 'unknown')} - {a.get('media_type', 'unknown')}). Integrate this into the prompt context."
+
+        # ═══ LONG-TERM MEMORY CONTEXT ═══
+        langmem_context = state.get("langmem_context", [])
+        memory_context = ""
+        if langmem_context:
+            try:
+                from agents.context.builder import format_memories
+                memory_context = "\n\nUSER LONG-TERM MEMORY (apply to rewrite):" + format_memories(langmem_context).replace("RELEVANT MEMORIES FROM PAST SESSIONS:", "")
+            except Exception as e:
+                logger.warning(f"[prompt_engineer] Failed to format memories: {e}")
+
         # Format all upstream analysis
         analysis_context = f"""Original prompt: {prompt}
 
@@ -243,7 +267,7 @@ Intent analysis: {json.dumps(state.get('intent_analysis', {}), indent=2)}
 
 Context analysis: {json.dumps(state.get('context_analysis', {}), indent=2)}
 
-Domain analysis: {json.dumps(state.get('domain_analysis', {}), indent=2)}{style_context}{personalization_context}
+Domain analysis: {json.dumps(state.get('domain_analysis', {}), indent=2)}{style_context}{personalization_context}{multimodal_context}{memory_context}
 
 Rewrite the prompt based on this comprehensive analysis. Match the user's established style and quality bar from their past prompts. Honor their frustration preferences and audience needs."""
 

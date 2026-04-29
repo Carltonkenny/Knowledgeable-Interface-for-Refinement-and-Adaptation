@@ -124,8 +124,8 @@ def profiled_extract_core_memories(user_id: str, session_result: Dict[str, Any],
     """
     Profiled version of core memory extraction
     """
-    from memory.core_memory_extractor import extract_and_store_core_memories
-    return extract_and_store_core_memories(user_id, session_result, session_id)
+    from memory.memory_extractor import save_core_memories_if_needed
+    return save_core_memories_if_needed(user_id, session_result, session_id)
 
 @profiler.profile_function("feedback_generation")
 def profiled_generate_feedback(orchestrator_decision: Dict[str, Any], session_result: Dict[str, Any] = None):

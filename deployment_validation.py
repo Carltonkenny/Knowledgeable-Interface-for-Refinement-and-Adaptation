@@ -55,7 +55,7 @@ class DeploymentValidator:
         
         # Validate imports work
         try:
-            from memory.core_memory_extractor import extract_and_store_core_memories
+            from memory.memory_extractor import save_core_memories_if_needed
             from agents.enhanced_feedback import generate_processing_feedback, finalize_conversation
             from agents.state_consistency import state_manager
             from performance_profiler import profiler
@@ -102,7 +102,7 @@ class DeploymentValidator:
         """Validate system integration"""
         try:
             # Test integration between components
-            from memory.core_memory_extractor import extract_and_store_core_memories
+            from memory.memory_extractor import save_core_memories_if_needed
             from agents.enhanced_feedback import generate_processing_feedback, finalize_conversation
             from agents.state_consistency import state_manager
             
@@ -187,7 +187,7 @@ class DeploymentValidator:
         """Run memory system tests"""
         try:
             # Test core memory extraction
-            from memory.core_memory_extractor import extract_and_store_core_memories, extract_key_learnings
+            from memory.memory_extractor import save_core_memories_if_needed, extract_key_learnings
             
             # Mock data for testing
             test_history = [
@@ -261,7 +261,7 @@ class DeploymentValidator:
         """Run system integration tests"""
         try:
             # Test complete workflow integration
-            from memory.core_memory_extractor import extract_and_store_core_memories
+            from memory.memory_extractor import save_core_memories_if_needed
             from agents.enhanced_feedback import generate_processing_feedback, finalize_conversation
             from agents.state_consistency import state_manager
             
@@ -290,7 +290,7 @@ class DeploymentValidator:
             assert is_valid
             
             # Test core memory extraction (mocked for now)
-            core_memory = extract_and_store_core_memories(
+            core_memory = save_core_memories_if_needed(
                 "user-456", 
                 test_session_result, 
                 "session-123"

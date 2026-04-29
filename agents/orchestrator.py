@@ -381,18 +381,12 @@ def _orchestrator_impl(state: Dict[str, Any], start_time: float, span=None) -> D
         
         # ═══ BUILD CONTEXT FOR LLM ═══
 
-        # Query LangMem for user's past memories (BEFORE LLM call)
-        langmem_context = []  # Default to empty if user_id not available
+        # Retrieve LangMem context from state (already populated by service.py)
+        langmem_context = state.get('langmem_context', [])
         langmem_user_id = state.get("user_id")
         query_text = (message or "").strip()
-        if langmem_user_id and query_text:
-            langmem_context = query_langmem(
-                user_id=langmem_user_id,
-                query=query_text,
-                top_k=5
-            )
-        else:
-            logger.warning(f"[langmem] skipping search — user_id={langmem_user_id}, query_len={len(query_text)}")
+        if not langmem_context and langmem_user_id and query_text:
+             logger.warning(f"[langmem] langmem_context empty in state for user_id={langmem_user_id}")
         
         # Build history context from working memory (smart window loads up to 30-40 turns)
         # Show enough context for Kira to make informed decisions
