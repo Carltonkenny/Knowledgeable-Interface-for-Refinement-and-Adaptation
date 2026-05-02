@@ -75,7 +75,7 @@ htmlcov/
 docker-compose.override.yml
 
 # ═══ NODE / NEXT.JS ════════════════════════════
-promptforge-web/node_modules/
+**/node_modules/
 promptforge-web/.next/
 promptforge-web/out/
 promptforge-web/.vercel/
