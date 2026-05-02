@@ -12,7 +12,8 @@ from functools import lru_cache
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 
-load_dotenv()
+env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+load_dotenv(dotenv_path=env_path)
 logger = logging.getLogger(__name__)
 
 # ═══ POLLINATIONS GEN API (OFFICIAL) ═══════
@@ -30,11 +31,11 @@ if not API_KEY:
     raise ValueError("POLLINATIONS_API_KEY environment variable is required")
 
 # Models from official API:
-# - qwen-safety: Qwen3Guard 8B (best quality/safety)
+# - openai: GPT-4o (best quality)
 # - nova-fast: Amazon Nova Micro (fastest)
 # Other options: pollen (pollen 0.26), moonshot (Moonshot Kimi K2.6)
-MODEL_FULL = "qwen-safety"   # For prompt engineer
-MODEL_FAST = "nova-fast"     # For analysis agents - FASTEST
+MODEL_FULL = "openai-fast"        # For prompt engineer
+MODEL_FAST = "openai-fast"   # For analysis agents - FASTEST
 
 logger.info(f"[config] Pollinations Gen API: {BASE_URL}")
 logger.info(f"[config] Models: FULL={MODEL_FULL}, FAST={MODEL_FAST}")

@@ -3,6 +3,7 @@
 
 'use client'
 import { logger } from '@/lib/logger'
+import Boneyard from '@/components/ui/Boneyard'
 
 import { useState, useEffect } from 'react'
 import { getSession } from '@/lib/auth'
@@ -62,9 +63,7 @@ export default function ChatPage() {
   return (
     <div className="h-screen flex items-center justify-center bg-bg text-text-dim font-mono text-sm">
       <div className="flex flex-col items-center gap-4">
-        <div className="w-12 h-12 rounded-lg border border-kira bg-kira-dim flex items-center justify-center animate-pulse">
-          <span className="text-kira font-bold text-xl">⬡</span>
-        </div>
+        <Boneyard variant="kira" />
         <p>INITIALIZING SECURE SESSION...</p>
       </div>
     </div>

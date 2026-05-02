@@ -11,6 +11,7 @@ import { getSession } from '@/lib/supabase'
 import { ROUTES } from '@/lib/constants'
 import ChatSidebar from '@/features/chat/components/ChatSidebar'
 import VersionHistoryOverlay from '@/features/history/components/VersionHistoryOverlay'
+import Boneyard from '@/components/ui/Boneyard'
 import { usePathname } from 'next/navigation'
 
 interface AppLayoutProps {
@@ -62,9 +63,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   if (loading || !token) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bg">
-        <div className="w-12 h-12 rounded-lg border border-kira bg-[var(--kira-dim)] flex items-center justify-center animate-pulse">
-          <span className="text-kira font-bold font-mono text-xl">K</span>
-        </div>
+        <Boneyard variant="kira" />
       </div>
     )
   }

@@ -82,12 +82,6 @@ def kira_unified_handler(
     try:
         llm = get_fast_llm()  # Fast model for latency
 
-        # Build rich context
-        context = build_kira_context(message, history, user_profile)
-
-        # Score input quality
-        quality = score_input_quality(message, len(history) > 0)
-
         # Query LangMem for user's relevant memories (RULES.md: Memory system integration)
         from memory.langmem import query_langmem
         langmem_context = []  # Default to empty if user_id not available
@@ -109,7 +103,10 @@ def kira_unified_handler(
             topic_str = " and ".join(topics)
             memory_summary = f"Recalled {len(langmem_context)} memories, focusing on your work in {topic_str}."
 
-        
+        # Build rich context AFTER fetching memories
+        quality = score_input_quality(message, len(history) > 0)
+        context = build_kira_context(message, history, user_profile, langmem_context)
+
         # Get Kira system prompt with personality
         system_prompt = _get_kira_unified_prompt()
 
@@ -174,7 +171,8 @@ def kira_unified_handler(
 def build_kira_context(
     message: str,
     history: List[Dict[str, Any]],
-    user_profile: Dict[str, Any]
+    user_profile: Dict[str, Any],
+    langmem_context: Optional[List[Dict[str, Any]]] = None
 ) -> str:
     """
     Build rich context string for unified Kira call.
@@ -183,6 +181,8 @@ def build_kira_context(
         message: Current user message
         history: Last 4 conversation turns
         user_profile: User's profile from Supabase
+        langmem_context: User's relevant long-term memories
+
 
     Returns:
         Formatted context string for LLM
@@ -236,6 +236,15 @@ def build_kira_context(
         if dominant_domains:
             domain_str = ", ".join(str(d) for d in dominant_domains[:3])
             context_parts.append(f"- Active domains: {domain_str}")
+
+        # Add relevant memories
+        if langmem_context:
+            context_parts.append("\nRelevant Past Memories:")
+            for m in langmem_context:
+                domain = m.get('domain', 'general').upper()
+                content = m.get('content', '')
+                if content:
+                    context_parts.append(f"  [{domain}] {content}")
 
         # Add conversation history
         context_parts.append(f"\nLast {min(4, len(history))} conversation turns:")

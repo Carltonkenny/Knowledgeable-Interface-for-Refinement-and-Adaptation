@@ -6,6 +6,7 @@ import { signOut } from '@/lib/auth'
 import { useRouter } from 'next/navigation'
 import { ROUTES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
+import Boneyard from '@/components/ui/Boneyard'
 
 interface UsageStatsProps {
   stats: UsageStatsType | null
@@ -26,14 +27,7 @@ export default function UsageStats({ stats, isLoading }: UsageStatsProps) {
 
   if (isLoading || !stats) {
     return (
-      <div className="bg-layer2 rounded-xl p-5 border border-border-subtle animate-pulse">
-        <div className="h-6 w-32 bg-layer3 rounded mb-6" />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="h-24 bg-layer3 rounded-lg" />
-          ))}
-        </div>
-      </div>
+      <Boneyard variant="card" count={4} />
     )
   }
 

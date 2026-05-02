@@ -22,6 +22,7 @@ import DangerZone from '@/features/profile/components/DangerZone'
 import SecurityTab from '@/features/profile/components/SecurityTab'
 import ActivityTab from '@/features/profile/components/ActivityTab'
 import SettingsTab from '@/features/profile/components/SettingsTab'
+import Boneyard from '@/components/ui/Boneyard'
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -34,9 +35,7 @@ export default function ProfilePage() {
   if (!token || profile.isInitializing) {
     return (
       <div className="h-full flex items-center justify-center min-h-[50vh]">
-        <div className="w-12 h-12 rounded-lg border border-kira bg-[var(--kira-dim)] flex items-center justify-center animate-pulse shadow-[0_0_20px_rgba(var(--color-kira),0.2)]">
-          <span className="text-kira font-bold font-mono text-xl">K</span>
-        </div>
+        <Boneyard variant="kira" />
       </div>
     )
   }

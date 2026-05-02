@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { Plus, MessageSquare, Trash2, ChevronLeft, ChevronRight, Pin, Star, Trash, Sparkles } from 'lucide-react'
 import { useChatSessions } from '../hooks/useChatSessions'
 import RecycleBin from './RecycleBin'
+import Boneyard from '@/components/ui/Boneyard'
 import { cn } from '@/lib/utils'
 import { memo } from 'react'
 
@@ -222,9 +223,7 @@ export default function ChatSidebar({ token, mode = 'chat' }: ChatSidebarProps) 
       <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-6 custom-scrollbar">
         {isLoading && !sessions.length ? (
           <div className="flex flex-col gap-2 p-2">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="h-10 rounded-lg bg-layer-2 animate-pulse" />
-            ))}
+            <Boneyard variant="list" count={3} height="h-10" />
           </div>
         ) : (
           <>

@@ -199,6 +199,13 @@ async def chat_stream(request: Request, req: ChatRequest, background_tasks: Back
                 yield sse_format("kira_message", {"message": "", "complete": True})
                 yield sse_format("result", {"type": "conversation", "reply": reply, "improved_prompt": None, "memories_applied": memories_applied, "latency_ms": latency_ms})
                 yield sse_format("done", {"message": "Complete"})
+
+                # ═══ BACKGROUND: Extract core memories from conversations too ═══
+                background_tasks.add_task(
+                    save_core_memories_if_needed,
+                    user_id=user.user_id,
+                    session_id=req.session_id,
+                )
                 return
 
             elif intent == "FOLLOWUP":
@@ -208,6 +215,13 @@ async def chat_stream(request: Request, req: ChatRequest, background_tasks: Back
                 yield sse_format("kira_message", {"message": "", "complete": True})
                 yield sse_format("result", {"type": "followup_refined", "reply": reply, "improved_prompt": improved, "memories_applied": memories_applied, "latency_ms": latency_ms})
                 yield sse_format("done", {"message": "Complete"})
+
+                # ═══ BACKGROUND: Extract core memories from followups too ═══
+                background_tasks.add_task(
+                    save_core_memories_if_needed,
+                    user_id=user.user_id,
+                    session_id=req.session_id,
+                )
                 return
 
             if clarification_needed:
@@ -481,7 +495,7 @@ async def chat_stream(request: Request, req: ChatRequest, background_tasks: Back
 
             # ═══ BACKGROUND TASK: Store in Memory Palace (importance-filtered) ═══
             # Only important facts (identity, preferences, constraints) are saved to core memory.
-            # Raw prompts are NOT saved — only distilled facts every 5th turn.
+            # Raw prompts are NOT saved — only distilled facts every 3rd turn.
             background_tasks.add_task(
                 save_core_memories_if_needed,
                 user_id=user.user_id,

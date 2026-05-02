@@ -397,7 +397,7 @@ def get_conversation_history_with_summary(
         query = db.table("conversations") \
             .select("role, message, message_type, improved_prompt, created_at") \
             .eq("session_id", session_id) \
-            .order("created_at", asc=True)
+            .order("created_at", desc=False)
 
         if user_id:
             query = query.eq("user_id", user_id)

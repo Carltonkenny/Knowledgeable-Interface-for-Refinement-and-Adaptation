@@ -7,6 +7,7 @@ import { getSession } from '@/lib/supabase'
 import { apiConversation } from '@/lib/api'
 import { logger } from '@/lib/logger'
 import ChatContainer from '@/features/chat/components/ChatContainer'
+import Boneyard from '@/components/ui/Boneyard'
 
 export default function SessionChatPage() {
   const params = useParams()
@@ -51,9 +52,7 @@ export default function SessionChatPage() {
   if (!token || !sessionId || isValidating) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="w-10 h-10 rounded-lg border border-kira bg-kira-dim animate-pulse flex items-center justify-center">
-          <span className="text-kira font-mono">⬡</span>
-        </div>
+        <Boneyard variant="kira" />
       </div>
     )
   }

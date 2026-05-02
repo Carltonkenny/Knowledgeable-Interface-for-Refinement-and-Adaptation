@@ -54,6 +54,7 @@ export interface ProcessingStatus {
   agentsComplete: Set<string>
   agentsSkipped: Set<string>
   agentUpdates?: AgentUpdate[]
+  isSwarmMode?: boolean
 }
 
 // Chat local state

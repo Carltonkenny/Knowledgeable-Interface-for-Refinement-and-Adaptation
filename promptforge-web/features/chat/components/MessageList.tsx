@@ -10,6 +10,7 @@ import KiraMessage from './KiraMessage'
 import ThinkAccordion from './ThinkAccordion'
 import OutputCard from './OutputCard'
 import MemoryCitations from './MemoryCitations'
+import Boneyard from '@/components/ui/Boneyard'
 import type { ChatMessage, ProcessingStatus } from '../types'
 
 interface TTSProps {
@@ -94,29 +95,25 @@ export default function MessageList({ messages, isStreaming, status, ttsProps }:
       )}
 
       {/* OutputCard Skeleton while waiting for result */}
-      {isStreaming && status && (status.state === 'swarm_running' || status.state === 'kira_reading') && (
+      {isStreaming && status && status.isSwarmMode && (
         <motion.div
            layoutId="output-card-skeleton"
            className="mb-6 w-full max-w-2xl mx-auto"
         >
           <div className="rounded-[11px] p-px bg-border-subtle/30 overflow-hidden">
-            <div className="bg-layer1 rounded-[10px] p-5 h-40 animate-pulse flex flex-col gap-4">
-               {/* Skeleton Header */}
+            <div className="bg-layer1 rounded-[10px] p-5 h-40 flex flex-col gap-4">
+               {/* Boneyard: Skeleton Header */}
                <div className="flex gap-3 items-center">
-                 <div className="h-3 w-24 bg-layer3/50 rounded-full" />
-                 <div className="h-4 w-20 bg-layer3/50 rounded-full" />
-                 <div className="h-3 w-10 bg-layer3/50 rounded-full" />
+                 <Boneyard height="h-3" width="w-24" />
+                 <Boneyard height="h-4" width="w-20" />
+                 <Boneyard height="h-3" width="w-10" />
                </div>
-               {/* Skeleton Body */}
-               <div className="space-y-2.5 mt-2">
-                 <div className="h-2.5 bg-layer3/40 rounded-full w-[90%]" />
-                 <div className="h-2.5 bg-layer3/40 rounded-full w-[85%]" />
-                 <div className="h-2.5 bg-layer3/40 rounded-full w-[70%]" />
-               </div>
-               {/* Skeleton Chips */}
+               {/* Boneyard: Skeleton Body */}
+               <Boneyard variant="text" count={3} className="mt-2" />
+               {/* Boneyard: Skeleton Chips */}
                <div className="flex gap-2 mt-auto pt-2">
-                 <div className="h-6 w-32 bg-layer3/30 rounded-md" />
-                 <div className="h-6 w-32 bg-layer3/30 rounded-md" />
+                 <Boneyard height="h-6" width="w-32" />
+                 <Boneyard height="h-6" width="w-32" />
                </div>
             </div>
           </div>

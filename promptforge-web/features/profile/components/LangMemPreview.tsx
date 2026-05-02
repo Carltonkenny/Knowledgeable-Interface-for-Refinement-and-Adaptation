@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Database, Lock, Clock, ChevronDown, ChevronRight } from 'lucide-react'
 import type { MemoryPreview } from '@/lib/api'
+import Boneyard from '@/components/ui/Boneyard'
 
 interface LangMemPreviewProps {
   memories: MemoryPreview[]
@@ -119,13 +120,8 @@ export default function LangMemPreview({ memories, isLoading }: LangMemPreviewPr
 
   if (isLoading) {
     return (
-      <div className="bg-layer2 rounded-xl p-5 border border-border-subtle animate-pulse h-64">
-        <div className="h-6 w-48 bg-layer3 rounded-md mb-6" />
-        <div className="space-y-3">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-12 w-full bg-layer3 rounded-lg" />
-          ))}
-        </div>
+      <div className="bg-layer2 rounded-xl p-5 border border-border-subtle h-64">
+        <Boneyard variant="card" count={3} height="h-full" />
       </div>
     )
   }

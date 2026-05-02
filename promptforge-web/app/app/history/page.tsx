@@ -9,6 +9,7 @@ import { logger } from '@/lib/logger'
 import HistoryList from '@/features/history/components/HistoryList'
 import HistorySearchBar from '@/features/history/components/HistorySearchBar'
 import HistoryAnalyticsDashboard from '@/features/history/components/HistoryAnalyticsDashboard'
+import Boneyard from '@/components/ui/Boneyard'
 import { useHistory } from '@/features/history/hooks/useHistory'
 import { useHistoryAnalytics } from '@/features/history/hooks/useHistoryAnalytics'
 
@@ -149,9 +150,7 @@ export default function HistoryPage() {
   if (!token) {
     return (
       <div className="h-screen flex items-center justify-center">
-        <div className="w-12 h-12 rounded-xl border border-kira/30 bg-kira/5 flex items-center justify-center animate-pulse shadow-[0_0_15px_rgba(46,196,182,0.2)]">
-          <span className="text-kira font-black font-mono text-xl tracking-tighter">K</span>
-        </div>
+        <Boneyard variant="kira" />
       </div>
     )
   }

@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 # ═══ CONFIGURATION ═══════════════════════════
 
 TRUST_THRESHOLD = 0.6  # Minimum importance score to save to core memory
-EXTRACTION_TURN_INTERVAL = 5  # Extract every N turns
+EXTRACTION_TURN_INTERVAL = 3  # Extract every N turns (lowered from 5 for faster learning)
 MAX_FACT_CONTENT_LENGTH = 500  # Truncate facts for embedding
 DEDUP_WINDOW_WORDS = 5  # First N words used for dedup signature
 
@@ -51,6 +51,9 @@ IMPORTANT_SIGNALS: Dict[str, List[str]] = {
         "i prefer", "i like", "i don't like", "i hate", "i love",
         "always use", "never use", "avoid", "i want", "i need",
         "make sure", "keep it", "keep them",
+        "my favorite", "my preferred", "favorite color", "favorite food",
+        "favorite language", "i enjoy", "i usually", "i always",
+        "i typically", "i tend to",
     ],
     "project": [
         "my project", "we're building", "we are building", "our app",
@@ -187,7 +190,7 @@ def extract_session_summary(session_id: str, user_id: str) -> List[Dict[str, Any
             .select("role, message, message_type, created_at") \
             .eq("session_id", session_id) \
             .eq("user_id", user_id) \
-            .order("created_at", asc=True) \
+            .order("created_at", desc=False) \
             .execute()
 
         turns = result.data or []

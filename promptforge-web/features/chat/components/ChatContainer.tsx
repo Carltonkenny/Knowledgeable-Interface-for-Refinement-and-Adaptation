@@ -15,6 +15,7 @@ import InputBar from './InputBar'
 import EmptyState from './EmptyState'
 import FocusEditor from './FocusEditor'
 import ClarificationChips from './ClarificationChips'
+import Boneyard from '@/components/ui/Boneyard'
 import { PERSONA_DOT_THRESHOLDS } from '@/lib/constants'
 import { logger } from '@/lib/logger'
 
@@ -31,13 +32,13 @@ function MessageSkeleton() {
       {[1, 2, 3].map((i) => (
         <div key={i} className={`flex flex-col ${i % 2 === 0 ? 'items-end' : 'items-start'} space-y-2`}>
           <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 rounded-full bg-border-subtle animate-pulse" />
-            <div className="h-4 w-24 bg-border-subtle rounded animate-pulse" />
+            <Boneyard variant="avatar" height="h-8" width="w-8" />
+            <Boneyard height="h-4" width="w-24" />
           </div>
-          <div
-            className={`h-16 rounded-2xl bg-border-subtle/50 animate-pulse ${
-              i % 2 === 0 ? 'w-2/3 rounded-tr-none' : 'w-3/4 rounded-tl-none'
-            }`}
+          <Boneyard
+            height="h-16"
+            width={i % 2 === 0 ? 'w-2/3' : 'w-3/4'}
+            className={i % 2 === 0 ? 'rounded-2xl rounded-tr-none' : 'rounded-2xl rounded-tl-none'}
           />
         </div>
       ))}

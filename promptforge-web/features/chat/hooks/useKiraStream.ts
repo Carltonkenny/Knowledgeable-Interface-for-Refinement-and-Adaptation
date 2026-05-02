@@ -257,6 +257,7 @@ export function useKiraStream({
         state: 'kira_reading',
         statusLogs: [],
         agentUpdates: [], // <-- FIX: Reset swarm skeleton for the next prompt
+        isSwarmMode: false,
         startTime: Date.now()
       }))
 
@@ -308,6 +309,7 @@ export function useKiraStream({
               return {
                 ...prev,
                 state: 'swarm_running',
+                isSwarmMode: true,
                 agentUpdates: [...filtered, agentUpdate],
               }
             })

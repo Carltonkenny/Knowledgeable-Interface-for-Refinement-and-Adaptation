@@ -36,7 +36,7 @@ services:
   frontend:
     build:
       context: ./promptforge-web
-      dockerfile: ./promptforge-web/Dockerfile
+      dockerfile: ./Dockerfile
     ports:
       - "3000:3000"
     environment:

@@ -11,7 +11,12 @@
 import json
 import logging
 import os
+import sys
 from typing import Any, Dict, List, Optional
+
+# Ensure the root directory is in the Python path so we can import config, database, etc.
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from jose import jwt
 
 from config import get_llm, get_fast_llm
@@ -166,7 +171,7 @@ class MCPServer:
             params = request.get("params", {})
 
             if method == "initialize":
-                return await self._handle_initialize(params)
+                return await self._handle_initialize(request.get("id"), params)
             elif method == "tools/call":
                 return await self._handle_tool_call(params)
             elif method == "shutdown":
@@ -192,7 +197,7 @@ class MCPServer:
                 }
             }
 
-    async def _handle_initialize(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_initialize(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Handle MCP initialization handshake with context injection.
         
@@ -215,7 +220,7 @@ class MCPServer:
 
         return {
             "jsonrpc": "2.0",
-            "id": request.get("id") if request else None,
+            "id": request_id,
             "result": {
                 "protocolVersion": MCP_VERSION,
                 "capabilities": {
@@ -689,6 +694,10 @@ if __name__ == "__main__":
     async def main():
         # Setup basic logging to stderr so it doesn't pollute stdout (which is for JSON-RPC)
         logging.basicConfig(level=logging.INFO, stream=sys.stderr)
+        
+        from dotenv import load_dotenv
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
+        load_dotenv(dotenv_path=env_path)
         
         token = os.getenv("MCP_JWT_TOKEN")
         if not token:
