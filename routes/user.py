@@ -21,6 +21,8 @@ from pydantic import BaseModel, Field
 
 from auth import User, get_current_user
 from database import get_client, get_user_profile
+from supabase import create_client
+import os
 
 class FavoriteUpdate(BaseModel):
     is_favorite: bool
@@ -161,9 +163,6 @@ async def update_username_endpoint(
     """Update the user's username (display name) via Supabase auth metadata."""
     logger.info(f"[api] /user/username update requested by user={user.user_id}")
     try:
-        from supabase import create_client
-        import os
-
         # Use service role key to update user metadata
         supabase_admin = create_client(
             os.getenv("SUPABASE_URL"),
@@ -171,10 +170,10 @@ async def update_username_endpoint(
         )
 
         # Update user metadata in auth.users
-        # Note: update_user_by_id takes user_id as first positional arg (not keyword)
+        # Industry Standard: use user_metadata key for updating extra profile info
         result = supabase_admin.auth.admin.update_user_by_id(
             user.user_id,
-            {"data": {"username": req.username}}
+            attributes={"user_metadata": {"username": req.username}}
         )
 
         logger.info(f"[api] username updated for user={user.user_id} to {req.username}")

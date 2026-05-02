@@ -91,7 +91,7 @@ export default function ProfileHeader({
     setEditMode(false)
   }
 
-  const trustLabels = ['Building Context', 'Learning Patterns', 'Fully Synced']
+  const trustLabels = ['Onboarding', 'Active', 'Synced']
   const trustColors = ['bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.6)]', 'bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.6)]', 'bg-kira shadow-[0_0_15px_rgba(var(--color-kira),1)]']
 
   return (
@@ -153,22 +153,22 @@ export default function ProfileHeader({
         {editMode ? (
           <div className="space-y-4 mb-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] uppercase tracking-widest text-kira font-bold">Neural Identity (Username)</label>
+              <label className="text-[10px] uppercase tracking-widest text-kira font-bold">Username</label>
               <input
                 value={editData.username}
                 onChange={(e) => setEditData({ ...editData, username: e.target.value })}
                 className="w-full bg-layer1/50 border border-kira/30 rounded-xl px-4 py-3 text-sm text-text-bright font-mono focus:outline-none focus:border-kira focus:ring-1 focus:ring-kira/50 backdrop-blur-sm transition-all shadow-[inset_0_0_15px_rgba(0,0,0,0.5)]"
-                placeholder="Synchronize username..."
+                placeholder="Enter username..."
               />
             </div>
             
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] uppercase tracking-widest text-kira font-bold">Bio & Protocols</label>
+              <label className="text-[10px] uppercase tracking-widest text-kira font-bold">About & Bio</label>
               <textarea
                 value={editData.bio}
                 onChange={(e) => setEditData({ ...editData, bio: e.target.value })}
                 className="w-full h-24 bg-layer1/50 border border-kira/30 rounded-xl p-3 text-sm text-kira font-mono shadow-[inset_0_0_15px_rgba(0,0,0,0.5)] resize-none focus:outline-none focus:border-kira focus:ring-1 focus:ring-kira/50 backdrop-blur-sm transition-all placeholder:text-kira/30"
-                placeholder="Tell users what you do, your expertise, and what drives your work..."
+                placeholder="Tell the community about your expertise and style..."
                 maxLength={500}
               />
             </div>
@@ -278,15 +278,12 @@ export default function ProfileHeader({
                 disabled={isSaving}
                 className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-kira/20 border border-kira text-kira text-xs font-bold hover:bg-kira hover:text-white hover:shadow-[0_0_15px_rgba(var(--color-kira),0.8)] transition-all uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSaving ? (
-                  <>
-                    <div className="w-3.5 h-3.5 border-2 border-kira/30 border-t-kira rounded-full animate-spin" />
-                    SYNCING
+                    SAVING
                   </>
                 ) : (
                   <>
                     <Check size={14} />
-                    CONFIRM
+                    SAVE
                   </>
                 )}
               </button>
@@ -296,7 +293,7 @@ export default function ProfileHeader({
                 className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-layer3/50 text-text-dim text-xs font-bold hover:bg-layer3 hover:text-text-bright transition-all uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <X size={14} />
-                ABORT
+                CANCEL
               </button>
             </motion.div>
           )}

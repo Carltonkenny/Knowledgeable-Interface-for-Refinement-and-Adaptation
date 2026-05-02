@@ -25,9 +25,9 @@ export default function McpTokenSection({ sessionCount, trustLevel, authToken }:
   const [error, setError] = useState<string | null>(null)
 
   const trustLabels = {
-    0: { label: 'COLD', color: 'text-text-dim', dot: 'bg-[var(--dot-cold)]' },
-    1: { label: 'WARM', color: 'text-domain', dot: 'bg-[var(--dot-warm)]' },
-    2: { label: 'TUNED', color: 'text-success', dot: 'bg-[var(--dot-tuned)]' },
+    0: { label: 'Initializing', color: 'text-text-dim', dot: 'bg-[var(--dot-cold)]' },
+    1: { label: 'Learning', color: 'text-domain', dot: 'bg-[var(--dot-warm)]' },
+    2: { label: 'Synced', color: 'text-success', dot: 'bg-[var(--dot-tuned)]' },
   }
   const { label, color, dot } = trustLabels[trustLevel]
 
@@ -105,7 +105,7 @@ export default function McpTokenSection({ sessionCount, trustLevel, authToken }:
       </div>
 
       <div className="p-5 space-y-4">
-        {/* Trust level badge */}
+        {/* Status badge */}
         <div className="p-3 rounded-lg bg-[var(--bg)] border border-border-default">
           <div className="flex items-center gap-2 mb-1">
             <div className={`w-2 h-2 rounded-full ${dot}`} />
@@ -115,7 +115,7 @@ export default function McpTokenSection({ sessionCount, trustLevel, authToken }:
           </div>
           <p className="text-text-dim text-sm">
             {trustLevel === 0 && "Keep using the app, I'll get sharper in MCP too."}
-            {trustLevel === 1 && "You're getting warm. More sessions = better MCP integration."}
+            {trustLevel === 1 && "You're getting close. More sessions = better MCP integration."}
             {trustLevel === 2 && "Full MCP access available. Generate your token below."}
           </p>
         </div>
@@ -154,7 +154,7 @@ export default function McpTokenSection({ sessionCount, trustLevel, authToken }:
             disabled
             className="w-full py-2.5 bg-[var(--surface-hover)] text-text-dim rounded-lg font-medium cursor-not-allowed"
           >
-            Available at Tuned level (30+ sessions)
+            Available at Synced level (30+ sessions)
           </button>
         )}
 
