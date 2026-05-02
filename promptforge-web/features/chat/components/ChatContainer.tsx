@@ -275,6 +275,19 @@ export default function ChatContainer({
             Message queued — will send after Kira finishes
           </div>
         )}
+        
+        {/* Error message indicator */}
+        {error && (
+          <div className="mb-3 px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400 flex items-center justify-between gap-2.5 max-w-max mx-auto shadow-[0_4px_12px_rgba(239,68,68,0.2)] backdrop-blur-md">
+            <div className="flex items-center gap-2.5">
+              <span>⚠️</span>
+              {error}
+            </div>
+            <button onClick={clearError} className="p-1 hover:bg-red-500/20 rounded-md transition-colors ml-2" title="Dismiss">
+              ✕
+            </button>
+          </div>
+        )}
         <div className="max-w-4xl mx-auto w-full">
           <InputBar
             value={input}

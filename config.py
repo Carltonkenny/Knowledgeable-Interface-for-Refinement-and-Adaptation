@@ -34,8 +34,8 @@ if not API_KEY:
 # - openai: GPT-4o (best quality)
 # - nova-fast: Amazon Nova Micro (fastest)
 # Other options: pollen (pollen 0.26), moonshot (Moonshot Kimi K2.6)
-MODEL_FULL = "openai-fast"        # For prompt engineer
-MODEL_FAST = "openai-fast"   # For analysis agents - FASTEST
+MODEL_FULL = "openai"        # For prompt engineer
+MODEL_FAST = "openai-fast"     # For analysis agents - FASTEST
 
 logger.info(f"[config] Pollinations Gen API: {BASE_URL}")
 logger.info(f"[config] Models: FULL={MODEL_FULL}, FAST={MODEL_FAST}")
