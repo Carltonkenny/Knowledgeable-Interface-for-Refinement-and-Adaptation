@@ -91,7 +91,7 @@ export default function ProfileHeader({
     setEditMode(false)
   }
 
-  const trustLabels = ['Onboarding', 'Active', 'Synced']
+  const trustLabels = ['Building Context', 'Learning Patterns', 'Fully Synced']
   const trustColors = ['bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.6)]', 'bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.6)]', 'bg-kira shadow-[0_0_15px_rgba(var(--color-kira),1)]']
 
   return (
@@ -157,7 +157,7 @@ export default function ProfileHeader({
               <input
                 value={editData.username}
                 onChange={(e) => setEditData({ ...editData, username: e.target.value })}
-                className="w-full bg-layer1/50 border border-kira/30 rounded-xl px-4 py-3 text-sm text-text-bright font-mono focus:outline-none focus:border-kira focus:ring-1 focus:ring-kira/50 backdrop-blur-sm transition-all shadow-[inset_0_0_15px_rgba(0,0,0,0.5)]"
+                className="w-full bg-layer1 border border-kira/30 rounded-xl px-4 py-3 text-sm text-text-bright font-mono focus:outline-none focus:border-kira focus:ring-1 focus:ring-kira/50 transition-all shadow-[inset_0_0_20px_rgba(0,0,0,0.8)]"
                 placeholder="Enter username..."
               />
             </div>
@@ -167,7 +167,7 @@ export default function ProfileHeader({
               <textarea
                 value={editData.bio}
                 onChange={(e) => setEditData({ ...editData, bio: e.target.value })}
-                className="w-full h-24 bg-layer1/50 border border-kira/30 rounded-xl p-3 text-sm text-kira font-mono shadow-[inset_0_0_15px_rgba(0,0,0,0.5)] resize-none focus:outline-none focus:border-kira focus:ring-1 focus:ring-kira/50 backdrop-blur-sm transition-all placeholder:text-kira/30"
+                className="w-full h-24 bg-layer1 border border-kira/30 rounded-xl p-3 text-sm text-text-bright font-mono shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] resize-none focus:outline-none focus:border-kira focus:ring-1 focus:ring-kira/50 transition-all placeholder:text-text-dim/30"
                 placeholder="Tell the community about your expertise and style..."
                 maxLength={500}
               />

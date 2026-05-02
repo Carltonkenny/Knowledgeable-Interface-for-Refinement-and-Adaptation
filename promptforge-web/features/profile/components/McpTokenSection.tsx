@@ -25,9 +25,9 @@ export default function McpTokenSection({ sessionCount, trustLevel, authToken }:
   const [error, setError] = useState<string | null>(null)
 
   const trustLabels = {
-    0: { label: 'Initializing', color: 'text-text-dim', dot: 'bg-[var(--dot-cold)]' },
-    1: { label: 'Learning', color: 'text-domain', dot: 'bg-[var(--dot-warm)]' },
-    2: { label: 'Synced', color: 'text-success', dot: 'bg-[var(--dot-tuned)]' },
+    0: { label: 'COLD', color: 'text-text-dim', dot: 'bg-[var(--dot-cold)]' },
+    1: { label: 'WARM', color: 'text-domain', dot: 'bg-[var(--dot-warm)]' },
+    2: { label: 'TUNED', color: 'text-success', dot: 'bg-[var(--dot-tuned)]' },
   }
   const { label, color, dot } = trustLabels[trustLevel]
 
@@ -154,7 +154,7 @@ export default function McpTokenSection({ sessionCount, trustLevel, authToken }:
             disabled
             className="w-full py-2.5 bg-[var(--surface-hover)] text-text-dim rounded-lg font-medium cursor-not-allowed"
           >
-            Available at Synced level (30+ sessions)
+            Available at Tuned level (30+ sessions)
           </button>
         )}
 
