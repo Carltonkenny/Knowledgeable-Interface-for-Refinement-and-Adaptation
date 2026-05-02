@@ -278,6 +278,9 @@ export default function ProfileHeader({
                 disabled={isSaving}
                 className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-kira/20 border border-kira text-kira text-xs font-bold hover:bg-kira hover:text-white hover:shadow-[0_0_15px_rgba(var(--color-kira),0.8)] transition-all uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
               >
+                {isSaving ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-kira/30 border-t-kira rounded-full animate-spin" />
                     SAVING
                   </>
                 ) : (
