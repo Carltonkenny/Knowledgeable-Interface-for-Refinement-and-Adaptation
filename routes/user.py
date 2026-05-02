@@ -397,6 +397,7 @@ async def get_user_profile_info(user: User = Depends(get_current_user)):
 
         # Get email and username from Supabase auth
         try:
+            from supabase import create_client
             supabase_admin = create_client(
                 os.getenv("SUPABASE_URL"),
                 os.getenv("SUPABASE_SERVICE_KEY")
@@ -405,8 +406,10 @@ async def get_user_profile_info(user: User = Depends(get_current_user)):
             email = user_data.user.email
             # Username is stored in user metadata
             username = user_data.user.user_metadata.get("username") if user_data.user.user_metadata else None
-        except Exception:
-            email = None
+        except Exception as auth_err:
+            logger.warning(f"[api] Supabase admin lookup failed for user={user.user_id}: {auth_err}")
+            # Graceful fallback: use JWT-derived email from auth middleware
+            email = user.email
             username = None
 
         return {
