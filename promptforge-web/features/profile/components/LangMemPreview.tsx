@@ -1,13 +1,13 @@
-'use client'
-
 import { useState } from 'react'
-import { Database, Lock, Clock, ChevronDown, ChevronRight } from 'lucide-react'
+import { Database, Lock, Clock, ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
 import type { MemoryPreview } from '@/lib/api'
 import Boneyard from '@/components/ui/Boneyard'
+import { toast } from 'sonner'
 
 interface LangMemPreviewProps {
   memories: MemoryPreview[]
   isLoading: boolean
+  onForget?: (id: string) => Promise<boolean>
 }
 
 // Category configuration for professional color coding
@@ -25,11 +25,28 @@ interface MemoryGroupProps {
   memories: MemoryPreview[]
   isExpanded: boolean
   onToggle: () => void
+  onForget?: (id: string) => Promise<boolean>
 }
 
-function MemoryGroup({ category, memories, isExpanded, onToggle }: MemoryGroupProps) {
+function MemoryGroup({ category, memories, isExpanded, onToggle, onForget }: MemoryGroupProps) {
   const config = categoryConfig[category] || categoryConfig.other
   const count = memories.length
+  const [isDeleting, setIsDeleting] = useState<string | null>(null)
+
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation()
+    if (!onForget) return
+    
+    setIsDeleting(id)
+    try {
+      await onForget(id)
+      toast.success('Memory forgotten')
+    } catch (err) {
+      toast.error('Failed to forget memory')
+    } finally {
+      setIsDeleting(null)
+    }
+  }
 
   return (
     <div className="border border-border-subtle rounded-lg overflow-hidden bg-layer1/50">
@@ -49,7 +66,7 @@ function MemoryGroup({ category, memories, isExpanded, onToggle }: MemoryGroupPr
               {config.label.toUpperCase()}
             </span>
             <span className="text-[10px] text-text-dim bg-layer3 px-1.5 py-0.5 rounded-full">
-              {count} {count === 1 ? 'rule' : 'rules'}
+              {count} {count === 1 ? 'fact' : 'facts'}
             </span>
           </div>
         </div>
@@ -71,19 +88,31 @@ function MemoryGroup({ category, memories, isExpanded, onToggle }: MemoryGroupPr
           {memories.map((memory) => (
             <div
               key={memory.id}
-              className="bg-layer1 rounded-lg p-3 border border-border-subtle group hover:border-intent/30 transition-colors"
+              className={`bg-layer1 rounded-lg p-3 border border-border-subtle group/card hover:border-intent/30 transition-all ${isDeleting === memory.id ? 'opacity-50 grayscale scale-[0.98]' : ''}`}
               title={memory.content}
             >
               <div className="flex items-center justify-between mb-1.5">
                 <span className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded ${config.bg} ${config.color}`}>
                   {category.toUpperCase()}
                 </span>
-                <div className="flex items-center gap-1 text-[10px] text-text-dim">
-                  <Clock size={10} />
-                  <span>Active</span>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 text-[10px] text-text-dim">
+                    <Clock size={10} />
+                    <span>Active</span>
+                  </div>
+                  {onForget && (
+                    <button
+                      onClick={(e) => handleDelete(e, memory.id)}
+                      className="p-1 rounded hover:bg-rose-500/10 text-text-dim hover:text-rose-400 transition-colors opacity-0 group-hover/card:opacity-100"
+                      title="Forget this memory"
+                      disabled={isDeleting === memory.id}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  )}
                 </div>
               </div>
-              <p className="text-sm text-text-muted group-hover:text-text-bright transition-colors line-clamp-2">
+              <p className="text-sm text-text-muted group-hover/card:text-text-bright transition-colors line-clamp-3">
                 {memory.content}
               </p>
             </div>
@@ -94,7 +123,7 @@ function MemoryGroup({ category, memories, isExpanded, onToggle }: MemoryGroupPr
   )
 }
 
-export default function LangMemPreview({ memories, isLoading }: LangMemPreviewProps) {
+export default function LangMemPreview({ memories, isLoading, onForget }: LangMemPreviewProps) {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
 
   // Group memories by category
@@ -105,18 +134,12 @@ export default function LangMemPreview({ memories, isLoading }: LangMemPreviewPr
     return acc
   }, {} as Record<string, MemoryPreview[]>)
 
-  // Initialize all groups as expanded by default
-  const allCategories = Object.keys(groupedMemories)
-  const defaultExpanded = allCategories.reduce((acc, cat) => ({ ...acc, [cat]: true }), {})
-
   const handleToggle = (category: string) => {
     setExpandedGroups(prev => ({
       ...prev,
       [category]: !prev[category]
     }))
   }
-
-  const currentExpanded = expandedGroups
 
   if (isLoading) {
     return (
@@ -127,38 +150,46 @@ export default function LangMemPreview({ memories, isLoading }: LangMemPreviewPr
   }
 
   return (
-    <div className="bg-layer2 rounded-xl p-5 border border-border-subtle flex flex-col h-full">
+    <div className="bg-layer2 rounded-xl p-5 border border-border-subtle flex flex-col h-full min-h-[400px]">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-intent/10 text-intent">
             <Database size={18} />
           </div>
           <div>
-            <h3 className="text-base font-medium text-text-bright">Core Memories</h3>
+            <h3 className="text-base font-medium text-text-bright">Memory Palace</h3>
             <p className="text-[10px] text-text-dim uppercase tracking-wider font-semibold">
-              Active Memory Rules
+              Kira's Atomic Identity Store
             </p>
           </div>
         </div>
         <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-layer3/50 border border-border-subtle">
           <Lock size={10} className="text-text-muted" />
-          <span className="text-[10px] font-mono text-text-muted">RLS SECURED</span>
+          <span className="text-[10px] font-mono text-text-muted uppercase">Encrypted</span>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-3">
         {memories.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 text-text-dim border border-dashed border-border-subtle rounded-lg bg-layer1/50 h-full">
-            <Database size={24} className="mb-2 opacity-30" />
-            <h4 className="text-sm font-semibold text-text-bright mb-2">No Memories Yet</h4>
-            <p className="text-xs text-center max-w-[220px] mb-3">
-              Kira automatically extracts and stores your preferences as you forge prompts.
+          <div className="flex flex-col items-center justify-center py-8 text-text-dim border border-dashed border-border-subtle rounded-lg bg-layer1/50 h-full min-h-[300px]">
+            <Database size={32} className="mb-4 opacity-20 text-intent" />
+            <h4 className="text-sm font-semibold text-text-bright mb-2">Kira is listening</h4>
+            <p className="text-xs text-center max-w-[240px] mb-6 leading-relaxed">
+              Start a conversation to help Kira learn your workflow. High-confidence facts are extracted instantly from Turn 1.
             </p>
-            <div className="text-[10px] text-text-dim space-y-1">
-              <p>✨ Extraction occurs every 5 turns.</p>
-              <p>• "Use direct, professional tone"</p>
-              <p>• "Format as JSON with schema"</p>
-              <p>• "Focus on Python best practices"</p>
+            <div className="w-full max-w-[200px] space-y-2 bg-layer2/50 p-3 rounded-lg border border-border-subtle">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-blue-500/50" />
+                <span className="text-[10px] italic">"I am a Lead Architect"</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-purple-500/50" />
+                <span className="text-[10px] italic">"I prefer functional patterns"</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-500/50" />
+                <span className="text-[10px] italic">"Stack: Next.js + FastAPI"</span>
+              </div>
             </div>
           </div>
         ) : (
@@ -168,8 +199,9 @@ export default function LangMemPreview({ memories, isLoading }: LangMemPreviewPr
               key={category}
               category={category}
               memories={categoryMemories}
-              isExpanded={currentExpanded[category] ?? true}
+              isExpanded={expandedGroups[category] ?? true}
               onToggle={() => handleToggle(category)}
+              onForget={onForget}
             />
           ))
         )}

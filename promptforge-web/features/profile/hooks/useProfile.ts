@@ -10,6 +10,7 @@ import {
   apiDeleteAccount,
   apiExportData,
   apiGetProfileInfo,
+  apiDeleteMemory,
   DomainStat,
   MemoryPreview,
   QualityTrendPoint,
@@ -111,7 +112,6 @@ export function useProfile(token: string | null) {
       throw new Error('Failed to export data.')
     }
   }
-
   const deleteAccount = async () => {
     if (!token) return false
     try {
@@ -120,6 +120,19 @@ export function useProfile(token: string | null) {
     } catch (err) {
       logger.error('Delete failed', { error: err })
       throw new Error('Failed to delete account.')
+    }
+  }
+  
+  const forgetMemory = async (memoryId: string) => {
+    if (!token) return false
+    try {
+      await apiDeleteMemory(token, memoryId)
+      // Optimistic update
+      setMemories(prev => prev.filter(m => m.id !== memoryId))
+      return true
+    } catch (err) {
+      logger.error('Forget memory failed', { error: err, memoryId })
+      throw new Error('Failed to forget memory.')
     }
   }
 
@@ -147,6 +160,7 @@ export function useProfile(token: string | null) {
     updateUsername,
     exportData,
     deleteAccount,
+    forgetMemory,
     refreshStats: loadProfileData,
     trustLevel: stats?.trust_level ?? 0,
     tier: calculateTier(),

@@ -752,6 +752,15 @@ export async function apiGetMemories(token: string): Promise<{ memories: MemoryP
   return res.json()
 }
 
+export async function apiDeleteMemory(token: string, memoryId: string): Promise<{ status: string; message: string }> {
+  const res = await fetch(`${API_BASE}/memory/${memoryId}`, {
+    method: 'DELETE',
+    headers: await authHeaders(token),
+  })
+  if (!res.ok) await handleResponseError(res)
+  return res.json()
+}
+
 export async function apiGetQualityTrend(token: string): Promise<{ trend: QualityTrendPoint[] }> {
   const res = await fetch(`${API_BASE}/user/quality-trend`, {
     headers: await authHeaders(token),

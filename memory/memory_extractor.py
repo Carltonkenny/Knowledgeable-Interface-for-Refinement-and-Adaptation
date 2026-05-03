@@ -29,6 +29,9 @@ from datetime import datetime, timezone
 
 from database import get_client, get_conversation_count
 from memory.langmem import _generate_embedding, write_to_langmem
+from config import get_fast_llm
+from langchain_core.messages import SystemMessage, HumanMessage
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +48,7 @@ IMPORTANT_SIGNALS: Dict[str, List[str]] = {
     "identity": [
         "i am", "i'm a", "i work", "my role", "my company", "my team",
         "i'm the", "i am the", "my job", "i manage", "i lead",
-        "i handle", "i'm responsible",
+        "i handle", "i'm responsible", "call me", "name is", "nicknamed",
     ],
     "preference": [
         "i prefer", "i like", "i don't like", "i hate", "i love",
@@ -53,22 +56,25 @@ IMPORTANT_SIGNALS: Dict[str, List[str]] = {
         "make sure", "keep it", "keep them",
         "my favorite", "my preferred", "favorite color", "favorite food",
         "favorite language", "i enjoy", "i usually", "i always",
-        "i typically", "i tend to",
+        "i typically", "i tend to", "don't bother", "skip ",
     ],
     "project": [
         "my project", "we're building", "we are building", "our app",
         "our system", "the codebase", "our code", "my repo",
-        "my api", "my backend", "my frontend",
+        "my api", "my backend", "my frontend", "working on",
+        "building a", "developing ", "using react", "using next",
+        "stack is", "tech stack",
     ],
     "constraint": [
         "must ", "never ", "always ", "required", "mandatory",
         "don't use", "do not use", "no more than", "at least",
-        "at most", "exactly ", "strictly",
+        "at most", "exactly ", "strictly", "minimum", "maximum",
     ],
     "feedback": [
         "this is good", "this is great", "not what i wanted",
         "not quite", "better", "worse", "perfect", "exactly",
-        "that's what i", "this is what", "close but",
+        "that's what i", "this is what", "close but", "fixed it",
+        "worked!", "doesn't work", "broken",
     ],
 }
 
@@ -238,6 +244,56 @@ def extract_session_summary(session_id: str, user_id: str) -> List[Dict[str, Any
         return []  # Graceful fallback
 
 
+async def distill_fact_semantically(raw_text: str, category: str) -> str:
+    """
+    Phase 2: Use nova-fast (LLM) to distill a raw sentence into an atomic fact.
+    
+    Example:
+        "I've been using React since 2018" -> "Senior React Developer (6+ years)"
+    
+    Args:
+        raw_text: Raw user message
+        category: Classified category (identity, preference, etc.)
+        
+    Returns:
+        Cleaned, distilled fact string. Fallback to raw_text if LLM fails.
+    """
+    try:
+        llm = get_fast_llm()
+        
+        system_prompt = (
+            "You are Kira's Memory Distiller. Your job is to take a raw user statement "
+            "and convert it into a clean, atomic fact for a long-term memory profile.\n\n"
+            "RULES:\n"
+            "1. Output ONLY the distilled fact. No conversational filler.\n"
+            "2. Keep it concise (under 10 words).\n"
+            "3. Normalize to professional, third-person-implied style.\n"
+            f"4. Category context: {category}\n\n"
+            "EXAMPLES:\n"
+            "- 'I am a python dev' -> 'Senior Python Developer'\n"
+            "- 'I hate verbose code' -> 'Prefers concise code snippets'\n"
+            "- 'My name is Bob' -> 'Name: Bob'"
+        )
+        
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=raw_text)
+        ]
+        
+        response = await llm.ainvoke(messages)
+        distilled = str(response.content).strip()
+        
+        # Guard: If LLM returns too much or empty, fallback
+        if not distilled or len(distilled.split()) > 15:
+            return raw_text
+            
+        return distilled
+
+    except Exception as e:
+        logger.error(f"[extractor] semantic distillation failed: {e}")
+        return raw_text
+
+
 async def save_core_memories_if_needed(
     user_id: str,
     session_id: str,
@@ -278,17 +334,22 @@ async def save_core_memories_if_needed(
         # Check turn count
         turn_count = get_conversation_count(session_id)
 
-        # Trigger: every Nth turn
-        if turn_count % EXTRACTION_TURN_INTERVAL != 0 and turn_count > 0:
-            logger.debug(
-                f"[extractor] turn {turn_count} — no extraction needed "
-                f"(next at {((turn_count // EXTRACTION_TURN_INTERVAL) + 1) * EXTRACTION_TURN_INTERVAL})"
-            )
-            return False
-
+        # Trigger: every Nth turn OR high-confidence immediate save
+        is_interval_turn = (turn_count % EXTRACTION_TURN_INTERVAL == 0 and turn_count > 0)
+        
         # Extract important facts
         facts = extract_session_summary(session_id, user_id)
 
+        if not is_interval_turn:
+            # Proactive Mode: Only save if confidence is VERY high (>= 0.8)
+            # This allows Turn 1/2 saves if the user reveals something critical
+            facts = [f for f in facts if f.get("confidence", 0) >= 0.8]
+            
+            if not facts:
+                return False
+            
+            logger.info(f"[extractor] proactive trigger: found {len(facts)} high-importance facts on turn {turn_count}")
+        
         if not facts:
             logger.info(f"[extractor] no important facts found in session {session_id[:8]}...")
             return False
@@ -296,12 +357,15 @@ async def save_core_memories_if_needed(
         # Save each fact to core memory
         saved = 0
         for fact in facts:
+            # Phase 2: Semantic Distillation (natural language normalization)
+            distilled_content = await distill_fact_semantically(fact["content"], fact["category"])
+            
             memory_data = {
-                "raw_prompt": f"[{fact['category']}] {fact['content']}",
-                "improved_prompt": fact["content"],
+                "raw_prompt": f"[{fact['category']}] {distilled_content}",
+                "improved_prompt": distilled_content,
                 "domain": fact["category"],
                 "quality_score": {"overall": fact["confidence"]},
-                "agents_used": ["memory_extractor"],
+                "agents_used": ["memory_extractor", "nova-fast-distiller"],
                 "agents_skipped": [],
                 "user_id": user_id,
             }

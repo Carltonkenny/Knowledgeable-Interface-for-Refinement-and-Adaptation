@@ -180,6 +180,7 @@ export default function ProfilePage() {
               <LangMemPreview
                 memories={profile.memories}
                 isLoading={profile.isInitializing}
+                onForget={profile.forgetMemory}
               />
             </div>
 
