@@ -192,104 +192,106 @@ export default function McpTokenSection({ sessionCount, trustLevel, authToken }:
             <p className="text-[10px] font-mono text-intent">
               ⚠️ Copy this token now — it won't be shown again
             </p>
+          </div>
+        )}
 
-            {/* Configuration Assistant Wizard */}
-            <div className="mt-6 p-4 rounded-xl bg-layer1 border border-border-focus animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Terminal size={16} className="text-mcp" />
-                  <h4 className="text-sm font-semibold text-text-bright">Configuration Assistant</h4>
-                </div>
-                <div className="flex bg-layer3 p-1 rounded-lg border border-border-subtle">
-                  <button
-                    onClick={() => setActiveConfigTab('claude')}
-                    className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${activeConfigTab === 'claude' ? 'bg-layer1 text-text-bright shadow-sm' : 'text-text-dim hover:text-text-muted'}`}
-                  >
-                    CLAUDE
-                  </button>
-                  <button
-                    onClick={() => setActiveConfigTab('cursor')}
-                    className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${activeConfigTab === 'cursor' ? 'bg-layer1 text-text-bright shadow-sm' : 'text-text-dim hover:text-text-muted'}`}
-                  >
-                    CURSOR
-                  </button>
-                </div>
+        {/* Configuration Assistant Wizard — Stays visible after token generation */}
+        {(generatedToken || tokens.length > 0) && (
+          <div className="mt-6 p-4 rounded-xl bg-layer1 border border-border-focus animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Terminal size={16} className="text-mcp" />
+                <h4 className="text-sm font-semibold text-text-bright">Configuration Assistant</h4>
               </div>
+              <div className="flex bg-layer3 p-1 rounded-lg border border-border-subtle">
+                <button
+                  onClick={() => setActiveConfigTab('claude')}
+                  className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${activeConfigTab === 'claude' ? 'bg-layer1 text-text-bright shadow-sm' : 'text-text-dim hover:text-text-muted'}`}
+                >
+                  CLAUDE
+                </button>
+                <button
+                  onClick={() => setActiveConfigTab('cursor')}
+                  className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${activeConfigTab === 'cursor' ? 'bg-layer1 text-text-bright shadow-sm' : 'text-text-dim hover:text-text-muted'}`}
+                >
+                  CURSOR
+                </button>
+              </div>
+            </div>
 
-              {activeConfigTab === 'claude' ? (
-                <div className="space-y-3">
-                  <div className="p-2.5 rounded-lg bg-layer2 border border-border-subtle">
-                    <p className="text-[11px] text-text-muted mb-2">
-                      1. Open your <strong>claude_desktop_config.json</strong> file:
-                    </p>
-                    <code className="block text-[10px] font-mono bg-black/30 p-2 rounded border border-white/5 text-blue-300 break-all">
-                      {os === 'win' ? '%APPDATA%\\Claude\\claude_desktop_config.json' : '~/Library/Application Support/Claude/claude_desktop_config.json'}
-                    </code>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-layer2 border border-border-subtle">
-                    <p className="text-[11px] text-text-muted mb-2">
-                      2. Add this to your <code>mcpServers</code> block:
-                    </p>
-                    <pre className="text-[10px] font-mono bg-black/30 p-3 rounded border border-white/5 text-purple-300 overflow-x-auto">
+            {activeConfigTab === 'claude' ? (
+              <div className="space-y-3">
+                <div className="p-2.5 rounded-lg bg-layer2 border border-border-subtle">
+                  <p className="text-[11px] text-text-muted mb-2">
+                    1. Open your <strong>claude_desktop_config.json</strong> file:
+                  </p>
+                  <code className="block text-[10px] font-mono bg-black/30 p-2 rounded border border-white/5 text-blue-300 break-all">
+                    {os === 'win' ? '%APPDATA%\\Claude\\claude_desktop_config.json' : '~/Library/Application Support/Claude/claude_desktop_config.json'}
+                  </code>
+                </div>
+                <div className="p-2.5 rounded-lg bg-layer2 border border-border-subtle">
+                  <p className="text-[11px] text-text-muted mb-2">
+                    2. Add this to your <code>mcpServers</code> block:
+                  </p>
+                  <pre className="text-[10px] font-mono bg-black/30 p-3 rounded border border-white/5 text-purple-300 overflow-x-auto">
 {`{
   "mcpServers": {
     "promptforge": {
       "command": "npx",
       "args": ["-y", "@promptforge/mcp-server"],
       "env": {
-        "PROMPTFORGE_MCP_TOKEN": "${generatedToken}"
+        "PROMPTFORGE_MCP_TOKEN": "${generatedToken || 'YOUR_TOKEN_HERE'}"
       }
     }
   }
 }`}
-                    </pre>
-                  </div>
+                  </pre>
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="p-2.5 rounded-lg bg-layer2 border border-border-subtle">
-                    <p className="text-[11px] text-text-muted mb-2">
-                      1. Go to <strong>Settings</strong> → <strong>Features</strong> → <strong>MCP</strong>.
-                    </p>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-layer2 border border-border-subtle">
-                    <p className="text-[11px] text-text-muted mb-2">
-                      2. Add a new <strong>Stdio</strong> server:
-                    </p>
-                    <div className="space-y-2">
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[9px] uppercase tracking-wider text-text-dim font-bold">Name</span>
-                        <code className="text-[10px] bg-black/30 p-1.5 rounded border border-white/5 text-green-300">PromptForge</code>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[9px] uppercase tracking-wider text-text-dim font-bold">Command</span>
-                        <code className="text-[10px] bg-black/30 p-1.5 rounded border border-white/5 text-green-300">
-                          npx -y @promptforge/mcp-server
-                        </code>
-                      </div>
-                      <div className="p-2 rounded bg-intent/5 border border-intent/20">
-                         <p className="text-[10px] text-intent italic">
-                           Note: Cursor handles environment variables via the UI. Ensure you have PROMPTFORGE_MCP_TOKEN set.
-                         </p>
-                      </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="p-2.5 rounded-lg bg-layer2 border border-border-subtle">
+                  <p className="text-[11px] text-text-muted mb-2">
+                    1. Go to <strong>Settings</strong> → <strong>Features</strong> → <strong>MCP</strong>.
+                  </p>
+                </div>
+                <div className="p-2.5 rounded-lg bg-layer2 border border-border-subtle">
+                  <p className="text-[11px] text-text-muted mb-2">
+                    2. Add a new <strong>Stdio</strong> server:
+                  </p>
+                  <div className="space-y-2">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[9px] uppercase tracking-wider text-text-dim font-bold">Name</span>
+                      <code className="text-[10px] bg-black/30 p-1.5 rounded border border-white/5 text-green-300">PromptForge</code>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[9px] uppercase tracking-wider text-text-dim font-bold">Command</span>
+                      <code className="text-[10px] bg-black/30 p-1.5 rounded border border-white/5 text-green-300">
+                        npx -y @promptforge/mcp-server
+                      </code>
+                    </div>
+                    <div className="p-2 rounded bg-intent/5 border border-intent/20">
+                       <p className="text-[10px] text-intent italic">
+                         Note: Cursor handles environment variables via the UI. Ensure you have PROMPTFORGE_MCP_TOKEN set.
+                       </p>
                     </div>
                   </div>
                 </div>
-              )}
-
-              <div className="mt-4 flex items-center justify-between pt-3 border-t border-border-subtle">
-                <div className="flex items-center gap-1.5 text-[10px] text-text-dim">
-                  <Cpu size={12} />
-                  <span>Verified v1.0.0</span>
-                </div>
-                <a 
-                  href="https://promptforge.ai/docs/mcp" 
-                  target="_blank" 
-                  className="flex items-center gap-1 text-[10px] text-kira hover:underline"
-                >
-                  View full guide <ExternalLink size={10} />
-                </a>
               </div>
+            )}
+
+            <div className="mt-4 flex items-center justify-between pt-3 border-t border-border-subtle">
+              <div className="flex items-center gap-1.5 text-[10px] text-text-dim">
+                <Cpu size={12} />
+                <span>Verified v1.0.0</span>
+              </div>
+              <a 
+                href="https://promptforge.ai/docs/mcp" 
+                target="_blank" 
+                className="flex items-center gap-1 text-[10px] text-kira hover:underline"
+              >
+                View full guide <ExternalLink size={10} />
+              </a>
             </div>
           </div>
         )}
