@@ -35,6 +35,8 @@ export function createPromptForgeServer() {
         };
       }
     }
+  );
+
   // Tool 1b: Forget Core Memory
   server.tool(
     memories.TOOL_NAME_DELETE,

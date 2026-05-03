@@ -21,24 +21,45 @@ async function main() {
     // ── SSE (REMOTE) MODE ───────────────────────────────────────────────────
     const app = express();
     app.use(cors());
+    app.use(express.json()); // Essential for /messages POST parsing
 
     const port = parseInt(process.env.PORT || "3000", 10);
-    let transport: SSEServerTransport | null = null;
+    
+    // Multi-connection management
+    const activeTransports = new Map<string, SSEServerTransport>();
 
     // Standard MCP SSE route
     app.get("/sse", async (req, res) => {
-      console.error("[SSE] New connection request");
-      transport = new SSEServerTransport("/messages", res);
+      const sessionId = Math.random().toString(36).substring(2);
+      console.error(`[SSE] New connection: session=${sessionId}`);
+      
+      const transport = new SSEServerTransport("/messages", res);
+      activeTransports.set(sessionId, transport);
+      
+      // Clean up when connection closes
+      res.on("close", () => {
+        console.error(`[SSE] Connection closed: session=${sessionId}`);
+        activeTransports.delete(sessionId);
+      });
+
       await server.connect(transport);
     });
 
     // Message handler route
     app.post("/messages", async (req, res) => {
-      console.error("[SSE] Message received");
+      const sessionId = req.query.sessionId as string;
+      const transport = activeTransports.get(sessionId);
+
       if (transport) {
         await transport.handlePostMessage(req, res);
       } else {
-        res.status(400).send("No active transport");
+        // Fallback: If no sessionId in query, try the first active transport (for single-user mode)
+        const firstTransport = activeTransports.values().next().value;
+        if (firstTransport) {
+          await firstTransport.handlePostMessage(req, res);
+        } else {
+          res.status(400).send("No active transport for session");
+        }
       }
     });
 
