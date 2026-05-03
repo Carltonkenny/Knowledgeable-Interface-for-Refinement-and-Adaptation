@@ -24,7 +24,6 @@ export default function McpTokenSection({ sessionCount, trustLevel, authToken }:
   const [revokingId, setRevokingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [activeConfigTab, setActiveConfigTab] = useState<'claude' | 'cursor'>('claude')
-  const [transportMode, setTransportMode] = useState<'local' | 'cloud'>('local')
   const [os, setOs] = useState<'win' | 'mac' | 'linux'>('win')
 
   useEffect(() => {
@@ -204,145 +203,71 @@ export default function McpTokenSection({ sessionCount, trustLevel, authToken }:
                 <Terminal size={16} className="text-mcp" />
                 <h4 className="text-sm font-semibold text-text-bright">Configuration Assistant</h4>
               </div>
-              <div className="flex bg-layer3 p-1 rounded-lg border border-border-subtle gap-2">
-                <div className="flex p-0.5 rounded-md bg-layer2/50 border border-border-subtle/30">
-                  <button
-                    onClick={() => setTransportMode('local')}
-                    className={`px-2 py-0.5 rounded text-[9px] font-bold transition-all ${transportMode === 'local' ? 'bg-mcp text-black shadow-sm' : 'text-text-dim hover:text-text-muted'}`}
-                  >
-                    LOCAL
-                  </button>
-                  <button
-                    onClick={() => setTransportMode('cloud')}
-                    className={`px-2 py-0.5 rounded text-[9px] font-bold transition-all ${transportMode === 'cloud' ? 'bg-mcp text-black shadow-sm' : 'text-text-dim hover:text-text-muted'}`}
-                  >
-                    CLOUD
-                  </button>
-                </div>
-                <div className="flex bg-layer1 p-0.5 rounded-md border border-border-subtle/30">
-                  <button
-                    onClick={() => setActiveConfigTab('claude')}
-                    className={`px-2 py-0.5 rounded text-[9px] font-bold transition-all ${activeConfigTab === 'claude' ? 'bg-layer3 text-text-bright shadow-sm' : 'text-text-dim hover:text-text-muted'}`}
-                  >
-                    CLAUDE
-                  </button>
-                  <button
-                    onClick={() => setActiveConfigTab('cursor')}
-                    className={`px-2 py-0.5 rounded text-[9px] font-bold transition-all ${activeConfigTab === 'cursor' ? 'bg-layer3 text-text-bright shadow-sm' : 'text-text-dim hover:text-text-muted'}`}
-                  >
-                    CURSOR
-                  </button>
-                </div>
+              <div className="flex bg-layer3 p-1 rounded-lg border border-border-subtle">
+                <button
+                  onClick={() => setActiveConfigTab('claude')}
+                  className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${activeConfigTab === 'claude' ? 'bg-layer1 text-text-bright shadow-sm' : 'text-text-dim hover:text-text-muted'}`}
+                >
+                  CLAUDE
+                </button>
+                <button
+                  onClick={() => setActiveConfigTab('cursor')}
+                  className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${activeConfigTab === 'cursor' ? 'bg-layer1 text-text-bright shadow-sm' : 'text-text-dim hover:text-text-muted'}`}
+                >
+                  CURSOR
+                </button>
               </div>
             </div>
 
-            {transportMode === 'local' ? (
-              /* LOCAL (STDIO) INSTRUCTIONS */
-              activeConfigTab === 'claude' ? (
-                <div className="space-y-3">
-                  <div className="p-2.5 rounded-lg bg-layer2 border border-border-subtle">
-                    <p className="text-[11px] text-text-muted mb-2">
-                      1. Open your <strong>claude_desktop_config.json</strong> file:
-                    </p>
-                    <code className="block text-[10px] font-mono bg-black/30 p-2 rounded border border-white/5 text-blue-300 break-all">
-                      {os === 'win' ? '%APPDATA%\\Claude\\claude_desktop_config.json' : '~/Library/Application Support/Claude/claude_desktop_config.json'}
-                    </code>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-layer2 border border-border-subtle">
-                    <p className="text-[11px] text-text-muted mb-2">
-                      2. Add this to your <code>mcpServers</code> block:
-                    </p>
-                    <pre className="text-[10px] font-mono bg-black/30 p-3 rounded border border-white/5 text-purple-300 overflow-x-auto">
+            <div className="space-y-3">
+              <div className="p-2.5 rounded-lg bg-intent/5 border border-intent/20">
+                 <p className="text-[10px] text-intent flex items-center gap-2">
+                   <Info size={12} />
+                   <span>Cloud Mode Active: Connect your IDE directly to your PromptForge API.</span>
+                 </p>
+              </div>
+
+              {activeConfigTab === 'claude' ? (
+                <div className="p-2.5 rounded-lg bg-layer2 border border-border-subtle">
+                  <p className="text-[11px] text-text-muted mb-2">
+                    Add this to your <strong>claude_desktop_config.json</strong>:
+                  </p>
+                  <pre className="text-[10px] font-mono bg-black/30 p-3 rounded border border-white/5 text-blue-300 overflow-x-auto">
 {`{
   "mcpServers": {
     "promptforge": {
-      "command": "npx",
-      "args": ["-y", "@promptforge/mcp-server"],
-      "env": {
-        "PROMPTFORGE_MCP_TOKEN": "${generatedToken || 'YOUR_TOKEN_HERE'}"
-      }
+      "url": "${typeof window !== 'undefined' ? window.location.origin : 'https://api.promptforge.ai'}/mcp/sse"
     }
   }
 }`}
-                    </pre>
-                  </div>
+                  </pre>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  <div className="p-2.5 rounded-lg bg-layer2 border border-border-subtle">
-                    <p className="text-[11px] text-text-muted mb-2">
-                      1. Go to <strong>Settings</strong> → <strong>Features</strong> → <strong>MCP</strong>.
-                    </p>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-layer2 border border-border-subtle">
-                    <p className="text-[11px] text-text-muted mb-2">
-                      2. Add a new <strong>Stdio</strong> server:
-                    </p>
-                    <div className="space-y-2">
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[9px] uppercase tracking-wider text-text-dim font-bold">Name</span>
-                        <code className="text-[10px] bg-black/30 p-1.5 rounded border border-white/5 text-green-300">PromptForge</code>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[9px] uppercase tracking-wider text-text-dim font-bold">Command</span>
-                        <code className="text-[10px] bg-black/30 p-1.5 rounded border border-white/5 text-green-300">
-                          npx -y @promptforge/mcp-server
-                        </code>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
-            ) : (
-              /* CLOUD (SSE) INSTRUCTIONS */
-              <div className="space-y-3">
-                <div className="p-2.5 rounded-lg bg-intent/5 border border-intent/20">
-                   <p className="text-[10px] text-intent flex items-center gap-2">
-                     <Info size={12} />
-                     <span>Requires your MCP server to be deployed on Railway.</span>
-                   </p>
-                </div>
-                {activeConfigTab === 'claude' ? (
-                  <div className="p-2.5 rounded-lg bg-layer2 border border-border-subtle">
-                    <p className="text-[11px] text-text-muted mb-2">
-                      Add this to your <strong>claude_desktop_config.json</strong>:
-                    </p>
-                    <pre className="text-[10px] font-mono bg-black/30 p-3 rounded border border-white/5 text-blue-300 overflow-x-auto">
-{`{
-  "mcpServers": {
-    "promptforge": {
-      "url": "https://your-mcp-app.up.railway.app/sse"
-    }
-  }
-}`}
-                    </pre>
-                  </div>
-                ) : (
-                  <div className="p-2.5 rounded-lg bg-layer2 border border-border-subtle">
-                    <p className="text-[11px] text-text-muted mb-2">
-                      Add a new <strong>SSE</strong> server in Cursor:
-                    </p>
-                    <div className="space-y-2">
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[9px] uppercase tracking-wider text-text-dim font-bold">Name</span>
-                        <code className="text-[10px] bg-black/30 p-1.5 rounded border border-white/5 text-green-300">PromptForge Cloud</code>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[9px] uppercase tracking-wider text-text-dim font-bold">URL</span>
-                        <code className="text-[10px] bg-black/30 p-1.5 rounded border border-white/5 text-green-300">
-                          https://your-mcp-app.up.railway.app/sse
-                        </code>
-                      </div>
-                    </div>
-                  </div>
-                )}
                 <div className="p-2.5 rounded-lg bg-layer2 border border-border-subtle">
-                   <p className="text-[10px] text-text-muted">
-                     Pass your <strong>PROMPTFORGE_MCP_TOKEN</strong> via the IDE's environment variable settings or the Cloud deployment's dashboard.
-                   </p>
+                  <p className="text-[11px] text-text-muted mb-2">
+                    Add a new <strong>SSE</strong> server in Cursor:
+                  </p>
+                  <div className="space-y-2">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[9px] uppercase tracking-wider text-text-dim font-bold">Name</span>
+                      <code className="text-[10px] bg-black/30 p-1.5 rounded border border-white/5 text-green-300">PromptForge Cloud</code>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[9px] uppercase tracking-wider text-text-dim font-bold">URL</span>
+                      <code className="text-[10px] bg-black/30 p-1.5 rounded border border-white/5 text-green-300">
+                        {typeof window !== 'undefined' ? window.location.origin : 'https://api.promptforge.ai'}/mcp/sse
+                      </code>
+                    </div>
+                  </div>
                 </div>
+              )}
+
+              <div className="p-2.5 rounded-lg bg-layer2 border border-border-subtle">
+                 <p className="text-[10px] text-text-muted">
+                   Your IDE will ask for your <strong>PROMPTFORGE_MCP_TOKEN</strong>. Generate one above and paste it when prompted, or add it to your IDE's environment variables.
+                 </p>
               </div>
-            )}
+            </div>
 
             <div className="mt-4 flex items-center justify-between pt-3 border-t border-border-subtle">
               <div className="flex items-center gap-1.5 text-[10px] text-text-dim">
