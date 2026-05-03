@@ -9,7 +9,9 @@
 
 import os
 import logging
+import hashlib
 from typing import Optional
+from jose import jwt, JWTError
 from fastapi import HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from supabase import create_client, Client
@@ -69,6 +71,51 @@ def get_current_user(
         raise HTTPException(status_code=503, detail="Authentication service not configured")
 
     token = credentials.credentials
+
+    # ═══ MCP TOKEN OVERRIDE ═══
+    # Check if this is a long-lived MCP access token before trying Supabase session auth
+    mcp_secret = os.getenv("MCP_JWT_SECRET") or os.getenv("SUPABASE_JWT_SECRET")
+    if mcp_secret:
+        try:
+            # We use HS256 for our issued MCP tokens
+            payload = jwt.decode(token, mcp_secret, algorithms=["HS256"])
+            if payload.get("type") == "mcp_access":
+                user_id = payload.get("sub")
+                
+                # SECURITY: Check revocation list in DB
+                token_hash = hashlib.sha256(token.encode()).hexdigest()
+                try:
+                    from database import get_client
+                    db = get_client()
+                    revocation_check = db.table("mcp_tokens")\
+                        .select("id")\
+                        .eq("token_hash", token_hash)\
+                        .eq("revoked", False)\
+                        .execute()
+                    
+                    if not revocation_check.data:
+                        logger.warning(f"[auth] Revoked or unknown MCP token attempted: user_id={user_id[:8]}...")
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Token has been revoked"
+                        )
+                    
+                    logger.info(f"[auth] MCP user authenticated: user_id={user_id[:8]}...")
+                    return User(
+                        user_id=user_id,
+                        role="mcp_access"
+                    )
+                except HTTPException:
+                    raise
+                except Exception as db_err:
+                    logger.error(f"[auth] MCP revocation check failed: {db_err}")
+                    # Fail closed on DB errors for security
+                    raise HTTPException(status_code=503, detail="Auth verification temporarily unavailable")
+        except JWTError:
+            # Not an HS256 MCP token, proceed to standard Supabase ES256 check
+            pass
+
+    # ═══ STANDARD SUPABASE AUTH ═══
 
     # Retry once on transient network errors (WinError 10035 on Windows)
     last_error = None

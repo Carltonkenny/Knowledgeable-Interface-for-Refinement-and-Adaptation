@@ -35,6 +35,26 @@ export function createPromptForgeServer() {
         };
       }
     }
+  // Tool 1b: Forget Core Memory
+  server.tool(
+    memories.TOOL_NAME_DELETE,
+    memories.TOOL_DESCRIPTION_DELETE,
+    {
+      id: memories.deleteSchema.shape.id,
+    },
+    async (args) => {
+      try {
+        const input = memories.deleteSchema.parse(args);
+        const result = await memories.executeDelete(input);
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        return {
+          content: [{ type: "text" as const, text: `Error: ${message}` }],
+          isError: true,
+        };
+      }
+    }
   );
 
   // Tool 2: Engineer Prompt

@@ -18,6 +18,7 @@ import { apiFetch } from "../api/client.js";
  * Tool name registered with the MCP server.
  */
 export const TOOL_NAME = "get_kira_memories";
+export const TOOL_NAME_DELETE = "forget_kira_memory";
 
 /**
  * Tool description shown to the IDE's AI model.
@@ -28,6 +29,11 @@ export const TOOL_DESCRIPTION =
   "constraints, project context, and feedback patterns. Use this BEFORE writing code " +
   "to respect the user's established rules (e.g., 'always use TypeScript', " +
   "'prefer functional components', 'never use Tailwind').";
+
+export const TOOL_DESCRIPTION_DELETE =
+  "Permanently remove a core memory from the user's PromptForge profile. " +
+  "Use this ONLY when the user explicitly says a preference is outdated, " +
+  "incorrect, or no longer applies. Requires the memory ID.";
 
 /**
  * Input schema — validated with zod before sending to backend.
@@ -48,7 +54,12 @@ export const inputSchema = z.object({
     .describe("Maximum number of memories to return."),
 });
 
+export const deleteSchema = z.object({
+  id: z.string().describe("The UUID of the memory to forget."),
+});
+
 export type MemoriesInput = z.infer<typeof inputSchema>;
+export type DeleteInput = z.infer<typeof deleteSchema>;
 
 /**
  * Memory item returned from the backend.
@@ -95,4 +106,15 @@ export async function execute(input: MemoriesInput): Promise<string> {
     .join("\n");
 
   return `## User's PromptForge Core Memories (${memories.length} active rules)\n\n${formatted}\n\n---\nRespect these preferences when generating code or responses.`;
+}
+
+/**
+ * Execute the forget_kira_memory tool.
+ */
+export async function executeDelete(input: DeleteInput): Promise<string> {
+  await apiFetch(`/memory/${input.id}`, {
+    method: "DELETE",
+  });
+
+  return `Memory ${input.id} has been successfully forgotten. It will no longer influence AI responses.`;
 }
