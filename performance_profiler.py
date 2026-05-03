@@ -7,6 +7,7 @@ import logging
 from typing import Dict, Any, List
 from functools import wraps
 import tracemalloc
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -21,49 +22,55 @@ class PerformanceProfiler:
         
     def profile_function(self, func_name: str):
         """
-        Decorator for profiling function performance
+        Decorator for profiling function performance (supports both sync and async)
         """
         def decorator(func):
-            @wraps(func)
-            def wrapper(*args, **kwargs):
-                # Start timing
-                start_time = time.time()
-                
-                # Start memory tracking
-                tracemalloc.start()
-                
-                # Execute function
-                try:
-                    result = func(*args, **kwargs)
-                    return result
-                finally:
-                    # Stop timing
-                    end_time = time.time()
-                    execution_time = end_time - start_time
-                    
-                    # Get memory usage
-                    current, peak = tracemalloc.get_traced_memory()
-                    tracemalloc.stop()
-                    
-                    # Store statistics
-                    if func_name not in self.profiler_stats:
-                        self.profiler_stats[func_name] = {
-                            "execution_times": [],
-                            "memory_usage": [],
-                            "peak_memory": []
-                        }
-                    
-                    self.profiler_stats[func_name]["execution_times"].append(execution_time)
-                    self.profiler_stats[func_name]["memory_usage"].append(current)
-                    self.profiler_stats[func_name]["peak_memory"].append(peak)
-                    
-                    logger.info(
-                        f"[profiler] {func_name} - Time: {execution_time:.3f}s, "
-                        f"Memory: {current/1024:.1f}KB, Peak: {peak/1024:.1f}KB"
-                    )
-                    
-            return wrapper
+            if asyncio.iscoroutinefunction(func):
+                @wraps(func)
+                async def async_wrapper(*args, **kwargs):
+                    start_time = time.time()
+                    tracemalloc.start()
+                    try:
+                        result = await func(*args, **kwargs)
+                        return result
+                    finally:
+                        self._log_stats(func_name, start_time)
+                return async_wrapper
+            else:
+                @wraps(func)
+                def sync_wrapper(*args, **kwargs):
+                    start_time = time.time()
+                    tracemalloc.start()
+                    try:
+                        result = func(*args, **kwargs)
+                        return result
+                    finally:
+                        self._log_stats(func_name, start_time)
+                return sync_wrapper
         return decorator
+
+    def _log_stats(self, func_name: str, start_time: float):
+        """Helper to log stats and stop tracemalloc"""
+        end_time = time.time()
+        execution_time = end_time - start_time
+        current, peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+
+        if func_name not in self.profiler_stats:
+            self.profiler_stats[func_name] = {
+                "execution_times": [],
+                "memory_usage": [],
+                "peak_memory": []
+            }
+        
+        self.profiler_stats[func_name]["execution_times"].append(execution_time)
+        self.profiler_stats[func_name]["memory_usage"].append(current)
+        self.profiler_stats[func_name]["peak_memory"].append(peak)
+        
+        logger.info(
+            f"[profiler] {func_name} - Time: {execution_time:.3f}s, "
+            f"Memory: {current/1024:.1f}KB, Peak: {peak/1024:.1f}KB"
+        )
     
     def get_performance_report(self) -> Dict[str, Any]:
         """
@@ -120,12 +127,12 @@ profiler = PerformanceProfiler()
 
 # Performance monitoring decorators for key system functions
 @profiler.profile_function("core_memory_extraction")
-def profiled_extract_core_memories(user_id: str, session_result: Dict[str, Any], session_id: str):
+async def profiled_extract_core_memories(user_id: str, session_result: Dict[str, Any], session_id: str):
     """
-    Profiled version of core memory extraction
+    Profiled version of core memory extraction (async)
     """
     from memory.memory_extractor import save_core_memories_if_needed
-    return save_core_memories_if_needed(user_id, session_result, session_id)
+    return await save_core_memories_if_needed(user_id, session_result, session_id)
 
 @profiler.profile_function("feedback_generation")
 def profiled_generate_feedback(orchestrator_decision: Dict[str, Any], session_result: Dict[str, Any] = None):

@@ -20,7 +20,7 @@ This system consists of several interconnected components:
 ### Completed Features
 - ✅ Core multi-agent orchestration
 - ✅ Advanced memory systems (LangMem, SuperMemory, HybridRecall)
-- ✅ Semantic Fact Distillation (nova-fast)
+- ✅ Semantic Fact Distillation (openai-fast)
 - ✅ Memory Palace UI with management controls
 - ✅ Universal MCP Server (Stdio & SSE support)
 - ✅ Multi-modal processing capabilities

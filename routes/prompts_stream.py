@@ -413,23 +413,6 @@ async def chat_stream(request: Request, req: ChatRequest, background_tasks: Back
                 logger.info(f"[sse] client disconnected before DB save, stopping stream")
                 return
 
-            # ═══ SAVE CONVERSATION TURNS (matching /chat non-streaming) ═══
-            save_conversation(
-                session_id=req.session_id,
-                role="user",
-                message=req.message,
-                message_type="new_prompt",
-                user_id=user.user_id
-            )
-            save_conversation(
-                session_id=req.session_id,
-                role="assistant",
-                message=reply,
-                message_type="prompt_improved",
-                improved_prompt=improved,
-                user_id=user.user_id
-            )
-
             # ═══ SAVE CONVERSATION TURNS (Persistence Barrier) ═══
             # Only persist if analysis produced a valid improved prompt or valid state
             is_valid_analysis = bool(improved and final_state.get("quality_score"))
