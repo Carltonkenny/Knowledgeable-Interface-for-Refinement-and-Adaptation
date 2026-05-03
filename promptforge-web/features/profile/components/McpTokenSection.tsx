@@ -5,7 +5,25 @@
 import { logger } from '@/lib/logger'
 
 import { useState, useEffect } from 'react'
-import { Key, Copy, Check, Trash2, Loader2, ShieldAlert, Cpu, Terminal, ExternalLink } from 'lucide-react'
+import { 
+  Key, 
+  Copy, 
+  Check, 
+  Trash2, 
+  Loader2, 
+  ShieldAlert, 
+  Cpu, 
+  Terminal, 
+  Info,
+  ExternalLink, 
+  CheckCircle2, 
+  AlertCircle, 
+  ShieldCheck, 
+  Clock, 
+  Plus,
+  RefreshCw,
+  X 
+} from 'lucide-react'
 import { apiMcpGenerateToken, apiMcpListTokens, apiMcpRevokeToken } from '@/lib/api'
 import type { McpToken } from '@/lib/api'
 
