@@ -38,149 +38,58 @@ router = APIRouter(tags=["TTS"])
 # ── Configuration ─────────────────────────────
 
 TTS_PROVIDER = os.getenv("TTS_PROVIDER", "pollinations").lower()
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
-ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "pNInz6obpgDQGcFmaJgB")
-ELEVENLABS_MODEL = os.getenv("ELEVENLABS_MODEL", "eleven_multilingual_v2")
-ELEVENLABS_BASE_URL = "https://api.elevenlabs.io/v1"
-POLLINATIONS_VOICE = os.getenv("POLLINATIONS_VOICE", "alloy")
+POLLINATIONS_VOICE = os.getenv("POLLINATIONS_VOICE", "nova")  # Default to Nova for clarity
 POLLINATIONS_SPEED = float(os.getenv("POLLINATIONS_SPEED", "1.0"))
 POLLINATIONS_LANG = os.getenv("POLLINATIONS_LANG", "en")
 POLLINATIONS_BASE_URL = "https://text.pollinations.ai"
-TTS_MAX_RETRIES = 2
-TTS_RETRY_BACKOFF = [2, 4]  # 2s, 4s
-
-
-# ── Schemas ───────────────────────────────────
-
-class TTSRequest(BaseModel):
-    """Schema for text-to-speech request"""
-    text: str = Field(..., min_length=1, max_length=5000, description="Text to convert to speech")
-    voice_id: Optional[str] = Field(default=None, description="Voice ID or name")
-    model: Optional[str] = Field(default=None, description="Model ID or language code")
-    speed: Optional[float] = Field(default=None, ge=0.25, le=4.0, description="Speech speed")
-
-class TTSVoicesResponse(BaseModel):
-    """Schema for available voices response"""
-    voices: list[dict]
-
-
-# ── Helpers ───────────────────────────────────
-
-def _get_elevenlabs_headers() -> dict:
-    """Return authorization headers for ElevenLabs API."""
-    return {"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"}
-
-
-async def _stream_tts_audio(text: str, voice_id: str, model: str):
-    """Stream audio chunks from ElevenLabs API directly to client."""
-    payload = {
-        "text": text, "model_id": model, "output_format": "mp3_44100_128",
-        "voice_settings": {"stability": 0.5, "similarity_boost": 0.75, "style": 0.0, "use_speaker_boost": True},
-    }
-    url = f"{ELEVENLABS_BASE_URL}/text-to-speech/{voice_id}/stream"
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        async with client.stream("POST", url, json=payload, headers=_get_elevenlabs_headers()) as response:
-            if response.status_code != 200:
-                error_body = await response.aread()
-                error_text = error_body.decode("utf-8", errors="replace")
-                logger.error(f"[tts] ElevenLabs API error: {response.status_code} — {error_text}")
-                raise HTTPException(
-                    status_code=response.status_code if response.status_code < 500 else 500,
-                    detail=f"TTS failed: {error_text[:200]}")
-            async for chunk in response.aiter_bytes():
-                yield chunk
-
-
-async def _fetch_pollinations_tts(text: str, voice: str, lang: str, speed: float) -> bytes:
-    """Fetch audio from Pollinations TTS API with retry (backoff: 2s, 4s).
-    
-    Correct URL: https://text.pollinations.ai/{text}?model=openai-audio&voice={voice}
-    """
-    encoded_text = urllib.parse.quote(text)
-    url = f"{POLLINATIONS_BASE_URL}/{encoded_text}?model=openai-audio&voice={voice}&lang={lang}&speed={speed}"
-    last_error = None
-    for attempt in range(TTS_MAX_RETRIES):
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.get(url)
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=response.status_code if response.status_code < 500 else 500,
-                    detail=f"TTS failed: {response.text[:200]}")
-            return response.content
-        except httpx.TimeoutException:
-            last_error = "timeout"
-        except httpx.RequestError as e:
-            last_error = f"request_error: {e}"
-        except HTTPException:
-            raise
-        except Exception as e:
-            last_error = str(e)
-        if attempt < TTS_MAX_RETRIES - 1:
-            backoff = TTS_RETRY_BACKOFF[attempt]
-            logger.warning(f"[tts/pollinations] error attempt {attempt+1}/{TTS_MAX_RETRIES}, retry in {backoff}s")
-            await asyncio.sleep(backoff)
-    raise HTTPException(status_code=500, detail=f"TTS failed after {TTS_MAX_RETRIES} retries: {last_error}")
-
-
-async def _stream_pollinations_tts(text: str, voice: str, lang: str, speed: float):
-    """Generator wrapper for Pollinations TTS with retry logic."""
-    yield await _fetch_pollinations_tts(text, voice, lang, speed)
-
-
-def _get_fallback_voices() -> list[dict]:
-    """Return fallback voice list when ElevenLabs API is unavailable."""
-    return [
-        {"voice_id": "pNInz6obpgDQGcFmaJgB", "name": "Adam", "category": "premade", "preview_url": ""},
-        {"voice_id": "EXAVITQu4vr4xnSDxMaL", "name": "Bella", "category": "premade", "preview_url": ""},
-        {"voice_id": "VR6AewLTigWG4xSOukaG", "name": "Arnold", "category": "premade", "preview_url": ""},
-        {"voice_id": "onwK4e9ZLuTAKqWW03F9", "name": "Daniel", "category": "premade", "preview_url": ""},
-    ]
-
 
 # ── Endpoints ─────────────────────────────────
 
+async def _fetch_pollinations_tts(text: str, voice: str, lang: str, speed: float) -> bytes:
+    """Fetch audio from Pollinations TTS API.
+    
+    Verified URL format: https://text.pollinations.ai/openai-audio/{prompt}?voice={voice}
+    """
+    # Pollinations expects the prompt in the path for the openai-audio model
+    encoded_text = urllib.parse.quote(text)
+    url = f"{POLLINATIONS_BASE_URL}/openai-audio/{encoded_text}?voice={voice}&lang={lang}"
+    
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(url)
+        if response.status_code != 200:
+            logger.error(f"[tts] Pollinations failed: {response.status_code} - {response.text[:100]}")
+            raise HTTPException(status_code=response.status_code, detail="Free TTS service temporarily unavailable")
+        return response.content
+
 @router.post("/tts")
 async def text_to_speech(req: TTSRequest, user: User = Depends(get_current_user)):
-    """
-    Convert text to speech (ElevenLabs or Pollinations).
-    Production: rate limiting, budget check, retry, metrics tracking.
-    """
+    """Convert text to speech using free Pollinations provider."""
     start_time = time.time()
-    logger.info(f"[tts] user={user.user_id[:8]}... provider={TTS_PROVIDER} len={len(req.text)}")
     try:
         # Rate limit check
         allowed, error_msg, headers = check_voice_rate_limit(user.user_id, "tts")
         if not allowed:
-            record_voice_metric(service="tts", success=False, latency_ms=(time.time()-start_time)*1000,
-                user_id=user.user_id, provider=TTS_PROVIDER, error_type="rate_limited")
             raise HTTPException(status_code=429, detail=error_msg, headers=headers)
-        # Budget check
-        budget_ok, budget_error, _ = check_budget(user.user_id)
-        if not budget_ok:
-            record_voice_metric(service="tts", success=False, latency_ms=(time.time()-start_time)*1000,
-                user_id=user.user_id, provider=TTS_PROVIDER, error_type="budget_exhausted")
-            raise HTTPException(status_code=429, detail=budget_error)
 
-        if TTS_PROVIDER == "elevenlabs":
-            if not ELEVENLABS_API_KEY:
-                raise HTTPException(status_code=503, detail="ElevenLabs TTS not configured")
-            vid = req.voice_id or ELEVENLABS_VOICE_ID
-            mdl = req.model or ELEVENLABS_MODEL
-            track_cost(user_id=user.user_id, service="tts", char_count=len(req.text), provider="elevenlabs")
-            record_voice_metric(service="tts", success=True, latency_ms=(time.time()-start_time)*1000,
-                user_id=user.user_id, provider="elevenlabs")
-            return StreamingResponse(_stream_tts_audio(req.text, vid, mdl), media_type="audio/mpeg",
-                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive", **headers})
-        elif TTS_PROVIDER == "pollinations":
-            voice = req.voice_id or POLLINATIONS_VOICE
-            lang = req.model or POLLINATIONS_LANG
-            spd = req.speed if req.speed is not None else POLLINATIONS_SPEED
-            track_cost(user_id=user.user_id, service="tts", char_count=len(req.text), provider="pollinations")
-            return StreamingResponse(_stream_pollinations_tts(req.text, voice, lang, spd), media_type="audio/mpeg",
-                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", **headers})
-        else:
-            raise HTTPException(status_code=503, detail=f"Unknown TTS provider: {TTS_PROVIDER}")
+        voice = req.voice_id or POLLINATIONS_VOICE
+        lang = req.model or POLLINATIONS_LANG
+        
+        # Track usage (free doesn't count against budget, but we track for metrics)
+        track_cost(user_id=user.user_id, service="tts", char_count=len(req.text), provider="pollinations")
+        
+        audio_content = await _fetch_pollinations_tts(req.text, voice, lang, 1.0)
+        
+        record_voice_metric(service="tts", success=True, latency_ms=(time.time()-start_time)*1000,
+            user_id=user.user_id, provider="pollinations")
+            
+        return StreamingResponse(
+            io.BytesIO(audio_content), 
+            media_type="audio/mpeg",
+            headers={"Cache-Control": "no-cache", **headers}
+        )
+    except Exception as e:
+        logger.exception("[tts] unexpected error")
+        raise HTTPException(status_code=500, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:

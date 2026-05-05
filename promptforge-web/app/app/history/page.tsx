@@ -12,6 +12,9 @@ import HistoryAnalyticsDashboard from '@/features/history/components/HistoryAnal
 import Boneyard from '@/components/ui/Boneyard'
 import { useHistory } from '@/features/history/hooks/useHistory'
 import { useHistoryAnalytics } from '@/features/history/hooks/useHistoryAnalytics'
+import { useProfile } from '@/features/profile/hooks/useProfile'
+import LangMemPreview from '@/features/profile/components/LangMemPreview'
+import KiraInsights from '@/features/profile/components/KiraInsights'
 
 interface RenameSessionEvent {
   sessionId: string
@@ -28,6 +31,7 @@ export default function HistoryPage() {
   const router = useRouter()
   const token = useToken()
   const [days, setDays] = useState(30)
+  const [activeTab, setActiveTab] = useState<'vault' | 'neural'>('vault')
 
   const {
     items,
@@ -58,6 +62,18 @@ export default function HistoryPage() {
     analytics,
     isLoading: isLoadingAnalytics
   } = useHistoryAnalytics(token, days)
+
+  const {
+    memories,
+    isInitializing: isMemLoading,
+    forgetMemory,
+    dominantDomains,
+    preferredTone,
+    clarificationRate,
+    domainConfidence,
+    promptQualityTrend,
+    notablePatterns
+  } = useProfile(token)
 
   // Extract top domains dynamically from live analytics
   const availableDomains = Object.keys(analytics?.domain_distribution || {})
@@ -188,52 +204,112 @@ export default function HistoryPage() {
           </div>
         </div>
         
-        <HistoryAnalyticsDashboard 
-          analytics={analytics} 
-          isLoading={isLoadingAnalytics} 
-          onDomainSelect={(domain) => {
-            setDomains(prev => 
-              prev.includes(domain) 
-                ? prev.filter(d => d !== domain) 
-                : [...prev, domain]
-            )
-          }}
-        />
-        
-        <HistorySearchBar 
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          isSearching={isSearching}
-          useRag={useRag}
-          setUseRag={setUseRag}
-          days={days}
-          setDays={setDays}
-          availableDomains={availableDomains}
-          domains={domains}
-          setDomains={setDomains}
-          minQuality={minQuality}
-          setMinQuality={setMinQuality}
-          dateFrom={dateFrom}
-          setDateFrom={setDateFrom}
-          dateTo={dateTo}
-          setDateTo={setDateTo}
-          selectedIds={selectedIds}
-          onClearSelection={handleClearSelection}
-          onBulkDelete={handleBulkDelete}
-          onExport={handleExport}
-          onSelectAll={selectAll}
-        />
-        
-        <HistoryList
-          items={items}
-          isLoading={isLoadingHistory}
-          isLoadingMore={isLoadingMore}
-          hasMore={hasMore}
-          loadMore={loadMore}
-          onUseAgain={handleUseAgain}
-          selectedIds={selectedIds}
-          toggleSelect={toggleSelect}
-        />
+        {/* Unified Tab Switcher */}
+        <div className="flex items-center gap-1 bg-layer2/30 p-1 rounded-2xl border border-border/10 mb-8 w-fit mx-auto md:mx-0 shadow-inner">
+          <button
+            onClick={() => setActiveTab('vault')}
+            className={`px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300 ${
+              activeTab === 'vault'
+                ? 'bg-kira text-bg shadow-[0_0_15px_rgba(46,196,182,0.3)] scale-105'
+                : 'text-text-dim hover:text-text hover:bg-layer3/50'
+            }`}
+          >
+            The Vault
+          </button>
+          <button
+            onClick={() => setActiveTab('neural')}
+            className={`px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300 ${
+              activeTab === 'neural'
+                ? 'bg-kira text-bg shadow-[0_0_15px_rgba(46,196,182,0.3)] scale-105'
+                : 'text-text-dim hover:text-text hover:bg-layer3/50'
+            }`}
+          >
+            Neural Map
+          </button>
+        </div>
+
+        {activeTab === 'vault' ? (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+            <HistoryAnalyticsDashboard 
+              analytics={analytics} 
+              isLoading={isLoadingAnalytics} 
+              onDomainSelect={(domain) => {
+                setDomains(prev => 
+                  prev.includes(domain) 
+                    ? prev.filter(d => d !== domain) 
+                    : [...prev, domain]
+                )
+              }}
+            />
+            
+            <HistorySearchBar 
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              isSearching={isSearching}
+              useRag={useRag}
+              setUseRag={setUseRag}
+              days={days}
+              setDays={setDays}
+              availableDomains={availableDomains}
+              domains={domains}
+              setDomains={setDomains}
+              minQuality={minQuality}
+              setMinQuality={setMinQuality}
+              dateFrom={dateFrom}
+              setDateFrom={setDateFrom}
+              dateTo={dateTo}
+              setDateTo={setDateTo}
+              selectedIds={selectedIds}
+              onClearSelection={handleClearSelection}
+              onBulkDelete={handleBulkDelete}
+              onExport={handleExport}
+              onSelectAll={selectAll}
+            />
+            
+            <HistoryList
+              items={items}
+              isLoading={isLoadingHistory}
+              isLoadingMore={isLoadingMore}
+              hasMore={hasMore}
+              loadMore={loadMore}
+              onUseAgain={handleUseAgain}
+              selectedIds={selectedIds}
+              toggleSelect={toggleSelect}
+            />
+          </div>
+        ) : (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="md:col-span-1 space-y-6">
+              <KiraInsights
+                dominantDomains={dominantDomains}
+                preferredTone={preferredTone}
+                clarificationRate={clarificationRate}
+                domainConfidence={domainConfidence}
+                promptQualityTrend={promptQualityTrend}
+                notablePatterns={notablePatterns}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <LangMemPreview
+                memories={memories}
+                isLoading={isMemLoading}
+                onForget={forgetMemory}
+              />
+              
+              <div className="mt-8 p-6 rounded-2xl bg-layer2/30 border border-border/10 backdrop-blur-sm">
+                <h3 className="text-sm font-bold text-text uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-kira animate-pulse" />
+                  Neural Synthesis Status
+                </h3>
+                <p className="text-xs text-text-dim leading-relaxed">
+                  Kira is continuously distilling your sessions into atomic facts. 
+                  These facts are used to personalize your refinements and maintain context across turn-based engineering.
+                  You can "forget" any fact to remove it from Kira's long-term semantic memory.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

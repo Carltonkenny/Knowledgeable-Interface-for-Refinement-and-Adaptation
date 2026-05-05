@@ -12,6 +12,10 @@ import { logger } from '@/lib/logger'
 import { apiConversation, type ChatResult, ApiError } from '@/lib/api'
 import type { ChatMessage, MemoryCitation } from '../types'
 import type { ProcessingStatus } from '../types'
+import { MemoryStorage } from '@/lib/memory/storage'
+import { MemoryAtomizer } from '@/lib/memory/atomizer'
+import { SessionContinuityManager } from '@/lib/memory/sessionManager'
+import { getUserIdFromToken } from '@/lib/auth'
 
 interface UseKiraStreamProps {
   sessionId: string
@@ -70,6 +74,10 @@ export function useKiraStream({
   const queuedMessageRef = useRef<{ message: string; attachment?: File } | null>(null)
   // Accumulator for char-by-char SSE kira_message events
   const kiraStreamBufferRef = useRef<string>('')
+  
+  // ── Persistent Memory Integration ──────────────────────────────────────────
+  const memoryStorage = useRef(new MemoryStorage())
+  const [persistentContext, setPersistentContext] = useState<any[]>([])
   
   // ── FIX 1: Conversation Cache ───────────────────────────────────────────────
   // Persists across sessionId changes for this mount
@@ -386,6 +394,7 @@ export function useKiraStream({
                   id: crypto.randomUUID?.() ?? Date.now().toString(),
                   type: 'kira',
                   content: result.reply,
+                  memoryCitations: citations.length > 0 ? citations : undefined,
                 },
               ])
               
@@ -406,6 +415,7 @@ export function useKiraStream({
                   id: crypto.randomUUID?.() ?? Date.now().toString(),
                   type: 'kira',
                   content: result.reply,
+                  // Don't attach citations here — they'll be on the output card
                 },
               ])
               // Continue to show output card for followup (has improved_prompt)
@@ -464,6 +474,22 @@ export function useKiraStream({
               state: 'complete',
               isStreaming: false,
             }))
+
+            // ── Persistent Memory: Atomize and Store ────────────────
+            // We do this after successful completion
+            const processMemories = async () => {
+              try {
+                const userId = await getUserIdFromToken(token)
+                const result = await MemoryAtomizer.atomizeInput(message, userId, token)
+                if (result.core_memories && result.core_memories.length > 0) {
+                  await MemoryAtomizer.storeAtomizedMemories(result.core_memories, userId, memoryStorage.current)
+                  logger.info('[memory] atomic memories saved', { count: result.core_memories.length })
+                }
+              } catch (err) {
+                logger.error('[memory] atomization failed', { err })
+              }
+            }
+            processMemories()
           },
           onError: (errorMessage: string) => {
             const mappedError = mapError(errorMessage)

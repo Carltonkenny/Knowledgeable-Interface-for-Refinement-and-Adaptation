@@ -130,6 +130,7 @@ def kira_unified_handler(
         result["input_quality"] = quality.score
         result["memories_applied"] = len(langmem_context) if langmem_context else 0
         result["memory_summary"] = memory_summary # Inject for thought stream extraction
+        result["langmem_context"] = langmem_context # Inject for citations
 
         # ═══ PERSONALITY ADAPTATION & VALIDATION ═══
         # Adapt Kira's tone to user's communication style

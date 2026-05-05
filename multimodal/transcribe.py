@@ -40,13 +40,13 @@ logger = logging.getLogger(__name__)
 
 # ═══ CONFIGURATION ═══════════════════════════
 
-POLLINATIONS_API_KEY = os.getenv("POLLINATIONS_API_KEY", "")
-POLLINATIONS_WHISPER_URL = "https://api.pollinations.ai/transcribe"
+POLLINATIONS_API_KEY = os.getenv("POLLINATIONS_API_KEY", "free") # Default to free
+POLLINATIONS_WHISPER_URL = "https://text.pollinations.ai/v1/audio/transcriptions"
 POLLINATIONS_WHISPER_MODEL = os.getenv("WHISPER_MODEL", "whisper")
 
 # Retry configuration (Production item #3)
-MAX_RETRIES = 3
-RETRY_BACKOFF_SECONDS = [2, 4, 8]  # Exponential backoff
+MAX_RETRIES = 2
+RETRY_BACKOFF_SECONDS = [1, 2]  # Faster backoff for interactive voice
 
 
 # ═══ TRANSCRIBE VOICE ════════════════════════

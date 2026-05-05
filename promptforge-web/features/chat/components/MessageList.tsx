@@ -64,6 +64,7 @@ export default function MessageList({ messages, isStreaming, status, ttsProps }:
                     onSpeak={ttsProps?.onSpeak}
                     ttsPlaybackState={ttsProps?.ttsPlaybackState}
                     ttsError={ttsProps?.ttsError}
+                    memoryCitations={message.memoryCitations}
                   />
                 </div>
               )

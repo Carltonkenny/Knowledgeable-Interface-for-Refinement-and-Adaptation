@@ -189,15 +189,36 @@ async def chat_stream(request: Request, req: ChatRequest, background_tasks: Back
                 yield sse_format("status", {"message": "Kira is responding..."})
                 words = reply.split(" ")
                 for i, word in enumerate(words):
-                    chunk = word + (" " if i < len(words) - 1 else "")
-                    yield sse_format("kira_message", {"message": chunk, "complete": False})
+                    is_last = (i == len(words) - 1)
+                    chunk = word + (" " if not is_last else "")
+                    yield sse_format("kira_message", {"message": chunk, "complete": is_last})
                     await asyncio.sleep(0.01)  # Reduced from 0.02 for faster cadence
+
+            def _format_citations(langmem_context: list) -> list:
+                citations = []
+                for mem in (langmem_context or [])[:5]:
+                    citations.append({
+                        "id": str(mem.get("id", "")),
+                        "content": (mem.get("content", "") or "")[:120],
+                        "domain": mem.get("domain", "general"),
+                        "quality_score": mem.get("quality_score", {}).get("overall", 0) if isinstance(mem.get("quality_score"), dict) else 0.5,
+                        "created_at": mem.get("created_at", ""),
+                    })
+                return citations
 
             if intent == "CONVERSATION":
                 save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="conversation", user_id=user.user_id)
                 save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="conversation", user_id=user.user_id)
-                yield sse_format("kira_message", {"message": "", "complete": True})
-                yield sse_format("result", {"type": "conversation", "reply": reply, "improved_prompt": None, "memories_applied": memories_applied, "latency_ms": latency_ms})
+                
+                citations = _format_citations(result.get("langmem_context", []))
+                yield sse_format("result", {
+                    "type": "conversation", 
+                    "reply": reply, 
+                    "improved_prompt": None, 
+                    "memories_applied": memories_applied, 
+                    "memory_citations": citations,
+                    "latency_ms": latency_ms
+                })
                 yield sse_format("done", {"message": "Complete"})
 
                 # ═══ BACKGROUND: Extract core memories from conversations too ═══
@@ -213,7 +234,16 @@ async def chat_stream(request: Request, req: ChatRequest, background_tasks: Back
                 save_conversation(session_id=req.session_id, role="user", message=req.message, message_type="followup", user_id=user.user_id)
                 save_conversation(session_id=req.session_id, role="assistant", message=reply, message_type="followup_refined", improved_prompt=improved, user_id=user.user_id)
                 yield sse_format("kira_message", {"message": "", "complete": True})
-                yield sse_format("result", {"type": "followup_refined", "reply": reply, "improved_prompt": improved, "memories_applied": memories_applied, "latency_ms": latency_ms})
+                
+                citations = _format_citations(result.get("langmem_context", []))
+                yield sse_format("result", {
+                    "type": "followup_refined", 
+                    "reply": reply, 
+                    "improved_prompt": improved, 
+                    "memories_applied": memories_applied, 
+                    "memory_citations": citations,
+                    "latency_ms": latency_ms
+                })
                 yield sse_format("done", {"message": "Complete"})
 
                 # ═══ BACKGROUND: Extract core memories from followups too ═══
@@ -436,15 +466,7 @@ async def chat_stream(request: Request, req: ChatRequest, background_tasks: Back
 
                 # Build memory citations from langmem_context in final_state
                 langmem_context = final_state.get("langmem_context", [])
-                memory_citations = []
-                for mem in langmem_context[:5]:  # Top 5 memories max
-                    memory_citations.append({
-                        "id": str(mem.get("id", "")),
-                        "content": (mem.get("content", "") or "")[:120],  # Truncate for preview
-                        "domain": mem.get("domain", "general"),
-                        "quality_score": mem.get("quality_score", {}).get("overall", 0),
-                        "created_at": mem.get("created_at", ""),
-                    })
+                memory_citations = _format_citations(langmem_context)
 
                 yield sse_format("result", {
                     "type": "prompt_improved",

@@ -7,6 +7,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { Volume2, VolumeX, Loader2 } from 'lucide-react'
+import MemoryCitations from './MemoryCitations'
+import type { MemoryCitation } from '../types'
 
 interface KiraMessageProps {
   message: string
@@ -20,6 +22,7 @@ interface KiraMessageProps {
   ttsError?: string | null
   // Accessibility: browser fallback notification (Production item #5)
   isUsingBrowserFallback?: boolean
+  memoryCitations?: MemoryCitation[]
 }
 
 export default function KiraMessage({
@@ -32,6 +35,7 @@ export default function KiraMessage({
   ttsPlaybackState = 'idle',
   ttsError,
   isUsingBrowserFallback = false,
+  memoryCitations,
 }: KiraMessageProps) {
   // Parse simple bold markdown (**text**)
   const parseBold = (text: string) => {
@@ -138,6 +142,11 @@ export default function KiraMessage({
           <div className="mt-2 px-2 py-1 rounded bg-yellow-500/10 border border-yellow-500/20 text-[10px] text-yellow-400/80" role="status" aria-live="polite">
             Using browser voice recognition (lower quality)
           </div>
+        )}
+
+        {/* Memory Citations Panel */}
+        {!isStreaming && memoryCitations && memoryCitations.length > 0 && (
+          <MemoryCitations citations={memoryCitations} />
         )}
 
         {/* Retry button */}

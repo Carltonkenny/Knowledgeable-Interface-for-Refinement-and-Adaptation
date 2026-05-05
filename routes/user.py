@@ -228,7 +228,7 @@ async def get_user_memories(user: User = Depends(get_current_user)):
     logger.info(f"[api] /user/memories requested by user={user.user_id}")
     try:
         db = get_client()
-        result = db.table("langmem_memories").select("id, content, domain, created_at").eq("user_id", user.user_id).order("created_at", desc=True).limit(15).execute()
+        result = db.table("langmem_memories").select("id, content, domain, created_at").eq("user_id", user.user_id).order("created_at", desc=True).limit(20).execute()
         
         memories = []
         for row in result.data:

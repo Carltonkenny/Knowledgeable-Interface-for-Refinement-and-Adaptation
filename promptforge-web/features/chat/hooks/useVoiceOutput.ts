@@ -43,7 +43,7 @@ export function useVoiceOutput({ token, voiceId, onPlaybackEnd }: UseVoiceOutput
   /**
    * Speak text using TTS — fetches audio blob then plays it
    */
-  const speak = useCallback(async (text: string) => {
+  const speak = useCallback(async (text: string, options?: { useBrowserOnly?: boolean }) => {
     if (!text || !text.trim()) {
       logger.warn('[voice-output] speak called with empty text')
       return
@@ -54,6 +54,13 @@ export function useVoiceOutput({ token, voiceId, onPlaybackEnd }: UseVoiceOutput
 
     setError(null)
     setCurrentText(text)
+
+    // Option to bypass backend (e.g. for testing or offline)
+    if (options?.useBrowserOnly) {
+      _speakWithBrowser(text)
+      return
+    }
+
     setPlaybackState('loading')
 
     try {
@@ -82,7 +89,6 @@ export function useVoiceOutput({ token, voiceId, onPlaybackEnd }: UseVoiceOutput
       audio.onpause = () => setPlaybackState('paused')
       audio.onended = () => {
         setPlaybackState('idle')
-        // Revoke object URL after playback completes
         if (sourceUrlRef.current) {
           URL.revokeObjectURL(sourceUrlRef.current)
           sourceUrlRef.current = null
@@ -90,9 +96,8 @@ export function useVoiceOutput({ token, voiceId, onPlaybackEnd }: UseVoiceOutput
         onPlaybackEnd?.()
       }
       audio.onerror = () => {
-        setPlaybackState('error')
-        setError('Audio playback failed')
-        logger.error('[voice-output] Audio element error')
+        logger.warn('[voice-output] Audio element error — falling back to browser voice')
+        _speakWithBrowser(text)
       }
 
       await audio.play()
@@ -103,11 +108,44 @@ export function useVoiceOutput({ token, voiceId, onPlaybackEnd }: UseVoiceOutput
         return
       }
 
-      logger.error('[voice-output] TTS failed', { err })
-      setPlaybackState('error')
-      setError(err instanceof Error ? err.message : 'TTS failed')
+      logger.warn('[voice-output] TTS backend failed — falling back to browser voice', { err })
+      _speakWithBrowser(text)
     }
   }, [token, voiceId, onPlaybackEnd])
+
+  /**
+   * Browser-native fallback using SpeechSynthesis API
+   * Used when backend TTS fails or for zero-cost immediate playback
+   */
+  const _speakWithBrowser = useCallback((text: string) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      setError('Voice playback not supported in this browser')
+      setPlaybackState('error')
+      return
+    }
+
+    // Stop any current browser speech
+    window.speechSynthesis.cancel()
+
+    const utterance = new SpeechSynthesisUtterance(text)
+    
+    // Select a pleasant voice if available
+    const voices = window.speechSynthesis.getVoices()
+    const preferredVoice = voices.find(v => v.name.includes('Google') || v.name.includes('Premium')) || voices[0]
+    if (preferredVoice) utterance.voice = preferredVoice
+
+    utterance.onstart = () => setPlaybackState('playing')
+    utterance.onend = () => {
+      setPlaybackState('idle')
+      onPlaybackEnd?.()
+    }
+    utterance.onerror = () => {
+      setPlaybackState('error')
+      setError('Browser speech synthesis failed')
+    }
+
+    window.speechSynthesis.speak(utterance)
+  }, [onPlaybackEnd])
 
   /**
    * Pause current playback
@@ -138,6 +176,11 @@ export function useVoiceOutput({ token, voiceId, onPlaybackEnd }: UseVoiceOutput
     if (abortRef.current) {
       abortRef.current.abort()
       abortRef.current = null
+    }
+
+    // Stop browser speech synthesis if active
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel()
     }
 
     // Stop audio playback

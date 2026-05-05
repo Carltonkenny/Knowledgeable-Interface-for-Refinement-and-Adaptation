@@ -311,3 +311,19 @@ export async function saveOnboardingProfile(profile: {
     console.warn('Failed to create LangMem memory for onboarding:', error)
   }
 }
+
+/**
+ * Extract user ID from JWT token
+ * @param token - JWT token string
+ * @returns User ID string
+ */
+export async function getUserIdFromToken(token: string): Promise<string> {
+  try {
+    const payloadBase64 = token.split('.')[1]
+    const decodedPayload = JSON.parse(atob(payloadBase64))
+    return decodedPayload.sub
+  } catch (error) {
+    logger.error('Failed to decode user ID from token', { error })
+    throw new Error('Invalid token')
+  }
+}
