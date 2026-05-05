@@ -35,6 +35,7 @@ export default function HistoryPage() {
 
   const {
     items,
+    setItems,
     isLoading: isLoadingHistory,
     isLoadingMore,
     hasMore,
@@ -55,7 +56,8 @@ export default function HistoryPage() {
     selectedIds,
     toggleSelect,
     selectAll,
-    clearSelection
+    clearSelection,
+    refresh
   } = useHistory({ token: token! })
 
   const {
@@ -63,22 +65,55 @@ export default function HistoryPage() {
     isLoading: isLoadingAnalytics
   } = useHistoryAnalytics(token, days)
 
-  const {
-    memories,
-    isInitializing: isMemLoading,
-    forgetMemory,
-    dominantDomains,
-    preferredTone,
-    clarificationRate,
-    domainConfidence,
-    promptQualityTrend,
-    notablePatterns
-  } = useProfile(token)
-
   // Extract top domains dynamically from live analytics
   const availableDomains = Object.keys(analytics?.domain_distribution || {})
     .sort((a, b) => (analytics?.domain_distribution?.[b]?.count || 0) - (analytics?.domain_distribution?.[a]?.count || 0))
     .slice(0, 8) // Top 8 most active domains
+
+  // ── Handlers (REFAC: Optimistic UI) ───────────────────────────────────
+  
+  useEffect(() => {
+    const handleRename = async (e: Event) => {
+      const detail = (e as CustomEvent<RenameSessionEvent>).detail
+      const { sessionId, title } = detail
+      
+      // Optimistic update
+      setItems(prev => prev.map(item => 
+        item.session_id === sessionId ? { ...item, title } : item
+      ))
+
+      try {
+        await apiHistoryRenameSession(token!, sessionId, title)
+        toast.success('Session renamed')
+        refresh() // Silent refresh
+      } catch (err) {
+        logger.error('Failed to rename session', { err, sessionId })
+        toast.error('Failed to update title')
+        refresh() // Revert via refresh
+      }
+    }
+    window.addEventListener('rename-session', handleRename as EventListener)
+    return () => window.removeEventListener('rename-session', handleRename as EventListener)
+  }, [token, setItems, refresh])
+
+  async function handleBulkDelete() {
+    if (!token || selectedIds.length === 0) return
+    if (!confirm(`Are you sure you want to permanently delete ${selectedIds.length} prompts?`)) return
+
+    // Optimistic delete
+    const idsToDelete = [...selectedIds]
+    setItems(prev => prev.filter(item => !idsToDelete.includes(item.id)))
+    clearSelection()
+
+    try {
+      await apiHistoryBulkDelete(token, idsToDelete)
+      toast.success(`${idsToDelete.length} prompts deleted`)
+      refresh() // Sync with server
+    } catch (err) {
+      toast.error('Delete failed')
+      refresh() // Revert
+    }
+  }
 
   // ── DATA EXPORT SYSTEM ──────────────────────────────────────────────
   const handleExport = (format: 'json' | 'csv') => {
@@ -120,49 +155,10 @@ export default function HistoryPage() {
     toast.success(`Exported ${exportData.length} items to ${format.toUpperCase()}`)
   }
 
-  useEffect(() => {
-    const handleRename = async (e: Event) => {
-      const detail = (e as CustomEvent<RenameSessionEvent>).detail
-      const { sessionId, title } = detail
-      try {
-        await apiHistoryRenameSession(token!, sessionId, title)
-        toast.success('Session renamed in Palace index')
-        window.location.reload() // Simple sync
-      } catch (err) {
-        logger.error('Failed to rename session', { err, sessionId })
-        toast.error('Failed to update session title')
-      }
-    }
-    window.addEventListener('rename-session', handleRename as EventListener)
-    return () => window.removeEventListener('rename-session', handleRename as EventListener)
-  }, [token])
-
-  // ── Handlers ───────────────────────────────────────────────────────────
-  
   function handleUseAgain(prompt: string) {
     router.push(`/app?prompt=${encodeURIComponent(prompt)}`)
   }
 
-  async function handleBulkDelete() {
-    if (!token || selectedIds.length === 0) return
-    if (!confirm(`Are you sure you want to permanently delete ${selectedIds.length} prompts? This cannot be undone.`)) return
-
-    try {
-      const deletedCount = await apiHistoryBulkDelete(token, selectedIds)
-      toast.success(`${deletedCount} prompts deleted successfully.`)
-      clearSelection()
-      // Note: useHistory hook will naturally re-sync on next load or we could locally filter
-      window.location.reload() // Quickest way to re-sync O(1) after massive batch delete
-    } catch (err) {
-      toast.error('Failed to delete prompts. Please try again.')
-    }
-  }
-
-  function handleClearSelection() {
-    clearSelection()
-  }
-
-  // Show loading state while token initializes
   if (!token) {
     return (
       <div className="h-screen flex items-center justify-center">
@@ -172,7 +168,7 @@ export default function HistoryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-bg p-6 md:p-8">
+    <div className="min-h-screen bg-bg p-6 md:p-8 pb-24">
       <div className="max-w-4xl mx-auto">
         <div className="flex items-end justify-between mb-8 border-b border-border/10 pb-6">
           <div className="flex flex-col">
@@ -260,7 +256,7 @@ export default function HistoryPage() {
               dateTo={dateTo}
               setDateTo={setDateTo}
               selectedIds={selectedIds}
-              onClearSelection={handleClearSelection}
+              onClearSelection={clearSelection}
               onBulkDelete={handleBulkDelete}
               onExport={handleExport}
               onSelectAll={selectAll}
@@ -278,38 +274,63 @@ export default function HistoryPage() {
             />
           </div>
         ) : (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="md:col-span-1 space-y-6">
-              <KiraInsights
-                dominantDomains={dominantDomains}
-                preferredTone={preferredTone}
-                clarificationRate={clarificationRate}
-                domainConfidence={domainConfidence}
-                promptQualityTrend={promptQualityTrend}
-                notablePatterns={notablePatterns}
-              />
-            </div>
-            <div className="md:col-span-2">
-              <LangMemPreview
-                memories={memories}
-                isLoading={isMemLoading}
-                onForget={forgetMemory}
-              />
-              
-              <div className="mt-8 p-6 rounded-2xl bg-layer2/30 border border-border/10 backdrop-blur-sm">
-                <h3 className="text-sm font-bold text-text uppercase tracking-widest mb-4 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-kira animate-pulse" />
-                  Neural Synthesis Status
-                </h3>
-                <p className="text-xs text-text-dim leading-relaxed">
-                  Kira is continuously distilling your sessions into atomic facts. 
-                  These facts are used to personalize your refinements and maintain context across turn-based engineering.
-                  You can "forget" any fact to remove it from Kira's long-term semantic memory.
-                </p>
-              </div>
-            </div>
-          </div>
+          <NeuralMapTab token={token} />
         )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Lazy-loaded Neural Map tab to prevent waterfall fetching on main load
+ */
+function NeuralMapTab({ token }: { token: string }) {
+  const {
+    memories,
+    isInitializing: isMemLoading,
+    forgetMemory,
+    dominantDomains,
+    preferredTone,
+    clarificationRate,
+    domainConfidence,
+    promptQualityTrend,
+    notablePatterns
+  } = useProfile(token)
+
+  return (
+    <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 grid grid-cols-1 md:grid-cols-3 gap-8">
+      <div className="md:col-span-1 space-y-6">
+        <KiraInsights
+          dominantDomains={dominantDomains}
+          preferredTone={preferredTone}
+          clarificationRate={clarificationRate}
+          domainConfidence={domainConfidence}
+          promptQualityTrend={promptQualityTrend}
+          notablePatterns={notablePatterns}
+        />
+      </div>
+      <div className="md:col-span-2">
+        <LangMemPreview
+          memories={memories}
+          isLoading={isMemLoading}
+          onForget={forgetMemory}
+        />
+        
+        <div className="mt-8 p-6 rounded-2xl bg-layer2/30 border border-border/10 backdrop-blur-sm">
+          <h3 className="text-sm font-bold text-text uppercase tracking-widest mb-4 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-kira animate-pulse" />
+            Neural Synthesis Status
+          </h3>
+          <p className="text-xs text-text-dim leading-relaxed">
+            Kira is continuously distilling your sessions into atomic facts. 
+            These facts are used to personalize your refinements and maintain context across turn-based engineering.
+            You can "forget" any fact to remove it from Kira's long-term semantic memory.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
       </div>
     </div>
   )

@@ -27,9 +27,13 @@ export function useHistory({ token }: UseHistoryProps) {
   const [dateTo, setDateTo] = useState<string | undefined>()
   
   // Pagination State
-  const [offset, setOffset] = useState(0)
-  const [hasMore, setHasMore] = useState(true)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
   const LIMIT = 20
+
+  const refresh = () => {
+    setOffset(0)
+    setRefreshTrigger(prev => prev + 1)
+  }
 
   // Bulk Management State
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -89,7 +93,6 @@ export function useHistory({ token }: UseHistoryProps) {
 
         setItems(prev => {
           const combined = isInitial ? fetchedItems : [...prev, ...fetchedItems]
-          // DEDUPLICATION: Ensure unique keys for React rendering
           const uniqueMap = new Map()
           combined.forEach(item => uniqueMap.set(item.id, item))
           return Array.from(uniqueMap.values())
@@ -111,7 +114,7 @@ export function useHistory({ token }: UseHistoryProps) {
 
     loadData()
     return () => controller.abort()
-  }, [token, debouncedQuery, useRag, domains, minQuality, dateFrom, dateTo, offset])
+  }, [token, debouncedQuery, useRag, domains, minQuality, dateFrom, dateTo, offset, refreshTrigger])
 
   const loadMore = () => {
     if (!isLoadingMore && hasMore) {
@@ -187,6 +190,7 @@ export function useHistory({ token }: UseHistoryProps) {
 
   return {
     items,
+    setItems,
     isLoading,
     isSearching,
     isLoadingMore,
@@ -210,6 +214,7 @@ export function useHistory({ token }: UseHistoryProps) {
     toggleSelect,
     selectAll,
     clearSelection: () => setSelectedIds([]),
-    setSelectedIds
+    setSelectedIds,
+    refresh
   }
 }
